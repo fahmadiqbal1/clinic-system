@@ -60,6 +60,11 @@ class Patient extends Model
         return $this->hasMany(Prescription::class);
     }
 
+    public function aiAnalyses(): HasMany
+    {
+        return $this->hasMany(AiAnalysis::class);
+    }
+
     /**
      * Full name accessor: $patient->full_name
      */

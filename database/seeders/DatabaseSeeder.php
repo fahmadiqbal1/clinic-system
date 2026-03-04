@@ -120,5 +120,17 @@ class DatabaseSeeder extends Seeder
             ]
         );
         $pharmacy->assignRole('Pharmacy');
+
+        // Patient (demo account)
+        $patientUser = User::firstOrCreate(
+            ['email' => 'patient@clinic.com'],
+            [
+                'name' => 'Ali Patient',
+                'password' => Hash::make('password123'),
+                'is_active' => true,
+                'email_verified_at' => now(),
+            ]
+        );
+        $patientUser->assignRole('Patient');
     }
 }

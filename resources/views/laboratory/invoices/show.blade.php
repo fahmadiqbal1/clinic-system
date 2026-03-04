@@ -367,6 +367,13 @@
         </div>
     </div>
 
+    {{-- MedGemma AI Second Opinion --}}
+    @include('components.ai-analysis.card', [
+        'analyses' => $aiAnalyses,
+        'formAction' => route('ai-analysis.lab', $invoice),
+        'contextLabel' => 'lab results',
+    ])
+
     {{-- Actions --}}
     <div class="d-flex gap-2 mb-4 fade-in delay-3">
         @if($invoice->status === 'pending')

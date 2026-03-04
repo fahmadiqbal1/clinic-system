@@ -51,12 +51,19 @@ class ConsultationController extends Controller
             ->get()
             ->groupBy('department');
 
+        // AI analyses for this patient
+        $aiAnalyses = \App\Models\AiAnalysis::where('patient_id', $patient->id)
+            ->with('requester')
+            ->latest()
+            ->get();
+
         return view('doctor.consultation.show', [
             'patient' => $patient,
             'latestVitals' => $latestVitals,
             'prescriptions' => $prescriptions,
             'invoices' => $invoices,
             'serviceCatalog' => $serviceCatalog,
+            'aiAnalyses' => $aiAnalyses,
         ]);
     }
 

@@ -412,6 +412,13 @@
     </div>
     @endif
 
+    {{-- MedGemma AI Second Opinion --}}
+    @include('components.ai-analysis.card', [
+        'analyses' => $aiAnalyses,
+        'formAction' => route('ai-analysis.consultation', $patient),
+        'contextLabel' => 'consultation',
+    ])
+
     {{-- Complete / Back --}}
     <div class="d-flex gap-2 fade-in delay-5">
         @if($patient->status === 'with_doctor')

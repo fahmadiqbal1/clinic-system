@@ -38,8 +38,14 @@ class InvoiceController extends Controller
     {
         $this->authorize('view', $invoice);
 
+        $aiAnalyses = \App\Models\AiAnalysis::where('invoice_id', $invoice->id)
+            ->with('requester')
+            ->latest()
+            ->get();
+
         return view('radiology.invoices.show', [
             'invoice' => $invoice,
+            'aiAnalyses' => $aiAnalyses,
         ]);
     }
 

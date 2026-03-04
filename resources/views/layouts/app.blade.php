@@ -159,6 +159,10 @@
                                 </ul>
                             </li>
                         @endif
+
+                        @if(Auth::user()->hasRole('Patient'))
+                            <li class="nav-item"><a class="nav-link nav-role-patient" href="{{ route('patient.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i>My Health</a></li>
+                        @endif
                     </ul>
                     <ul class="navbar-nav ms-auto">
                         {{-- Theme Toggle --}}
