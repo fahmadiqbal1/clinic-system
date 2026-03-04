@@ -1,0 +1,170 @@
+@extends('layouts.app')
+@section('title', 'Edit User — ' . config('app.name'))
+
+@section('content')
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+            {{-- Page Header --}}
+            <div class="page-header mb-4">
+                <div>
+                    <h1 class="page-title"><i class="bi bi-pencil-square me-2"></i>Edit User</h1>
+                    <p class="text-muted mb-0">{{ $user->name }} &mdash; {{ $user->email }}</p>
+                </div>
+                <a href="{{ route('owner.users.index') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left me-1"></i> Back
+                </a>
+            </div>
+
+            <div class="glass-panel">
+                <form action="{{ route('owner.users.update', $user) }}" method="POST">
+                    @csrf
+                    @method('PATCH')
+
+                    {{-- Account Info --}}
+                    <div class="form-section">
+                        <h6 class="form-section-title"><i class="bi bi-person-badge me-2"></i>Account Information</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="name" class="form-label">Full Name *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                    <input type="text" name="name" id="name" value="{{ old('name', $user->name) }}" class="form-control @error('name') is-invalid @enderror" required>
+                                    @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="email" class="form-label">Email Address *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                                    <input type="email" name="email" id="email" value="{{ old('email', $user->email) }}" class="form-control @error('email') is-invalid @enderror" required>
+                                    @error('email')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-0">
+                            <div class="col-md-6">
+                                <label for="role_id" class="form-label">Role *</label>
+                                <select name="role_id" id="role_id" class="form-select @error('role_id') is-invalid @enderror" required>
+                                    <option value="">Select a role</option>
+                                    @foreach($roles as $role)
+                                        @if($role->name !== 'Owner')
+                                            <option value="{{ $role->id }}" {{ $userRole?->id == $role->id ? 'selected' : '' }}>
+                                                {{ $role->name }}
+                                            </option>
+                                        @endif
+                                    @endforeach
+                                </select>
+                                @error('role_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label d-block">Status</label>
+                                <div class="form-check mt-2">
+                                    <input type="checkbox" name="is_active" id="is_active" {{ ($user->is_active ?? true) ? 'checked' : '' }} value="1" class="form-check-input">
+                                    <label class="form-check-label" for="is_active">Active User</label>
+                                </div>
+                                <div class="form-text">Unchecking will deactivate this user</div>
+                                @if(auth()->id() === $user->id)
+                                    <div class="alert-banner warning mt-2 py-1 px-2" style="font-size:0.8rem;">
+                                        <i class="bi bi-info-circle me-1"></i>You cannot deactivate your own account
+                                    </div>
+                                @endif
+                                @error('is_active')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Compensation --}}
+                    <div class="form-section">
+                        <h6 class="form-section-title"><i class="bi bi-cash-stack me-2"></i>Compensation</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="compensation_type" class="form-label">Compensation Type *</label>
+                                <select name="compensation_type" id="compensation_type" class="form-select @error('compensation_type') is-invalid @enderror" required>
+                                    <option value="commission" {{ old('compensation_type', $user->compensation_type ?? 'commission') === 'commission' ? 'selected' : '' }}>Commission Only</option>
+                                    <option value="salaried" {{ old('compensation_type', $user->compensation_type ?? 'commission') === 'salaried' ? 'selected' : '' }}>Salaried (no commission)</option>
+                                    <option value="hybrid" {{ old('compensation_type', $user->compensation_type ?? 'commission') === 'hybrid' ? 'selected' : '' }}>Hybrid (salary + commission)</option>
+                                </select>
+                                <div class="form-text">Salaried = no commission. Hybrid = salary + commission.</div>
+                                @error('compensation_type')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                            <div class="col-md-6" id="salary-field">
+                                <label for="base_salary" class="form-label">Base Salary (monthly)</label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-cash-stack"></i></span>
+                                    <input type="number" step="0.01" min="0" name="base_salary" id="base_salary" value="{{ old('base_salary', $user->base_salary) }}" class="form-control @error('base_salary') is-invalid @enderror" placeholder="0.00">
+                                    <span class="input-group-text">/mo</span>
+                                </div>
+                                <div class="form-text">Paid as separate expense, not deducted from invoices.</div>
+                                @error('base_salary')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                        </div>
+
+                        {{-- Commission Percentages (visible when commission or hybrid) --}}
+                        <div id="commission-fields" class="mt-3">
+                            <label class="form-label fw-semibold"><i class="bi bi-percent me-1"></i>Commission Rates (% of profit)</label>
+                            <div class="form-text mb-2">Set the commission percentage for each department. Only applicable departments need a value &mdash; leave others at 0.</div>
+                            <div class="row g-3">
+                                <div class="col-md-3 col-6">
+                                    <label for="commission_consultation" class="form-label">Consultation</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" step="0.01" min="0" max="100" name="commission_consultation" id="commission_consultation" value="{{ old('commission_consultation', $user->commission_consultation ?? 0) }}" class="form-control @error('commission_consultation') is-invalid @enderror" placeholder="0">
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                    @error('commission_consultation')<div class="text-danger small">{{ $message }}</div>@enderror
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <label for="commission_pharmacy" class="form-label">Pharmacy</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" step="0.01" min="0" max="100" name="commission_pharmacy" id="commission_pharmacy" value="{{ old('commission_pharmacy', $user->commission_pharmacy ?? 0) }}" class="form-control @error('commission_pharmacy') is-invalid @enderror" placeholder="0">
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                    @error('commission_pharmacy')<div class="text-danger small">{{ $message }}</div>@enderror
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <label for="commission_lab" class="form-label">Laboratory</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" step="0.01" min="0" max="100" name="commission_lab" id="commission_lab" value="{{ old('commission_lab', $user->commission_lab ?? 0) }}" class="form-control @error('commission_lab') is-invalid @enderror" placeholder="0">
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                    @error('commission_lab')<div class="text-danger small">{{ $message }}</div>@enderror
+                                </div>
+                                <div class="col-md-3 col-6">
+                                    <label for="commission_radiology" class="form-label">Radiology</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" step="0.01" min="0" max="100" name="commission_radiology" id="commission_radiology" value="{{ old('commission_radiology', $user->commission_radiology ?? 0) }}" class="form-control @error('commission_radiology') is-invalid @enderror" placeholder="0">
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                    @error('commission_radiology')<div class="text-danger small">{{ $message }}</div>@enderror
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 pt-3" style="border-top:1px solid rgba(255,255,255,0.06);">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>Update User
+                        </button>
+                        <a href="{{ route('owner.users.index') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const compType = document.getElementById('compensation_type');
+    const salaryField = document.getElementById('salary-field');
+    const commissionFields = document.getElementById('commission-fields');
+    function toggleCompensationFields() {
+        const val = compType.value;
+        salaryField.style.display = ['salaried','hybrid'].includes(val) ? 'block' : 'none';
+        commissionFields.style.display = ['commission','hybrid'].includes(val) ? 'block' : 'none';
+    }
+    compType.addEventListener('change', toggleCompensationFields);
+    toggleCompensationFields();
+});
+</script>
+@endsection
