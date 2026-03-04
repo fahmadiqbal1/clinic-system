@@ -19,6 +19,7 @@ class Patient extends Model
         'gender',
         'date_of_birth',
         'doctor_id',
+        'user_id',
         'status',
         'consultation_notes',
         'registered_at',
@@ -38,6 +39,11 @@ class Patient extends Model
     public function doctor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'doctor_id');
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function visits(): HasMany

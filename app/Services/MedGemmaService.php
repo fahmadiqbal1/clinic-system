@@ -318,6 +318,8 @@ class MedGemmaService
 
         $data = $response->json();
 
+        // Handle both OpenAI-compatible format (choices[0].message.content)
+        // and Hugging Face legacy format ([0].generated_text)
         return $data['choices'][0]['message']['content']
             ?? $data[0]['generated_text']
             ?? 'No response generated.';
