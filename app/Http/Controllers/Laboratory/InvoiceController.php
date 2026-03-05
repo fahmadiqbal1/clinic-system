@@ -43,8 +43,14 @@ class InvoiceController extends Controller
 
         $invoice->load('items.serviceCatalog', 'patient', 'prescribingDoctor');
 
+        $aiAnalyses = \App\Models\AiAnalysis::where('invoice_id', $invoice->id)
+            ->with('requester')
+            ->latest()
+            ->get();
+
         return view('laboratory.invoices.show', [
             'invoice' => $invoice,
+            'aiAnalyses' => $aiAnalyses,
         ]);
     }
 

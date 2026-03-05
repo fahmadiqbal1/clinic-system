@@ -363,8 +363,191 @@
 
     {{-- Existing Invoices --}}
     @if($invoices->count() > 0)
+    @php
+        $labInvoices = $invoices->where('department', 'lab');
+        $radInvoices = $invoices->where('department', 'radiology');
+        $otherInvoices = $invoices->whereNotIn('department', ['lab', 'radiology']);
+        $pendingInvestigations = $invoices->whereIn('department', ['lab', 'radiology'])
+            ->filter(fn($inv) => !$inv->isWorkCompleted())->count();
+        $completedInvestigations = $invoices->whereIn('department', ['lab', 'radiology'])
+            ->filter(fn($inv) => $inv->isWorkCompleted())->count();
+        $totalInvestigations = $labInvoices->count() + $radInvoices->count();
+    @endphp
+
+    {{-- Investigation Status Summary --}}
+    @if($totalInvestigations > 0)
     <div class="card mb-4 fade-in delay-4">
-        <div class="card-header"><i class="bi bi-list-ul me-2" style="color:var(--accent-info);"></i>Invoices for this Patient</div>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-clipboard2-check me-2" style="color:var(--accent-info);"></i>Investigation Status</span>
+            <span>
+                @if($pendingInvestigations === 0 && $totalInvestigations > 0)
+                    <span class="badge-glass" style="background:rgba(var(--accent-success-rgb),0.15);color:var(--accent-success);">
+                        <i class="bi bi-check-circle me-1"></i>All {{ $totalInvestigations }} investigation(s) complete
+                    </span>
+                @else
+                    <span class="badge-glass" style="background:rgba(var(--accent-warning-rgb),0.15);color:var(--accent-warning);">
+                        {{ $completedInvestigations }}/{{ $totalInvestigations }} complete
+                    </span>
+                @endif
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Department</th>
+                            <th>Services</th>
+                            <th>Status</th>
+                            <th>Results</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($invoices->whereIn('department', ['lab', 'radiology']) as $inv)
+                            <tr>
+                                <td style="color:var(--text-muted);">{{ $inv->id }}</td>
+                                <td>
+                                    <i class="bi {{ $inv->department === 'lab' ? 'bi-droplet' : 'bi-broadcast' }} me-1" style="color:{{ $inv->department === 'lab' ? 'var(--accent-info)' : 'var(--accent-warning)' }};"></i>
+                                    {{ ucfirst($inv->department) }}
+                                </td>
+                                <td>
+                                    @if($inv->items->count() > 0)
+                                        @foreach($inv->items as $item)
+                                            <span class="badge badge-glass-secondary me-1 mb-1">{{ $item->description }}</span>
+                                        @endforeach
+                                    @else
+                                        {{ $inv->service_name }}
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($inv->isWorkCompleted())
+                                        <span class="badge-glass" style="background:rgba(var(--accent-success-rgb),0.15);color:var(--accent-success);"><i class="bi bi-check-circle me-1"></i>Complete</span>
+                                    @elseif($inv->performed_by_user_id)
+                                        <span class="badge-glass" style="background:rgba(var(--accent-primary-rgb),0.15);color:var(--accent-primary);"><i class="bi bi-gear me-1"></i>In Progress</span>
+                                    @elseif($inv->isPaid())
+                                        <span class="badge-glass" style="background:rgba(var(--accent-info-rgb),0.15);color:var(--accent-info);">Paid — Awaiting Work</span>
+                                    @else
+                                        <span class="badge-glass" style="background:rgba(var(--accent-warning-rgb),0.15);color:var(--accent-warning);">{{ ucfirst($inv->status) }}</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($inv->department === 'lab' && $inv->lab_results)
+                                        <span class="text-success"><i class="bi bi-table me-1"></i>Results ready</span>
+                                    @elseif($inv->department === 'radiology' && $inv->report_text)
+                                        <span class="text-success"><i class="bi bi-file-earmark-medical me-1"></i>Report ready</span>
+                                    @else
+                                        <span style="color:var(--text-muted);"><i class="bi bi-hourglass-split me-1"></i>Pending</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    {{-- Lab Results Detail --}}
+    @foreach($labInvoices as $labInv)
+        @if($labInv->lab_results || $labInv->report_text)
+        <div class="card mb-4 fade-in delay-4">
+            <div class="card-header">
+                <i class="bi bi-droplet me-2" style="color:var(--accent-info);"></i>Lab Results — {{ $labInv->service_name }}
+                @if($labInv->isWorkCompleted())
+                    <span class="badge-glass ms-2" style="background:rgba(var(--accent-success-rgb),0.15);color:var(--accent-success);font-size:0.75rem;">Complete</span>
+                @endif
+            </div>
+            <div class="card-body">
+                @if($labInv->lab_results)
+                    @php
+                        $rawResults = $labInv->lab_results;
+                        $isFlat = is_array($rawResults) && array_is_list($rawResults);
+                        $grouped = $isFlat && count($rawResults) > 0 ? ['general' => $rawResults] : (array) $rawResults;
+                        $labItemMap = $labInv->items->keyBy('id');
+                    @endphp
+                    @foreach($grouped as $key => $results)
+                        @php
+                            $sectionLabel = $key === 'general'
+                                ? ($labInv->service_name ?? 'Results')
+                                : ($labItemMap[$key]->description ?? $labItemMap[$key]->serviceCatalog?->name ?? 'Test');
+                        @endphp
+                        <h6 class="fw-semibold mb-2"><i class="bi bi-clipboard2-pulse me-1" style="color:var(--accent-info);"></i>{{ $sectionLabel }}</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Parameter</th><th>Result</th><th>Unit</th><th>Reference</th></tr></thead>
+                                <tbody>
+                                    @foreach((array) $results as $r)
+                                    <tr>
+                                        <td class="fw-medium">{{ $r['test_name'] ?? '' }}</td>
+                                        <td class="fw-semibold" style="color:var(--accent-primary);">{{ $r['result'] ?? '' }}</td>
+                                        <td style="color:var(--text-muted);">{{ $r['unit'] ?? '—' }}</td>
+                                        <td style="color:var(--text-muted);">{{ $r['reference_range'] ?? '—' }}</td>
+                                    </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endforeach
+                @endif
+                @if($labInv->report_text)
+                    <div class="p-3 rounded" style="background:var(--glass-bg); border:1px solid var(--glass-border);">
+                        <small class="fw-semibold d-block mb-1" style="color:var(--text-muted);">Lab Technician Report:</small>
+                        {!! nl2br(e($labInv->report_text)) !!}
+                    </div>
+                @endif
+            </div>
+        </div>
+        @endif
+    @endforeach
+
+    {{-- Radiology Results Detail --}}
+    @foreach($radInvoices as $radInv)
+        @if($radInv->report_text || ($radInv->radiology_images && count($radInv->radiology_images) > 0))
+        <div class="card mb-4 fade-in delay-4">
+            <div class="card-header">
+                <i class="bi bi-broadcast me-2" style="color:var(--accent-warning);"></i>Radiology — {{ $radInv->service_name }}
+                @if($radInv->isWorkCompleted())
+                    <span class="badge-glass ms-2" style="background:rgba(var(--accent-success-rgb),0.15);color:var(--accent-success);font-size:0.75rem;">Complete</span>
+                @endif
+            </div>
+            <div class="card-body">
+                @if($radInv->report_text)
+                    <div class="p-3 rounded mb-3" style="background:var(--glass-bg); border:1px solid var(--glass-border);">
+                        <small class="fw-semibold d-block mb-1" style="color:var(--text-muted);">Radiologist Report:</small>
+                        {!! nl2br(e($radInv->report_text)) !!}
+                    </div>
+                @endif
+                @if($radInv->radiology_images && count($radInv->radiology_images) > 0)
+                    <div class="row g-3">
+                        @foreach($radInv->radiology_images as $idx => $imagePath)
+                        <div class="col-md-4 col-lg-3">
+                            <div class="rounded overflow-hidden" style="border:1px solid var(--glass-border);">
+                                @if(str_ends_with(strtolower($imagePath), '.pdf'))
+                                    <a href="{{ Storage::url($imagePath) }}" target="_blank" class="d-flex flex-column align-items-center justify-content-center p-4 text-decoration-none" style="min-height:140px; background:var(--glass-bg);">
+                                        <i class="bi bi-file-earmark-pdf" style="font-size:2.5rem; color:var(--accent-danger);"></i>
+                                        <span class="small mt-1" style="color:var(--text-muted);">PDF</span>
+                                    </a>
+                                @else
+                                    <a href="{{ Storage::url($imagePath) }}" target="_blank">
+                                        <img src="{{ Storage::url($imagePath) }}" alt="Image {{ $idx + 1 }}" class="img-fluid w-100" style="min-height:140px; object-fit:cover;">
+                                    </a>
+                                @endif
+                            </div>
+                        </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+        </div>
+        @endif
+    @endforeach
+
+    {{-- Other Invoices --}}
+    @if($otherInvoices->count() > 0)
+    <div class="card mb-4 fade-in delay-4">
+        <div class="card-header"><i class="bi bi-list-ul me-2" style="color:var(--accent-info);"></i>Other Invoices</div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
@@ -378,19 +561,11 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($invoices as $inv)
+                        @foreach($otherInvoices as $inv)
                             <tr>
                                 <td style="color:var(--text-muted);">{{ $inv->id }}</td>
                                 <td>{{ ucfirst($inv->department) }}</td>
-                                <td>
-                                    @if($inv->items->count() > 0)
-                                        @foreach($inv->items as $item)
-                                            <span class="badge badge-glass-secondary me-1 mb-1">{{ $item->description }}</span>
-                                        @endforeach
-                                    @else
-                                        {{ $inv->service_name }}
-                                    @endif
-                                </td>
+                                <td>{{ $inv->service_name }}</td>
                                 <td>
                                     @php
                                         $invStyle = match($inv->status) {
@@ -411,6 +586,39 @@
         </div>
     </div>
     @endif
+    @endif
+
+    {{-- MedGemma AI Second Opinion --}}
+    @php
+        $hasVitals = !empty($latestVitals);
+        $hasNotes = !empty($patient->consultation_notes);
+        $hasLabResults = $invoices->where('department', 'lab')->filter(fn($i) => !empty($i->lab_results))->count() > 0;
+        $hasRadResults = $invoices->where('department', 'radiology')->filter(fn($i) => !empty($i->report_text) || !empty($i->radiology_images))->count() > 0;
+        $pendingWork = $invoices->whereIn('department', ['lab', 'radiology'])->filter(fn($i) => !$i->isWorkCompleted())->count();
+        $totalWork = $invoices->whereIn('department', ['lab', 'radiology'])->count();
+
+        $dataSummary = [];
+        if ($hasVitals) $dataSummary[] = 'vitals';
+        if ($hasNotes) $dataSummary[] = 'consultation notes';
+        if ($hasLabResults) $dataSummary[] = 'lab results';
+        if ($hasRadResults) $dataSummary[] = 'radiology findings';
+
+        if ($totalWork > 0 && $pendingWork > 0) {
+            $consultReadinessNote = '<strong>' . $pendingWork . ' investigation(s) still in progress.</strong> You can request analysis now with available data, or wait until all reports are complete for a comprehensive review.<br><small>Available: ' . implode(', ', $dataSummary) . '</small>';
+        } elseif ($totalWork > 0 && $pendingWork === 0) {
+            $consultReadinessNote = '<strong><i class="bi bi-check-circle me-1"></i>All investigations are complete.</strong> MedGemma will review vitals, notes, lab results, radiology reports' . ($hasRadResults ? ' and images' : '') . ' for a comprehensive second opinion.';
+        } elseif (!$hasVitals && !$hasNotes) {
+            $consultReadinessNote = '<strong>Tip:</strong> Record vitals and consultation notes first for a meaningful AI analysis.';
+        } else {
+            $consultReadinessNote = null;
+        }
+    @endphp
+    @include('components.ai-analysis.card', [
+        'analyses' => $aiAnalyses,
+        'formAction' => route('ai-analysis.consultation', $patient),
+        'contextLabel' => 'consultation',
+        'readinessNote' => $consultReadinessNote,
+    ])
 
     {{-- Complete / Back --}}
     <div class="d-flex gap-2 fade-in delay-5">

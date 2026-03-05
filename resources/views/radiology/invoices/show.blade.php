@@ -152,6 +152,27 @@
         </div>
     </div>
 
+    {{-- MedGemma AI Second Opinion --}}
+    @php
+        $radHasImages = !empty($invoice->radiology_images) && count($invoice->radiology_images) > 0;
+        $radHasReport = !empty($invoice->report_text);
+        if (!$radHasImages && !$radHasReport) {
+            $radReadinessNote = '<strong>Tip:</strong> Upload your imaging files and write your report first, then request AI analysis. MedGemma can analyse images (JPG/PNG) directly.';
+        } elseif (!$radHasImages) {
+            $radReadinessNote = '<strong>Tip:</strong> Upload imaging files (JPG/PNG) for MedGemma to perform visual analysis alongside your report.';
+        } elseif (!$radHasReport) {
+            $radReadinessNote = 'Images are ready for analysis. You can also add your report text for MedGemma to verify your findings.';
+        } else {
+            $radReadinessNote = null;
+        }
+    @endphp
+    @include('components.ai-analysis.card', [
+        'analyses' => $aiAnalyses,
+        'formAction' => route('ai-analysis.radiology', $invoice),
+        'contextLabel' => 'imaging',
+        'readinessNote' => $radReadinessNote,
+    ])
+
     {{-- Actions --}}
     <div class="d-flex gap-2 mb-4 fade-in delay-3">
         <a href="{{ route('radiology.invoices.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>

@@ -12,7 +12,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function () {
             // Role-specific route files (all get web + auth middleware)
-            $roleFiles = ['owner', 'doctor', 'receptionist', 'triage', 'laboratory', 'radiology', 'pharmacy', 'shared'];
+            $roleFiles = ['owner', 'doctor', 'receptionist', 'triage', 'laboratory', 'radiology', 'pharmacy', 'patient', 'shared'];
             foreach ($roleFiles as $file) {
                 Route::middleware(['web', 'auth'])
                     ->group(base_path("routes/{$file}.php"));

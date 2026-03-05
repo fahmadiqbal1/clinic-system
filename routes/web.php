@@ -34,6 +34,7 @@ Route::get('/dashboard', function () {
     if ($user->hasRole('Laboratory')) return redirect()->route('laboratory.dashboard');
     if ($user->hasRole('Radiology')) return redirect()->route('radiology.dashboard');
     if ($user->hasRole('Pharmacy')) return redirect()->route('pharmacy.dashboard');
+    if ($user->hasRole('Patient')) return redirect()->route('patient.dashboard');
     return redirect()->route('home');
 })->middleware(['auth', 'verified'])->name('dashboard');
 

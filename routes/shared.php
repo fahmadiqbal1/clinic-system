@@ -15,6 +15,7 @@ use App\Http\Controllers\ProcurementRequestController;
 use App\Http\Controllers\ProcurementApprovalController;
 use App\Http\Controllers\ProcurementReceiptController;
 use App\Http\Controllers\Dashboard\LowStockAlertController;
+use App\Http\Controllers\AiAnalysisController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SearchController;
 use Illuminate\Support\Facades\Route;
@@ -100,6 +101,20 @@ Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology')->group(function ()
 Route::get('/notifications/unread', [NotificationController::class, 'unread'])->name('notifications.unread');
 Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');
+
+// ── MedGemma AI Analysis ──
+Route::middleware('role:Doctor')->group(function () {
+    Route::post('/ai-analysis/consultation/{patient}', [AiAnalysisController::class, 'analyseConsultation'])->name('ai-analysis.consultation');
+    Route::get('/ai-analysis/patient/{patient}', [AiAnalysisController::class, 'patientAnalyses'])->name('ai-analysis.patient');
+});
+
+Route::middleware('role:Laboratory')->group(function () {
+    Route::post('/ai-analysis/lab/{invoice}', [AiAnalysisController::class, 'analyseLab'])->name('ai-analysis.lab');
+});
+
+Route::middleware('role:Radiology')->group(function () {
+    Route::post('/ai-analysis/radiology/{invoice}', [AiAnalysisController::class, 'analyseRadiology'])->name('ai-analysis.radiology');
+});
 
 // ── Global Search (command palette) ──
 Route::get('/search/global', [SearchController::class, 'global'])->name('search.global');
