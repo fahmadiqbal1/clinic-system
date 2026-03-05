@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\Patient;
+use App\Models\Setting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -17,9 +18,11 @@ class MedGemmaService
 
     public function __construct()
     {
-        $this->apiKey = config('medgemma.api_key');
-        $this->model = config('medgemma.model');
-        $this->apiUrl = config('medgemma.api_url');
+        // DB settings take priority over .env / config values so the owner
+        // can configure the API key via the UI without touching server files.
+        $this->apiKey = Setting::get('medgemma.api_key') ?: config('medgemma.api_key');
+        $this->model  = Setting::get('medgemma.model')   ?: config('medgemma.model');
+        $this->apiUrl = Setting::get('medgemma.api_url')  ?: config('medgemma.api_url');
     }
 
     /**

@@ -7,6 +7,7 @@
  * web + auth middleware applied by bootstrap/app.php.
  */
 
+use App\Http\Controllers\Owner\MedGemmaConfigController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\Owner\UserController;
 use App\Http\Controllers\Owner\ServiceCatalogController;
@@ -90,4 +91,8 @@ Route::middleware('role:Owner')->group(function () {
 
     // Activity Feed
     Route::get('/owner/activity-feed', [OwnerDashboardController::class, 'activityFeed'])->name('owner.activity-feed');
+
+    // MedGemma AI Configuration
+    Route::post('/owner/medgemma-config', [MedGemmaConfigController::class, 'update'])->name('owner.medgemma-config.update');
+    Route::post('/owner/medgemma-config/test', [MedGemmaConfigController::class, 'test'])->name('owner.medgemma-config.test');
 });
