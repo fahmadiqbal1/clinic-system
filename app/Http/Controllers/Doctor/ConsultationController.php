@@ -36,9 +36,8 @@ class ConsultationController extends Controller
         // Existing prescriptions for this patient
         $prescriptions = $patient->prescriptions()->with('items')->latest()->get();
 
-        // Get consultation invoices for this patient (with items for multi-test display)
+        // Get all invoices for this patient (with items for multi-test display)
         $invoices = Invoice::where('patient_id', $patient->id)
-            ->where('prescribing_doctor_id', $user->id)
             ->with('items.serviceCatalog')
             ->latest()
             ->get();

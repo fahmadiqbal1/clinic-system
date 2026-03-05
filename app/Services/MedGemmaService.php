@@ -23,17 +23,23 @@ class MedGemmaService
     }
 
     /**
-     * Analyse a consultation (vitals + doctor notes).
+     * Analyse a consultation (vitals + doctor notes + lab/radiology findings + prescriptions).
+     *
+     * Collects all available data for a comprehensive review including
+     * radiology images for multimodal analysis.
      */
     public function analyseConsultation(Patient $patient, int $requestedBy): AiAnalysis
     {
-        $patient->load(['triageVitals', 'prescriptions.items', 'invoices']);
+        $patient->load(['triageVitals', 'prescriptions.items', 'invoices.items.serviceCatalog']);
 
         $latestVitals = $patient->triageVitals()->latest()->first();
 
         $prompt = $this->buildConsultationPrompt($patient, $latestVitals);
 
-        return $this->runAnalysis($patient->id, null, $requestedBy, 'consultation', $prompt);
+        // Collect radiology images from completed invoices for multimodal analysis
+        $imageContents = $this->getPatientRadiologyImages($patient);
+
+        return $this->runAnalysis($patient->id, null, $requestedBy, 'consultation', $prompt, $imageContents);
     }
 
     /**
@@ -70,10 +76,13 @@ class MedGemmaService
 
     /**
      * Build prompt for consultation context.
+     *
+     * Includes: vitals, triage notes, doctor notes, prescriptions,
+     * completed lab results, and radiology reports for a comprehensive review.
      */
     private function buildConsultationPrompt(Patient $patient, $vitals): string
     {
-        $parts = ["You are MedGemma, an AI medical assistant providing a second opinion. Analyse the following patient data and provide your clinical assessment, possible differential diagnoses, and recommendations.\n"];
+        $parts = ["You are MedGemma, an AI medical assistant providing a second opinion. Analyse ALL the following patient data comprehensively and provide your clinical assessment, possible differential diagnoses, and recommendations.\n"];
 
         $parts[] = "Patient: {$patient->first_name} {$patient->last_name}, Gender: {$patient->gender}";
         if ($patient->date_of_birth) {
@@ -81,7 +90,7 @@ class MedGemmaService
         }
 
         if ($vitals) {
-            $parts[] = "\n--- Vital Signs ---";
+            $parts[] = "\n--- Vital Signs (Triage) ---";
             if ($vitals->blood_pressure) $parts[] = "Blood Pressure: {$vitals->blood_pressure} mmHg";
             if ($vitals->temperature) $parts[] = "Temperature: {$vitals->temperature}°C";
             if ($vitals->pulse_rate) $parts[] = "Heart Rate: {$vitals->pulse_rate} bpm";
@@ -99,7 +108,22 @@ class MedGemmaService
             $parts[] = $patient->consultation_notes;
         }
 
-        // Include completed lab/radiology results if available
+        // Include prescriptions
+        $prescriptions = $patient->prescriptions()->with('items')->latest()->get();
+        if ($prescriptions->count() > 0) {
+            $parts[] = "\n--- Prescribed Medications ---";
+            foreach ($prescriptions as $rx) {
+                foreach ($rx->items as $item) {
+                    $line = $item->medication_name;
+                    if ($item->dosage) $line .= " — Dosage: {$item->dosage}";
+                    if ($item->frequency) $line .= ", Frequency: {$item->frequency}";
+                    if ($item->duration) $line .= ", Duration: {$item->duration}";
+                    $parts[] = $line;
+                }
+            }
+        }
+
+        // Include completed lab/radiology results
         $completedInvoices = $patient->invoices()
             ->where(function ($q) {
                 $q->where(function ($q2) {
@@ -107,27 +131,34 @@ class MedGemmaService
                 })->orWhere(function ($q2) {
                     $q2->where('department', 'radiology')->whereNotNull('report_text');
                 });
-            })->get();
+            })->with('items.serviceCatalog')->get();
 
         foreach ($completedInvoices as $inv) {
             if ($inv->department === 'lab' && $inv->lab_results) {
                 $parts[] = "\n--- Lab Results ({$inv->service_name}) ---";
                 foreach ((array) $inv->lab_results as $key => $results) {
+                    $itemName = $inv->items->firstWhere('id', $key)?->description ?? $key;
+                    if ($itemName !== $key) {
+                        $parts[] = "[{$itemName}]";
+                    }
                     foreach ((array) $results as $r) {
                         $parts[] = ($r['test_name'] ?? '') . ": " . ($r['result'] ?? '') . " " . ($r['unit'] ?? '') . " (Ref: " . ($r['reference_range'] ?? 'N/A') . ")";
                     }
                 }
                 if ($inv->report_text) {
-                    $parts[] = "Lab Report: {$inv->report_text}";
+                    $parts[] = "Lab Technician Report: {$inv->report_text}";
                 }
             }
             if ($inv->department === 'radiology' && $inv->report_text) {
                 $parts[] = "\n--- Radiology Report ({$inv->service_name}) ---";
-                $parts[] = $inv->report_text;
+                $parts[] = "Radiologist Findings: {$inv->report_text}";
+                if (!empty($inv->radiology_images)) {
+                    $parts[] = count($inv->radiology_images) . " radiology image(s) are attached for your visual analysis.";
+                }
             }
         }
 
-        $parts[] = "\nProvide your analysis as a clinical second opinion. Include: assessment, differential diagnoses, and recommendations.";
+        $parts[] = "\nProvide your comprehensive analysis as a clinical second opinion based on ALL available data above. Include: overall assessment, differential diagnoses, correlation between findings from different departments, and recommendations.";
 
         return implode("\n", $parts);
     }
@@ -207,10 +238,37 @@ class MedGemmaService
      */
     private function getRadiologyImages(Invoice $invoice): array
     {
-        $images = [];
-        $radiologyImages = $invoice->radiology_images ?? [];
+        return $this->collectImages($invoice->radiology_images ?? []);
+    }
 
-        foreach ($radiologyImages as $path) {
+    /**
+     * Collect all radiology images across a patient's completed invoices.
+     */
+    private function getPatientRadiologyImages(Patient $patient): array
+    {
+        $allPaths = [];
+        $radiologyInvoices = $patient->invoices()
+            ->where('department', 'radiology')
+            ->whereNotNull('radiology_images')
+            ->get();
+
+        foreach ($radiologyInvoices as $inv) {
+            foreach (($inv->radiology_images ?? []) as $path) {
+                $allPaths[] = $path;
+            }
+        }
+
+        return $this->collectImages($allPaths);
+    }
+
+    /**
+     * Convert image paths to base64-encoded content blocks for the vision API.
+     */
+    private function collectImages(array $paths): array
+    {
+        $images = [];
+
+        foreach ($paths as $path) {
             if (Storage::disk('public')->exists($path)) {
                 $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                 // Only include actual images, skip PDFs for vision API

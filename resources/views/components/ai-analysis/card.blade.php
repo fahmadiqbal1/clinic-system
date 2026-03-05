@@ -1,5 +1,5 @@
 {{-- MedGemma AI Analysis Card --}}
-{{-- Usage: @include('components.ai-analysis.card', ['analyses' => $analyses, 'formAction' => route(...), 'contextLabel' => 'Consultation']) --}}
+{{-- Usage: @include('components.ai-analysis.card', ['analyses' => $analyses, 'formAction' => route(...), 'contextLabel' => 'Consultation', 'readinessNote' => '...']) --}}
 
 <div class="card mb-4 fade-in delay-3">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -14,6 +14,14 @@
         @endif
     </div>
     <div class="card-body">
+        {{-- Readiness guidance --}}
+        @if(isset($readinessNote) && $readinessNote)
+        <div class="alert mb-3 d-flex align-items-start gap-2" style="background:rgba(var(--accent-info-rgb),0.1); border:1px solid rgba(var(--accent-info-rgb),0.3); color:var(--accent-info); border-radius:var(--radius-md); font-size:0.88rem;">
+            <i class="bi bi-lightbulb mt-1"></i>
+            <div>{!! $readinessNote !!}</div>
+        </div>
+        @endif
+
         @if(isset($analyses) && $analyses->count() > 0)
             @foreach($analyses as $analysis)
             <div class="mb-3 p-3 rounded" style="background:var(--glass-bg); border:1px solid var(--glass-border);">

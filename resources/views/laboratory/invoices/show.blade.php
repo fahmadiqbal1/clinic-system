@@ -368,10 +368,24 @@
     </div>
 
     {{-- MedGemma AI Second Opinion --}}
+    @php
+        $labHasResults = !empty($invoice->lab_results);
+        $labHasReport = !empty($invoice->report_text);
+        if (!$labHasResults && !$labHasReport) {
+            $labReadinessNote = '<strong>Tip:</strong> Save your structured results and/or report text first, then request AI analysis for the most accurate second opinion.';
+        } elseif (!$labHasResults) {
+            $labReadinessNote = '<strong>Tip:</strong> Structured test results have not been entered yet. Add results for a more detailed AI interpretation.';
+        } elseif (!$labHasReport) {
+            $labReadinessNote = 'Results are ready for analysis. You can also add your report text for MedGemma to verify your findings.';
+        } else {
+            $labReadinessNote = null;
+        }
+    @endphp
     @include('components.ai-analysis.card', [
         'analyses' => $aiAnalyses,
         'formAction' => route('ai-analysis.lab', $invoice),
         'contextLabel' => 'lab results',
+        'readinessNote' => $labReadinessNote,
     ])
 
     {{-- Actions --}}
