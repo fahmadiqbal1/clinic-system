@@ -81,6 +81,11 @@
                                     <li><a class="dropdown-item" href="{{ route('owner.activity-feed') }}"><i class="bi bi-clock-history me-2"></i>Activity Feed</a></li>
                                 </ul>
                             </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('owner.platform-settings.index') }}">
+                                    <i class="bi bi-cpu me-1"></i>AI Platforms
+                                </a>
+                            </li>
                         @endif
 
                         @if(Auth::user()->hasRole('Receptionist'))
