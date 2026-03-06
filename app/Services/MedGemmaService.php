@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\Patient;
+use App\Models\PlatformSetting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -17,9 +18,25 @@ class MedGemmaService
 
     public function __construct()
     {
-        $this->apiKey = config('medgemma.api_key');
-        $this->model = config('medgemma.model');
-        $this->apiUrl = config('medgemma.api_url');
+        // Prefer database-stored settings over .env so the Owner can manage
+        // credentials through the Platform Settings UI without touching the server.
+        try {
+            $dbSetting = PlatformSetting::where('platform_name', 'medgemma')->first();
+        } catch (\Exception) {
+            $dbSetting = null;
+        }
+
+        $this->apiKey = ($dbSetting && $dbSetting->hasApiKey())
+            ? $dbSetting->api_key
+            : config('medgemma.api_key', '');
+
+        $this->model = ($dbSetting && $dbSetting->model)
+            ? $dbSetting->model
+            : config('medgemma.model', 'google/medgemma-4b-it');
+
+        $this->apiUrl = ($dbSetting && $dbSetting->api_url)
+            ? $dbSetting->api_url
+            : config('medgemma.api_url', 'https://router.huggingface.co/hf-inference/models/');
     }
 
     /**
