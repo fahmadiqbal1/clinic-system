@@ -8,6 +8,7 @@ class PlatformSetting extends Model
 {
     protected $fillable = [
         'platform_name',
+        'provider',
         'api_key',
         'model',
         'api_url',
@@ -22,18 +23,63 @@ class PlatformSetting extends Model
     ];
 
     /**
-     * Get the platform setting for MedGemma (Hugging Face).
+     * Get the platform setting for MedGemma (Hugging Face or Ollama).
      */
     public static function medgemma(): self
     {
         return static::firstOrCreate(
             ['platform_name' => 'medgemma'],
             [
+                'provider' => 'huggingface',
                 'model' => config('medgemma.model', 'google/medgemma-4b-it'),
                 'api_url' => config('medgemma.api_url', 'https://router.huggingface.co/hf-inference/models/'),
                 'status' => 'disconnected',
             ]
         );
+    }
+
+    /**
+     * Whether this platform uses the Ollama local provider.
+     */
+    public function isOllama(): bool
+    {
+        return $this->provider === 'ollama';
+    }
+
+    /**
+     * Whether this platform uses the Hugging Face provider.
+     */
+    public function isHuggingFace(): bool
+    {
+        return $this->provider === 'huggingface';
+    }
+
+    /**
+     * Check if the platform is ready to make API calls.
+     * Ollama does not require an API key; Hugging Face does.
+     */
+    public function isReady(): bool
+    {
+        if ($this->isOllama()) {
+            return !empty($this->api_url) && !empty($this->model);
+        }
+
+        return $this->hasApiKey();
+    }
+
+    /**
+     * Build the full chat completions URL for this provider.
+     */
+    public function chatCompletionsUrl(): string
+    {
+        if ($this->isOllama()) {
+            return rtrim($this->api_url ?? 'http://localhost:11434', '/') . '/v1/chat/completions';
+        }
+
+        // Hugging Face: {api_url}/{model}/v1/chat/completions
+        return rtrim($this->api_url ?? config('medgemma.api_url'), '/')
+            . '/' . $this->model
+            . '/v1/chat/completions';
     }
 
     /**

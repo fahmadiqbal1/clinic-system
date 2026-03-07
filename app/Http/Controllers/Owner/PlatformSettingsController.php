@@ -28,13 +28,23 @@ class PlatformSettingsController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'model'   => ['required', 'string', 'max:255'],
-            'api_key' => ['nullable', 'string', 'max:512'],
+            'provider' => ['nullable', 'string', 'in:huggingface,ollama'],
+            'model'    => ['required', 'string', 'max:255'],
+            'api_key'  => ['nullable', 'string', 'max:512'],
+            'api_url'  => ['nullable', 'string', 'max:500'],
         ]);
 
         $medgemma = PlatformSetting::medgemma();
 
         $data = ['model' => $validated['model']];
+
+        if (!empty($validated['provider'])) {
+            $data['provider'] = $validated['provider'];
+        }
+
+        if (!empty($validated['api_url'])) {
+            $data['api_url'] = $validated['api_url'];
+        }
 
         // Only update the API key if a non-empty value was submitted
         if (!empty($validated['api_key'])) {
@@ -46,21 +56,25 @@ class PlatformSettingsController extends Controller
 
         $medgemma->update($data);
 
-        return back()->with('success', 'Platform settings saved. Test the connection to verify your API key.');
+        return back()->with('success', 'Platform settings saved. Test the connection to verify your configuration.');
     }
 
     /**
-     * Test the connection to the MedGemma / Hugging Face API.
+     * Test the connection to the MedGemma API (Hugging Face or Ollama).
      * Returns JSON so the frontend can update the status badge live.
      */
     public function testConnection(Request $request): JsonResponse
     {
         $medgemma = PlatformSetting::medgemma();
 
-        if (!$medgemma->hasApiKey()) {
+        if (!$medgemma->isReady()) {
+            $hint = $medgemma->isOllama()
+                ? 'Please configure the Ollama URL and model name first.'
+                : 'No API key has been configured. Please enter your Hugging Face API key and save first.';
+
             return response()->json([
                 'status' => 'failed',
-                'error'  => 'No API key has been configured. Please enter your Hugging Face API key and save first.',
+                'error'  => $hint,
             ]);
         }
 
@@ -68,13 +82,15 @@ class PlatformSettingsController extends Controller
         $medgemma->update(['status' => 'connecting', 'last_error' => null]);
 
         try {
-            $url = rtrim($medgemma->api_url ?? config('medgemma.api_url'), '/')
-                . '/' . $medgemma->model
-                . '/v1/chat/completions';
+            $url = $medgemma->chatCompletionsUrl();
 
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $medgemma->api_key,
-            ])->timeout(30)->post($url, [
+            $headers = [];
+            if ($medgemma->isHuggingFace() && $medgemma->hasApiKey()) {
+                $headers['Authorization'] = 'Bearer ' . $medgemma->api_key;
+            }
+
+            $response = Http::withHeaders($headers)->timeout(30)->post($url, [
+                'model'      => $medgemma->model,
                 'messages'   => [['role' => 'user', 'content' => 'Hi']],
                 'max_tokens' => 1,
             ]);

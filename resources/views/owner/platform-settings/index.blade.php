@@ -65,9 +65,30 @@
             @csrf
             @method('PATCH')
 
+            {{-- Provider selector --}}
+            <div class="mb-3">
+                <label class="form-label fw-medium">Provider</label>
+                <div class="d-flex gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="provider" id="ps_provider_hf" value="huggingface"
+                               {{ old('provider', $medgemma->provider ?? 'huggingface') === 'huggingface' ? 'checked' : '' }}>
+                        <label class="form-check-label" for="ps_provider_hf">
+                            <i class="bi bi-cloud me-1"></i>Hugging Face <span class="text-muted small">(cloud API)</span>
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="provider" id="ps_provider_ollama" value="ollama"
+                               {{ old('provider', $medgemma->provider ?? 'huggingface') === 'ollama' ? 'checked' : '' }}>
+                        <label class="form-check-label" for="ps_provider_ollama">
+                            <i class="bi bi-pc-display me-1"></i>Ollama <span class="text-muted small">(local, free)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
             <div class="row g-3 mb-3">
-                {{-- API Key --}}
-                <div class="col-12">
+                {{-- API Key (HuggingFace only) --}}
+                <div class="col-12" id="ps-api-key-group">
                     <label for="api_key" class="form-label fw-medium">
                         Hugging Face API Key
                         <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener" class="ms-1 text-muted small">
@@ -111,7 +132,21 @@
                     @error('model')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
-                    <div class="form-text">Default: <code>google/medgemma-4b-it</code></div>
+                    <div class="form-text">HF: <code>google/medgemma-4b-it</code> · Ollama: <code>alibayram/medgemma:4b</code></div>
+                </div>
+
+                {{-- API URL --}}
+                <div class="col-md-6">
+                    <label for="api_url" class="form-label fw-medium">API Base URL</label>
+                    <input type="text"
+                           id="api_url"
+                           name="api_url"
+                           class="form-control @error('api_url') is-invalid @enderror"
+                           value="{{ old('api_url', $medgemma->api_url ?? config('medgemma.api_url')) }}">
+                    @error('api_url')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    <div class="form-text">HF: <code>https://router.huggingface.co/hf-inference/models/</code> · Ollama: <code>http://localhost:11434</code></div>
                 </div>
             </div>
 
@@ -120,7 +155,7 @@
                     <i class="bi bi-floppy me-1"></i>Save Settings
                 </button>
                 <button type="button" class="btn btn-outline-success" id="test-btn"
-                        {{ !$medgemma->hasApiKey() ? 'disabled' : '' }}>
+                        {{ !$medgemma->isReady() ? 'disabled' : '' }}>
                     <i class="bi bi-lightning me-1" id="test-icon"></i>
                     <span id="test-label">Test Connection</span>
                 </button>
