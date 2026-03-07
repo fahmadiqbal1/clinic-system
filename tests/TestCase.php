@@ -23,5 +23,8 @@ abstract class TestCase extends BaseTestCase
 
         // Ensure roles exist for every test
         $this->seed(RoleSeeder::class);
+
+        // Prevent Vite manifest not found errors in tests
+        $this->withoutVite();
     }
 }
