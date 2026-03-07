@@ -23,6 +23,7 @@ class PrescriptionController extends Controller
      */
     public function create(Patient $patient): View
     {
+        abort_if(Auth::user()->is_independent, 403, 'Independent doctors do not have access to prescription features.');
         if ($patient->doctor_id !== Auth::id()) {
             abort(403, 'This patient is not assigned to you.');
         }
@@ -49,6 +50,7 @@ class PrescriptionController extends Controller
      */
     public function store(Request $request, Patient $patient): RedirectResponse
     {
+        abort_if(Auth::user()->is_independent, 403, 'Independent doctors do not have access to prescription features.');
         if ($patient->doctor_id !== Auth::id()) {
             abort(403, 'This patient is not assigned to you.');
         }
@@ -109,6 +111,7 @@ class PrescriptionController extends Controller
      */
     public function index(): View
     {
+        abort_if(Auth::user()->is_independent, 403, 'Independent doctors do not have access to prescription features.');
         $prescriptions = Prescription::where('doctor_id', Auth::id())
             ->with(['patient', 'items'])
             ->latest()

@@ -104,12 +104,38 @@
                         @endif
 
                         @if(Auth::user()->hasRole('Doctor'))
-                            <li class="nav-item"><a class="nav-link nav-role-doctor" href="{{ route('doctor.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
-                            <li class="nav-item"><a class="nav-link" href="{{ route('doctor.patients.index') }}">Patients</a></li>
-                            <li class="nav-item"><a class="nav-link" href="{{ route('doctor.prescriptions.index') }}">Prescriptions</a></li>
-                            <li class="nav-item"><a class="nav-link" href="{{ route('doctor.invoices.index') }}">Invoices</a></li>
-                            <li class="nav-item"><a class="nav-link" href="{{ route('reception.payouts.index') }}">Payouts</a></li>
-                            <li class="nav-item"><a class="nav-link" href="{{ route('contracts.show') }}">Contract</a></li>
+                            @if(Auth::user()->is_independent)
+                                {{-- Independent Doctor Nav --}}
+                                <li class="nav-item">
+                                    <a class="nav-link nav-role-doctor" href="{{ route('independent-doctor.dashboard') }}">
+                                        <i class="bi bi-speedometer2 me-1"></i>Dashboard
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('independent-doctor.patients.index') }}">
+                                        <i class="bi bi-people me-1"></i>Referrals
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('independent-doctor.patients.create') }}">
+                                        <i class="bi bi-person-plus me-1"></i>New Referral
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" href="{{ route('doctor.invoices.index') }}">
+                                        <i class="bi bi-receipt me-1"></i>Invoices
+                                    </a>
+                                </li>
+                                <li class="nav-item"><a class="nav-link" href="{{ route('reception.payouts.index') }}">Payouts</a></li>
+                            @else
+                                {{-- Regular (OPD) Doctor Nav --}}
+                                <li class="nav-item"><a class="nav-link nav-role-doctor" href="{{ route('doctor.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
+                                <li class="nav-item"><a class="nav-link" href="{{ route('doctor.patients.index') }}">Patients</a></li>
+                                <li class="nav-item"><a class="nav-link" href="{{ route('doctor.prescriptions.index') }}">Prescriptions</a></li>
+                                <li class="nav-item"><a class="nav-link" href="{{ route('doctor.invoices.index') }}">Invoices</a></li>
+                                <li class="nav-item"><a class="nav-link" href="{{ route('reception.payouts.index') }}">Payouts</a></li>
+                                <li class="nav-item"><a class="nav-link" href="{{ route('contracts.show') }}">Contract</a></li>
+                            @endif
                         @endif
 
                         @if(Auth::user()->hasRole('Triage'))

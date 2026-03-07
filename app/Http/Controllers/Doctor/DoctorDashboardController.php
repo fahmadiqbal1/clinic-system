@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Prescription;
 use App\Models\RevenueLedger;
 use App\Models\DoctorPayout;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
 class DoctorDashboardController extends Controller
@@ -13,9 +14,14 @@ class DoctorDashboardController extends Controller
     /**
      * Show the doctor dashboard - role isolated to own data only
      */
-    public function index(): View
+    public function index(): View|\Illuminate\Http\RedirectResponse
     {
         $user = auth()->guard('web')->user();
+
+        // Independent doctors are redirected to their own dashboard
+        if ($user->is_independent) {
+            return redirect()->route('independent-doctor.dashboard');
+        }
         
         // Patient counts by status
         $patientCount = \App\Models\Patient::where('doctor_id', $user->id)->count();

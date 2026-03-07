@@ -19,11 +19,12 @@ use Illuminate\View\View;
 class ConsultationController extends Controller
 {
     /**
-     * Show the consultation view for a patient.
+     * Show consultation view.
      */
     public function show(Patient $patient): View
     {
         $user = Auth::user();
+        abort_if($user->is_independent, 403, 'Independent doctors do not have access to consultation features.');
         if ($patient->doctor_id !== $user->id) {
             abort(403, 'This patient is not assigned to you.');
         }
@@ -72,6 +73,7 @@ class ConsultationController extends Controller
     public function saveNotes(Request $request, Patient $patient): RedirectResponse
     {
         $user = Auth::user();
+        abort_if($user->is_independent, 403, 'Independent doctors do not have access to consultation features.');
         if ($patient->doctor_id !== $user->id) {
             abort(403, 'This patient is not assigned to you.');
         }
@@ -99,6 +101,7 @@ class ConsultationController extends Controller
     public function createInvoice(Request $request, Patient $patient): RedirectResponse
     {
         $user = Auth::user();
+        abort_if($user->is_independent, 403, 'Independent doctors do not have access to consultation features.');
         if ($patient->doctor_id !== $user->id) {
             abort(403, 'This patient is not assigned to you.');
         }

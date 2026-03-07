@@ -53,6 +53,11 @@
                                 <td>
                                     @if($user->roles->count() > 0)
                                         <span class="badge-glass">{{ $user->roles->first()?->name ?? 'No Role' }}</span>
+                                        @if($user->is_independent)
+                                            <br><span class="badge mt-1" style="background:rgba(255,193,7,0.15); color:#ffc107; font-size:0.65rem;">
+                                                <i class="bi bi-person-workspace me-1"></i>Independent
+                                            </span>
+                                        @endif
                                     @else
                                         <span class="text-muted small">No Role</span>
                                     @endif

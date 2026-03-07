@@ -72,16 +72,22 @@ class UserController extends Controller
             'commission_pharmacy' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'commission_lab' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'commission_radiology' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'is_independent' => ['nullable', 'boolean'],
         ]);
 
         // Force commission rates to zero for salaried users
         $isSalaried = $validated['compensation_type'] === 'salaried';
+
+        // Assign role first so we can enforce is_independent only for Doctor
+        $role = Role::find($validated['role_id']);
+        $isIndependent = ($role->name === 'Doctor') && !empty($validated['is_independent']);
 
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'is_active' => true,
+            'is_independent' => $isIndependent,
             'compensation_type' => $validated['compensation_type'],
             'base_salary' => $validated['base_salary'] ?? null,
             'commission_consultation' => $isSalaried ? 0 : ($validated['commission_consultation'] ?? null),
@@ -89,9 +95,6 @@ class UserController extends Controller
             'commission_lab' => $isSalaried ? 0 : ($validated['commission_lab'] ?? null),
             'commission_radiology' => $isSalaried ? 0 : ($validated['commission_radiology'] ?? null),
         ]);
-
-        // Assign role
-        $role = Role::find($validated['role_id']);
         $user->assignRole($role);
 
         AuditableService::logUserRoleChange($user, null, $role->name);
@@ -138,6 +141,7 @@ class UserController extends Controller
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
             'role_id' => ['required', 'exists:roles,id'],
             'is_active' => ['boolean'],
+            'is_independent' => ['nullable', 'boolean'],
             'compensation_type' => ['required', 'in:salaried,commission,hybrid'],
             'base_salary' => ['nullable', 'numeric', 'min:0'],
             'commission_consultation' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -154,10 +158,14 @@ class UserController extends Controller
         // Force commission rates to zero for salaried users
         $isSalaried = $validated['compensation_type'] === 'salaried';
 
+        // is_independent only applies to Doctor role
+        $isIndependent = ($newRole->name === 'Doctor') && !empty($validated['is_independent']);
+
         $user->update([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'is_active' => $newIsActive,
+            'is_independent' => $isIndependent,
             'compensation_type' => $validated['compensation_type'],
             'base_salary' => $validated['base_salary'] ?? null,
             'commission_consultation' => $isSalaried ? 0 : ($validated['commission_consultation'] ?? null),
