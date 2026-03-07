@@ -15,27 +15,33 @@ class MedGemmaService
     protected string $apiKey;
     protected string $model;
     protected string $apiUrl;
+    protected string $provider;
+    protected ?PlatformSetting $dbSetting;
 
     public function __construct()
     {
         // Prefer database-stored settings over .env so the Owner can manage
         // credentials through the Platform Settings UI without touching the server.
         try {
-            $dbSetting = PlatformSetting::where('platform_name', 'medgemma')->first();
+            $this->dbSetting = PlatformSetting::where('platform_name', 'medgemma')->first();
         } catch (\Exception) {
-            $dbSetting = null;
+            $this->dbSetting = null;
         }
 
-        $this->apiKey = ($dbSetting && $dbSetting->hasApiKey())
-            ? $dbSetting->api_key
+        $this->provider = ($this->dbSetting && $this->dbSetting->provider)
+            ? $this->dbSetting->provider
+            : 'huggingface';
+
+        $this->apiKey = ($this->dbSetting && $this->dbSetting->hasApiKey())
+            ? $this->dbSetting->api_key
             : config('medgemma.api_key', '');
 
-        $this->model = ($dbSetting && $dbSetting->model)
-            ? $dbSetting->model
+        $this->model = ($this->dbSetting && $this->dbSetting->model)
+            ? $this->dbSetting->model
             : config('medgemma.model', 'google/medgemma-4b-it');
 
-        $this->apiUrl = ($dbSetting && $dbSetting->api_url)
-            ? $dbSetting->api_url
+        $this->apiUrl = ($this->dbSetting && $this->dbSetting->api_url)
+            ? $this->dbSetting->api_url
             : config('medgemma.api_url', 'https://router.huggingface.co/hf-inference/models/');
     }
 
@@ -352,15 +358,22 @@ class MedGemmaService
     }
 
     /**
-     * Call the Hugging Face Inference API.
+     * Call the MedGemma API (Hugging Face Inference API or local Ollama).
      */
     private function callApi(string $prompt, array $imageContents = []): string
     {
-        if (empty($this->apiKey)) {
-            throw new \RuntimeException('Hugging Face API key is not configured. Set HUGGINGFACE_API_KEY in .env');
+        $isOllama = $this->provider === 'ollama';
+
+        if (!$isOllama && empty($this->apiKey)) {
+            throw new \RuntimeException('Hugging Face API key is not configured. Set it via Owner Profile or HUGGINGFACE_API_KEY in .env');
         }
 
-        $url = rtrim($this->apiUrl, '/') . '/' . $this->model . '/v1/chat/completions';
+        // Build the endpoint URL based on the provider
+        if ($isOllama) {
+            $url = rtrim($this->apiUrl, '/') . '/v1/chat/completions';
+        } else {
+            $url = rtrim($this->apiUrl, '/') . '/' . $this->model . '/v1/chat/completions';
+        }
 
         // Build messages array
         $content = [];
@@ -379,13 +392,19 @@ class MedGemmaService
             ],
         ];
 
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->apiKey,
-        ])->timeout(120)->post($url, [
+        $payload = [
+            'model' => $this->model,
             'messages' => $messages,
             'max_tokens' => 2048,
             'temperature' => 0.3,
-        ]);
+        ];
+
+        $headers = [];
+        if (!$isOllama && !empty($this->apiKey)) {
+            $headers['Authorization'] = 'Bearer ' . $this->apiKey;
+        }
+
+        $response = Http::withHeaders($headers)->timeout(120)->post($url, $payload);
 
         if (!$response->successful()) {
             throw new \RuntimeException('MedGemma API returned status ' . $response->status() . ': ' . $response->body());
