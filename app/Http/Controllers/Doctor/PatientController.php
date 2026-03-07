@@ -49,6 +49,8 @@ class PatientController extends Controller
      */
     public function show(Patient $patient): View
     {
+        abort_if(Auth::user()->is_independent, 403, 'Independent doctors manage patients via the referral portal.');
+
         if ($patient->doctor_id !== Auth::user()->id) {
             abort(403);
         }
@@ -63,6 +65,8 @@ class PatientController extends Controller
      */
     public function complete(Request $request, Patient $patient): RedirectResponse
     {
+        abort_if(Auth::user()->is_independent, 403, 'Independent doctors manage patients via the referral portal.');
+
         if ($patient->doctor_id !== Auth::user()->id) {
             abort(403);
         }
