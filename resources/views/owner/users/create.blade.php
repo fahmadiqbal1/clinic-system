@@ -66,6 +66,19 @@
                                 <div class="form-text">User should change this on first login</div>
                             </div>
                         </div>
+
+                        {{-- Independent Doctor flag (only shown when Doctor role selected) --}}
+                        <div id="independent-doctor-field" class="mt-3" style="display:none;">
+                            <div class="form-check">
+                                <input type="checkbox" name="is_independent" id="is_independent" value="1"
+                                    {{ old('is_independent') ? 'checked' : '' }}
+                                    class="form-check-input">
+                                <label class="form-check-label fw-semibold" for="is_independent">
+                                    <i class="bi bi-person-workspace me-1 text-warning"></i>Independent Doctor
+                                </label>
+                            </div>
+                            <div class="form-text">Independent doctors have their own clinic and refer patients for lab, radiology, or pharmacy services only. They <strong>cannot</strong> access OPD consultations, triage, or AI tools.</div>
+                        </div>
                     </div>
 
                     {{-- Compensation --}}
@@ -152,13 +165,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const compType = document.getElementById('compensation_type');
     const salaryField = document.getElementById('salary-field');
     const commissionFields = document.getElementById('commission-fields');
+    const roleSelect = document.getElementById('role_id');
+    const independentDoctorField = document.getElementById('independent-doctor-field');
+
     function toggleCompensationFields() {
         const val = compType.value;
         salaryField.style.display = ['salaried','hybrid'].includes(val) ? 'block' : 'none';
         commissionFields.style.display = ['commission','hybrid'].includes(val) ? 'block' : 'none';
     }
+    function toggleIndependentField() {
+        const selectedText = roleSelect.options[roleSelect.selectedIndex]?.text || '';
+        independentDoctorField.style.display = selectedText === 'Doctor' ? 'block' : 'none';
+        if (selectedText !== 'Doctor') {
+            document.getElementById('is_independent').checked = false;
+        }
+    }
     compType.addEventListener('change', toggleCompensationFields);
+    roleSelect.addEventListener('change', toggleIndependentField);
     toggleCompensationFields();
+    toggleIndependentField();
 });
 </script>
 @endsection

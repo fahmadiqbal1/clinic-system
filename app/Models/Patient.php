@@ -21,6 +21,8 @@ class Patient extends Model
         'doctor_id',
         'user_id',
         'status',
+        'registration_type',
+        'referred_by_user_id',
         'consultation_notes',
         'registered_at',
         'triage_started_at',
@@ -39,6 +41,11 @@ class Patient extends Model
     public function doctor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'doctor_id');
+    }
+
+    public function referredBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'referred_by_user_id');
     }
 
     public function user(): BelongsTo
