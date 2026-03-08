@@ -98,15 +98,17 @@ class OwnerMedGemmaProfileTest extends TestCase
         $response->assertRedirect('/login');
     }
 
-    public function test_owner_profile_shows_not_configured_when_no_key(): void
+    public function test_owner_profile_shows_disconnected_status_for_new_ollama_default(): void
     {
         /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
+        // With Ollama defaults, isReady() is true (URL + model set) but status is 'disconnected'
         $response = $this->actingAs($user)->get('/profile');
 
         $response->assertStatus(200);
+        $response->assertSee('Disconnected');
     }
 
     public function test_owner_profile_shows_provider_selector(): void
@@ -145,6 +147,24 @@ class OwnerMedGemmaProfileTest extends TestCase
         ]);
 
         $this->assertFalse($setting->fresh()->isReady());
+    }
+
+    public function test_owner_profile_shows_not_configured_for_huggingface_without_key(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->create();
+        $user->assignRole('Owner');
+
+        $setting = PlatformSetting::medgemma();
+        $setting->update([
+            'provider' => 'huggingface',
+            'api_key' => null,
+        ]);
+
+        $response = $this->actingAs($user)->get('/profile');
+
+        $response->assertStatus(200);
+        $response->assertSee('Not Configured');
     }
 
     public function test_chat_completions_url_for_huggingface(): void
