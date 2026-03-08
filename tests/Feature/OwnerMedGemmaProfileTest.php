@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\PlatformSetting;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class OwnerMedGemmaProfileTest extends TestCase
@@ -60,7 +61,7 @@ class OwnerMedGemmaProfileTest extends TestCase
 
         $response = $this->actingAs($user)->patch('/owner/platform-settings', [
             'provider' => 'ollama',
-            'model'    => 'alibayram/medgemma:4b',
+            'model'    => 'medgemma',
             'api_url'  => 'http://localhost:11434',
         ]);
 
@@ -69,7 +70,7 @@ class OwnerMedGemmaProfileTest extends TestCase
         $medgemma = PlatformSetting::where('platform_name', 'medgemma')->first();
         $this->assertNotNull($medgemma);
         $this->assertEquals('ollama', $medgemma->provider);
-        $this->assertEquals('alibayram/medgemma:4b', $medgemma->model);
+        $this->assertEquals('medgemma', $medgemma->model);
         $this->assertEquals('http://localhost:11434', $medgemma->api_url);
     }
 
@@ -97,16 +98,17 @@ class OwnerMedGemmaProfileTest extends TestCase
         $response->assertRedirect('/login');
     }
 
-    public function test_owner_profile_shows_not_configured_when_no_key(): void
+    public function test_owner_profile_shows_disconnected_status_for_new_ollama_default(): void
     {
         /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
+        // With Ollama defaults, isReady() is true (URL + model set) but status is 'disconnected'
         $response = $this->actingAs($user)->get('/profile');
 
         $response->assertStatus(200);
-        $response->assertSee('Not Configured');
+        $response->assertSee('Disconnected');
     }
 
     public function test_owner_profile_shows_provider_selector(): void
@@ -128,7 +130,7 @@ class OwnerMedGemmaProfileTest extends TestCase
         $setting->update([
             'provider' => 'ollama',
             'api_url' => 'http://localhost:11434',
-            'model' => 'alibayram/medgemma:4b',
+            'model' => 'medgemma',
             'api_key' => null,
         ]);
 
@@ -145,6 +147,24 @@ class OwnerMedGemmaProfileTest extends TestCase
         ]);
 
         $this->assertFalse($setting->fresh()->isReady());
+    }
+
+    public function test_owner_profile_shows_not_configured_for_huggingface_without_key(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->create();
+        $user->assignRole('Owner');
+
+        $setting = PlatformSetting::medgemma();
+        $setting->update([
+            'provider' => 'huggingface',
+            'api_key' => null,
+        ]);
+
+        $response = $this->actingAs($user)->get('/profile');
+
+        $response->assertStatus(200);
+        $response->assertSee('Not Configured');
     }
 
     public function test_chat_completions_url_for_huggingface(): void
@@ -169,7 +189,7 @@ class OwnerMedGemmaProfileTest extends TestCase
         $setting->update([
             'provider' => 'ollama',
             'api_url' => 'http://localhost:11434',
-            'model' => 'alibayram/medgemma:4b',
+            'model' => 'medgemma',
         ]);
 
         $url = $setting->fresh()->chatCompletionsUrl();
@@ -177,5 +197,77 @@ class OwnerMedGemmaProfileTest extends TestCase
             'http://localhost:11434/v1/chat/completions',
             $url
         );
+    }
+
+    public function test_medgemma_defaults_to_ollama_provider(): void
+    {
+        // Ensure no existing setting
+        PlatformSetting::where('platform_name', 'medgemma')->delete();
+
+        $setting = PlatformSetting::medgemma();
+
+        $this->assertEquals('ollama', $setting->provider);
+        $this->assertEquals('medgemma', $setting->model);
+        $this->assertEquals('http://localhost:11434', $setting->api_url);
+        $this->assertTrue($setting->isOllama());
+        $this->assertTrue($setting->isReady());
+    }
+
+    public function test_ollama_connection_test_sends_correct_request(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->create();
+        $user->assignRole('Owner');
+
+        $setting = PlatformSetting::medgemma();
+        $setting->update([
+            'provider' => 'ollama',
+            'api_url' => 'http://localhost:11434',
+            'model' => 'medgemma',
+        ]);
+
+        Http::fake([
+            'localhost:11434/v1/chat/completions' => Http::response([
+                'choices' => [['message' => ['content' => 'Hi']]],
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+
+        $response->assertOk();
+        $response->assertJson(['status' => 'connected']);
+
+        Http::assertSent(function ($request) {
+            return $request->url() === 'http://localhost:11434/v1/chat/completions'
+                && $request['model'] === 'medgemma'
+                && !$request->hasHeader('Authorization');
+        });
+    }
+
+    public function test_ollama_connection_test_handles_failure_gracefully(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->create();
+        $user->assignRole('Owner');
+
+        $setting = PlatformSetting::medgemma();
+        $setting->update([
+            'provider' => 'ollama',
+            'api_url' => 'http://localhost:11434',
+            'model' => 'medgemma',
+        ]);
+
+        Http::fake([
+            'localhost:11434/v1/chat/completions' => Http::response('Connection refused', 500),
+        ]);
+
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+
+        $response->assertOk();
+        $response->assertJson(['status' => 'failed']);
+
+        $setting->refresh();
+        $this->assertEquals('failed', $setting->status);
+        $this->assertNotNull($setting->last_error);
     }
 }

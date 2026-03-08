@@ -29,8 +29,8 @@
                     <i class="bi bi-robot fs-4 text-primary"></i>
                 </div>
                 <div>
-                    <h5 class="mb-0 fw-semibold">MedGemma AI (via Hugging Face)</h5>
-                    <small class="text-muted">Medical AI analysis powered by Google's MedGemma model</small>
+                    <h5 class="mb-0 fw-semibold">MedGemma AI (via Ollama)</h5>
+                    <small class="text-muted">Medical AI analysis powered by Google's MedGemma model running locally</small>
                 </div>
             </div>
             {{-- Live status badge — updated by JS after connection test --}}
@@ -71,14 +71,14 @@
                 <div class="d-flex gap-3">
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="provider" id="ps_provider_hf" value="huggingface"
-                               {{ old('provider', $medgemma->provider ?? 'huggingface') === 'huggingface' ? 'checked' : '' }}>
+                               {{ old('provider', $medgemma->provider ?? config('medgemma.provider', 'ollama')) === 'huggingface' ? 'checked' : '' }}>
                         <label class="form-check-label" for="ps_provider_hf">
                             <i class="bi bi-cloud me-1"></i>Hugging Face <span class="text-muted small">(cloud API)</span>
                         </label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="provider" id="ps_provider_ollama" value="ollama"
-                               {{ old('provider', $medgemma->provider ?? 'huggingface') === 'ollama' ? 'checked' : '' }}>
+                               {{ old('provider', $medgemma->provider ?? config('medgemma.provider', 'ollama')) === 'ollama' ? 'checked' : '' }}>
                         <label class="form-check-label" for="ps_provider_ollama">
                             <i class="bi bi-pc-display me-1"></i>Ollama <span class="text-muted small">(local, free)</span>
                         </label>
@@ -127,12 +127,12 @@
                            id="model"
                            name="model"
                            class="form-control @error('model') is-invalid @enderror"
-                           value="{{ old('model', $medgemma->model ?? 'google/medgemma-4b-it') }}"
+                           value="{{ old('model', $medgemma->model ?? config('medgemma.model', 'medgemma')) }}"
                            required>
                     @error('model')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
-                    <div class="form-text">HF: <code>google/medgemma-4b-it</code> · Ollama: <code>alibayram/medgemma:4b</code></div>
+                    <div class="form-text">Ollama: <code>medgemma</code> · HF: <code>google/medgemma-4b-it</code></div>
                 </div>
 
                 {{-- API URL --}}
@@ -142,11 +142,11 @@
                            id="api_url"
                            name="api_url"
                            class="form-control @error('api_url') is-invalid @enderror"
-                           value="{{ old('api_url', $medgemma->api_url ?? config('medgemma.api_url')) }}">
+                           value="{{ old('api_url', $medgemma->api_url ?? config('medgemma.api_url', 'http://localhost:11434')) }}">
                     @error('api_url')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
-                    <div class="form-text">HF: <code>https://router.huggingface.co/hf-inference/models/</code> · Ollama: <code>http://localhost:11434</code></div>
+                    <div class="form-text">Ollama: <code>http://localhost:11434</code> · HF: <code>https://router.huggingface.co/hf-inference/models/</code></div>
                 </div>
             </div>
 

@@ -30,7 +30,7 @@ class MedGemmaService
 
         $this->provider = ($this->dbSetting && $this->dbSetting->provider)
             ? $this->dbSetting->provider
-            : 'huggingface';
+            : config('medgemma.provider', 'ollama');
 
         $this->apiKey = ($this->dbSetting && $this->dbSetting->hasApiKey())
             ? $this->dbSetting->api_key
@@ -38,11 +38,11 @@ class MedGemmaService
 
         $this->model = ($this->dbSetting && $this->dbSetting->model)
             ? $this->dbSetting->model
-            : config('medgemma.model', 'google/medgemma-4b-it');
+            : config('medgemma.model', 'medgemma');
 
         $this->apiUrl = ($this->dbSetting && $this->dbSetting->api_url)
             ? $this->dbSetting->api_url
-            : config('medgemma.api_url', 'https://router.huggingface.co/hf-inference/models/');
+            : config('medgemma.api_url', 'http://localhost:11434');
     }
 
     /**
@@ -316,7 +316,7 @@ class MedGemmaService
     }
 
     /**
-     * Execute analysis via Hugging Face Inference API.
+     * Execute analysis via the configured AI provider (Ollama or Hugging Face).
      */
     private function runAnalysis(
         int $patientId,
@@ -358,7 +358,7 @@ class MedGemmaService
     }
 
     /**
-     * Call the MedGemma API (Hugging Face Inference API or local Ollama).
+     * Call the MedGemma API (local Ollama or Hugging Face Inference API).
      */
     private function callApi(string $prompt, array $imageContents = []): string
     {
@@ -368,8 +368,11 @@ class MedGemmaService
             throw new \RuntimeException('Hugging Face API key is not configured. Set it via Owner Profile or HUGGINGFACE_API_KEY in .env');
         }
 
-        // Build the endpoint URL based on the provider
-        if ($isOllama) {
+        // Use the PlatformSetting model helper when available; otherwise build
+        // the endpoint URL from the primitive fields.
+        if ($this->dbSetting) {
+            $url = $this->dbSetting->chatCompletionsUrl();
+        } elseif ($isOllama) {
             $url = rtrim($this->apiUrl, '/') . '/v1/chat/completions';
         } else {
             $url = rtrim($this->apiUrl, '/') . '/' . $this->model . '/v1/chat/completions';
