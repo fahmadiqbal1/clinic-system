@@ -30,9 +30,9 @@ class PlatformSetting extends Model
         return static::firstOrCreate(
             ['platform_name' => 'medgemma'],
             [
-                'provider' => 'huggingface',
-                'model' => config('medgemma.model', 'google/medgemma-4b-it'),
-                'api_url' => config('medgemma.api_url', 'https://router.huggingface.co/hf-inference/models/'),
+                'provider' => config('medgemma.provider', 'ollama'),
+                'model' => config('medgemma.model', 'medgemma'),
+                'api_url' => config('medgemma.api_url', 'http://localhost:11434'),
                 'status' => 'disconnected',
             ]
         );
