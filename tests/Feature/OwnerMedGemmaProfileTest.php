@@ -270,4 +270,89 @@ class OwnerMedGemmaProfileTest extends TestCase
         $this->assertEquals('failed', $setting->status);
         $this->assertNotNull($setting->last_error);
     }
+
+    public function test_connection_refused_error_gets_enriched_message_for_localhost(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->create();
+        $user->assignRole('Owner');
+
+        $setting = PlatformSetting::medgemma();
+        $setting->update([
+            'provider' => 'ollama',
+            'api_url'  => 'http://localhost:11434',
+            'model'    => 'medgemma',
+        ]);
+
+        // Simulate a cURL error 7 (connection refused) via an exception
+        Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('cURL error 7: Failed to connect to localhost port 11434: Connection refused');
+        });
+
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+
+        $response->assertOk();
+        $response->assertJson(['status' => 'failed']);
+
+        $data = $response->json();
+        $this->assertStringContainsString('VPS', $data['error']);
+        $this->assertStringContainsString('localhost', $data['error']);
+
+        $setting->refresh();
+        $this->assertEquals('failed', $setting->status);
+        $this->assertNotNull($setting->last_error);
+    }
+
+    public function test_connection_refused_for_non_localhost_gets_generic_enriched_message(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->create();
+        $user->assignRole('Owner');
+
+        $setting = PlatformSetting::medgemma();
+        $setting->update([
+            'provider' => 'ollama',
+            'api_url'  => 'http://192.168.1.50:11434',
+            'model'    => 'medgemma',
+        ]);
+
+        Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('cURL error 7: Failed to connect to 192.168.1.50 port 11434: Connection refused');
+        });
+
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+
+        $response->assertOk();
+        $response->assertJson(['status' => 'failed']);
+
+        $data = $response->json();
+        $this->assertStringContainsString('Cannot reach Ollama', $data['error']);
+        $this->assertStringNotContainsString('VPS/server', $data['error']);
+    }
+
+    public function test_dns_resolution_failure_gets_enriched_message(): void
+    {
+        /** @var User $user */
+        $user = User::factory()->create();
+        $user->assignRole('Owner');
+
+        $setting = PlatformSetting::medgemma();
+        $setting->update([
+            'provider' => 'ollama',
+            'api_url'  => 'http://my-ollama-host:11434',
+            'model'    => 'medgemma',
+        ]);
+
+        Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('cURL error 6: Could not resolve host: my-ollama-host');
+        });
+
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+
+        $response->assertOk();
+        $response->assertJson(['status' => 'failed']);
+
+        $data = $response->json();
+        $this->assertStringContainsString('DNS', $data['error']);
+    }
 }

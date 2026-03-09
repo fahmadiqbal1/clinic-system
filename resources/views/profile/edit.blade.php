@@ -133,7 +133,11 @@
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <label for="medgemma_api_url" class="form-label fw-semibold">API Base URL</label>
+                        <label for="medgemma_api_url" class="form-label fw-semibold">
+                            API Base URL
+                            <span class="badge bg-warning text-dark ms-1" style="font-size:.6rem;vertical-align:middle;"
+                                  title="Must be reachable from the web server (VPS), not your browser.">server-side</span>
+                        </label>
                         <input type="text"
                                id="medgemma_api_url"
                                name="api_url"
@@ -144,7 +148,9 @@
                             <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
                         <div class="form-text" id="url-help-text">
-                            Ollama: <code>http://localhost:11434</code> · HF: <code>https://router.huggingface.co/hf-inference/models/</code>
+                            Ollama on VPS: <code>http://localhost:11434</code><br>
+                            Tunnel/ngrok: <code>https://xxxx.ngrok-free.app</code><br>
+                            HF: <code>https://router.huggingface.co/hf-inference/models/</code>
                         </div>
                     </div>
                 </div>
@@ -196,7 +202,7 @@
             modelInput.placeholder = isOllama ? 'medgemma' : 'google/medgemma-4b-it';
         }
         if (urlInput) {
-            urlInput.placeholder = isOllama ? 'http://localhost:11434' : 'https://router.huggingface.co/hf-inference/models/';
+            urlInput.placeholder = isOllama ? 'http://localhost:11434 (if Ollama runs on VPS)' : 'https://router.huggingface.co/hf-inference/models/';
         }
     }
 

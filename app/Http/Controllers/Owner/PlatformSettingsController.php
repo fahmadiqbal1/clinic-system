@@ -119,6 +119,7 @@ class PlatformSettingsController extends Controller
             return response()->json(['status' => 'failed', 'error' => $error]);
         } catch (\Exception $e) {
             $error = $e->getMessage();
+            $error = $this->enrichConnectionError($error, $medgemma->api_url);
 
             $medgemma->update([
                 'status'         => 'failed',
@@ -128,5 +129,54 @@ class PlatformSettingsController extends Controller
 
             return response()->json(['status' => 'failed', 'error' => $error]);
         }
+    }
+
+    /**
+     * Return a human-friendly error message for common connection failures,
+     * especially the "localhost not reachable from the server" scenario.
+     */
+    private function enrichConnectionError(string $rawError, ?string $configuredUrl): string
+    {
+        $isLocalhost = $configuredUrl && (
+            str_contains($configuredUrl, 'localhost') ||
+            str_contains($configuredUrl, '127.0.0.1')
+        );
+
+        // cURL error 7: connection refused / host unreachable
+        if (
+            str_contains($rawError, 'cURL error 7') ||
+            str_contains($rawError, 'Connection refused') ||
+            str_contains($rawError, 'Failed to connect') ||
+            str_contains($rawError, 'cURL error 28')
+        ) {
+            $url = rtrim($configuredUrl ?? 'the configured URL', '/');
+
+            if ($isLocalhost) {
+                return "Cannot reach Ollama at {$url} — this URL points to the web server itself, "
+                     . "not your local computer. To fix this you have two options: "
+                     . "(1) Install and start Ollama on this VPS/server (recommended for production — "
+                     . "run `curl -fsSL https://ollama.com/install.sh | sh` then `ollama serve`), or "
+                     . "(2) Expose your local Ollama publicly using a tunnel such as ngrok "
+                     . "(`ngrok http 11434`) or Cloudflare Tunnel, then paste the public HTTPS URL "
+                     . "into the API Base URL field above and save. "
+                     . "Original error: {$rawError}";
+            }
+
+            return "Cannot reach Ollama at {$url} from the server. "
+                 . "Make sure Ollama is running and the URL is reachable from the VPS. "
+                 . "Original error: {$rawError}";
+        }
+
+        // DNS resolution failure
+        if (
+            str_contains($rawError, 'cURL error 6') ||
+            str_contains($rawError, 'Could not resolve host')
+        ) {
+            return "DNS resolution failed for the configured URL. "
+                 . "Please double-check the API Base URL and ensure the hostname is correct. "
+                 . "Original error: {$rawError}";
+        }
+
+        return $rawError;
     }
 }
