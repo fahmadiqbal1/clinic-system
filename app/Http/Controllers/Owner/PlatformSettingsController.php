@@ -88,8 +88,15 @@ class PlatformSettingsController extends Controller
             if ($medgemma->isHuggingFace() && $medgemma->hasApiKey()) {
                 $headers['Authorization'] = 'Bearer ' . $medgemma->api_key;
             }
+            // Bypass the Localtunnel browser-reminder page that returns 401
+            // when the request does not come from a real browser.
+            if ($medgemma->isOllama()) {
+                $headers['bypass-tunnel-reminder'] = 'true';
+            }
 
-            $response = Http::withHeaders($headers)->timeout(30)->post($url, [
+            // Use a 60-second timeout — tunnels (Localtunnel, ngrok, Cloudflare)
+            // can add several seconds of latency on the first request.
+            $response = Http::withHeaders($headers)->timeout(60)->post($url, [
                 'model'      => $medgemma->model,
                 'messages'   => [['role' => 'user', 'content' => 'Hi']],
                 'max_tokens' => 1,
@@ -108,7 +115,7 @@ class PlatformSettingsController extends Controller
                 ]);
             }
 
-            $error = 'API returned HTTP ' . $response->status() . ': ' . mb_substr($response->body(), 0, 300);
+            $error = $this->enrichHttpError($response->status(), $response->body(), $medgemma->api_url);
 
             $medgemma->update([
                 'status'         => 'failed',
@@ -132,6 +139,31 @@ class PlatformSettingsController extends Controller
     }
 
     /**
+     * Return a human-friendly error message for non-exception HTTP failures,
+     * especially the Localtunnel 401 "Tunnel Password" reminder page.
+     */
+    private function enrichHttpError(int $status, string $body, ?string $configuredUrl): string
+    {
+        // Localtunnel returns a 401 HTML page when the bypass header is not respected.
+        // We already send the header, but surface a clear message if it still occurs.
+        if (
+            $status === 401 && (
+                str_contains($body, 'Tunnel Password') ||
+                str_contains($body, 'loca.lt') ||
+                (str_contains($configuredUrl ?? '', '.loca.lt') && str_contains($body, '<html'))
+            )
+        ) {
+            return "Localtunnel returned a '401 Tunnel Password' reminder page. "
+                 . "The tunnel is reachable but requires browser verification. "
+                 . "Try restarting the tunnel (`npx localtunnel --port 11434`) "
+                 . "and pasting the new URL above. "
+                 . "If the issue persists, consider using ngrok or a Cloudflare Tunnel instead.";
+        }
+
+        return 'API returned HTTP ' . $status . ': ' . mb_substr($body, 0, 300);
+    }
+
+    /**
      * Return a human-friendly error message for common connection failures,
      * especially the "localhost not reachable from the server" scenario.
      */
@@ -146,8 +178,7 @@ class PlatformSettingsController extends Controller
         if (
             str_contains($rawError, 'cURL error 7') ||
             str_contains($rawError, 'Connection refused') ||
-            str_contains($rawError, 'Failed to connect') ||
-            str_contains($rawError, 'cURL error 28')
+            str_contains($rawError, 'Failed to connect')
         ) {
             $url = rtrim($configuredUrl ?? 'the configured URL', '/');
 
@@ -167,6 +198,25 @@ class PlatformSettingsController extends Controller
                  . "Original error: {$rawError}";
         }
 
+        // cURL error 28: operation timed out (common with tunnels)
+        if (
+            str_contains($rawError, 'cURL error 28') ||
+            str_contains($rawError, 'Operation timed out')
+        ) {
+            $url = rtrim($configuredUrl ?? 'the configured URL', '/');
+
+            if ($this->isTunnelUrl($configuredUrl)) {
+                return "Connection to {$url} timed out. "
+                     . "Your tunnel (Localtunnel / ngrok / Cloudflare) may have disconnected or restarted. "
+                     . "Check that the tunnel is still running and update the URL here if it changed. "
+                     . "Original error: {$rawError}";
+            }
+
+            return "Connection to {$url} timed out. "
+                 . "Ensure Ollama is running and the URL is reachable from the VPS. "
+                 . "Original error: {$rawError}";
+        }
+
         // DNS resolution failure
         if (
             str_contains($rawError, 'cURL error 6') ||
@@ -178,5 +228,20 @@ class PlatformSettingsController extends Controller
         }
 
         return $rawError;
+    }
+
+    /**
+     * Detect whether a URL belongs to a known tunnel service.
+     */
+    private function isTunnelUrl(?string $url): bool
+    {
+        if (!$url) {
+            return false;
+        }
+
+        return str_contains($url, '.loca.lt')
+            || str_contains($url, '.ngrok')
+            || str_contains($url, 'ngrok-free.app')
+            || str_contains($url, 'trycloudflare.com');
     }
 }
