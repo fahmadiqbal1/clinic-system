@@ -406,6 +406,10 @@ class MedGemmaService
         if (!$isOllama && !empty($this->apiKey)) {
             $headers['Authorization'] = 'Bearer ' . $this->apiKey;
         }
+        // Bypass the Localtunnel browser-reminder page (safe to send for all Ollama URLs).
+        if ($isOllama) {
+            $headers['bypass-tunnel-reminder'] = 'true';
+        }
 
         $response = Http::withHeaders($headers)->timeout(120)->post($url, $payload);
 
