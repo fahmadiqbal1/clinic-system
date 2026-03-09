@@ -15,11 +15,13 @@ class PlatformSetting extends Model
         'status',
         'last_tested_at',
         'last_error',
+        'meta',
     ];
 
     protected $casts = [
         'api_key' => 'encrypted',
         'last_tested_at' => 'datetime',
+        'meta' => 'json',
     ];
 
     /**
@@ -36,6 +38,63 @@ class PlatformSetting extends Model
                 'status' => 'disconnected',
             ]
         );
+    }
+
+    /**
+     * Get the platform setting for FBR IRIS digital invoicing.
+     */
+    public static function fbr(): self
+    {
+        return static::firstOrCreate(
+            ['platform_name' => 'fbr'],
+            [
+                'provider' => 'fbr_iris',
+                'api_url' => 'https://sdnfbr.fbr.gov.pk/invoices/v1',
+                'status' => 'disconnected',
+                'meta' => [
+                    'strn' => null,
+                    'ntn' => null,
+                    'business_name' => null,
+                    'business_address' => null,
+                    'city' => null,
+                    'posid' => null,
+                    'tax_rate' => 0,
+                    'is_sandbox' => true,
+                    'signing_secret' => null,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Whether FBR integration is fully configured and ready to submit invoices.
+     */
+    public function isFbrReady(): bool
+    {
+        return $this->platform_name === 'fbr'
+            && $this->hasApiKey()
+            && !empty($this->getMeta('posid'))
+            && !empty($this->getMeta('strn'));
+    }
+
+    /**
+     * Get a value from the meta JSON field.
+     */
+    public function getMeta(string $key, mixed $default = null): mixed
+    {
+        $meta = $this->meta ?? [];
+        return $meta[$key] ?? $default;
+    }
+
+    /**
+     * Set a value in the meta JSON field.
+     */
+    public function setMeta(string $key, mixed $value): self
+    {
+        $meta = $this->meta ?? [];
+        $meta[$key] = $value;
+        $this->meta = $meta;
+        return $this;
     }
 
     /**

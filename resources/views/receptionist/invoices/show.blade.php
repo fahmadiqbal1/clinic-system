@@ -327,6 +327,181 @@
                     </form>
                 @endif
             </div>
+
+            {{-- FBR IRIS Digital Invoice Block --}}
+            @php
+                $fbrSettings = \App\Models\PlatformSetting::fbr();
+                $fbrOverdue = $invoice->isPaid()
+                    && !$invoice->fbr_status
+                    && $invoice->paid_at
+                    && $invoice->paid_at->diffInHours(now()) > 24;
+                $fbrLate = $invoice->isPaid()
+                    && $invoice->fbr_status === 'submitted'
+                    && $invoice->fbr_submitted_at
+                    && $invoice->paid_at
+                    && $invoice->paid_at->diffInHours($invoice->fbr_submitted_at) > 24;
+            @endphp
+            @if($invoice->isPaid())
+            <div class="mt-4 pt-4" style="border-top:1px solid var(--glass-border);">
+                <h5 class="fw-bold mb-3">
+                    <i class="bi bi-receipt-cutoff me-2" style="color:var(--accent-success);"></i>FBR IRIS Digital Invoice
+                    @if($invoice->fbr_status === 'submitted')
+                        <span class="badge bg-success ms-2" style="font-size:.65rem;"><i class="bi bi-check-circle me-1"></i>Submitted</span>
+                    @elseif($invoice->fbr_status === 'pending')
+                        <span class="badge bg-warning text-dark ms-2" style="font-size:.65rem;"><i class="bi bi-arrow-repeat me-1"></i>Submitting…</span>
+                    @elseif($invoice->fbr_status === 'failed')
+                        <span class="badge bg-danger ms-2" style="font-size:.65rem;"><i class="bi bi-x-circle me-1"></i>Failed</span>
+                    @elseif($invoice->fbr_status === 'not_configured')
+                        <span class="badge bg-secondary ms-2" style="font-size:.65rem;">Not Configured</span>
+                    @else
+                        <span class="badge bg-secondary ms-2" style="font-size:.65rem;">Not Submitted</span>
+                    @endif
+                </h5>
+
+                {{-- 24-hour deadline alerts --}}
+                @if($fbrOverdue)
+                    <div class="alert alert-danger py-2 mb-3">
+                        <i class="bi bi-alarm me-2"></i>
+                        <strong>FBR 24-Hour Deadline Exceeded:</strong>
+                        This invoice was paid {{ $invoice->paid_at->diffForHumans() }} but has not been submitted to FBR.
+                        FBR requires submission within 24 hours of invoice generation. Submit immediately to minimise non-compliance risk.
+                    </div>
+                @elseif($fbrLate)
+                    <div class="alert alert-warning py-2 mb-3">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Late Submission:</strong> This invoice was submitted to FBR
+                        {{ $invoice->fbr_submitted_at->diffInHours($invoice->paid_at) }} hours after payment.
+                        FBR requires submission within 24 hours.
+                    </div>
+                @endif
+
+                @if($invoice->fbr_irn)
+                    <div class="row g-3 align-items-start">
+                        <div class="col-md-8">
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">IRN (Invoice Reference Number)</p>
+                                    <p class="fw-semibold mb-0 font-monospace small">{{ $invoice->fbr_irn }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">FBR Invoice Number</p>
+                                    <p class="fw-semibold mb-0 font-monospace">{{ $invoice->fbr_invoice_number ?? '—' }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">Submitted At</p>
+                                    <p class="fw-semibold mb-0">{{ $invoice->fbr_submitted_at?->format('M d, Y H:i') ?? '—' }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">Seller STRN</p>
+                                    <p class="fw-semibold mb-0">{{ $fbrSettings->getMeta('strn') ?? '—' }}</p>
+                                </div>
+                                @if($invoice->fbr_signature)
+                                <div class="col-12">
+                                    <p class="small mb-1" style="color:var(--text-muted);">
+                                        Digital Signature
+                                        <span class="badge bg-info text-dark ms-1" style="font-size:.55rem;">HMAC-SHA256</span>
+                                    </p>
+                                    <p class="fw-semibold mb-0 font-monospace" style="font-size:.7rem;word-break:break-all;">
+                                        {{ $invoice->fbr_signature }}
+                                    </p>
+                                </div>
+                                @endif
+                                @if($invoice->fbr_invoice_seq)
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">FBR Sequence #</p>
+                                    <p class="fw-semibold mb-0">{{ number_format($invoice->fbr_invoice_seq) }}</p>
+                                </div>
+                                @endif
+                            </div>
+                        </div>
+                        @if($invoice->fbr_qr_code)
+                        <div class="col-md-4 text-center">
+                            <p class="small mb-1" style="color:var(--text-muted);">Scan to Verify at FBR</p>
+                            <div id="fbr-qr-container" class="d-inline-block p-2 bg-white rounded border"></div>
+                            <p class="small mt-1" style="color:var(--text-muted);">FBR Verification QR</p>
+                            <a href="{{ $invoice->fbr_qr_code }}" target="_blank" rel="noopener"
+                               class="btn btn-outline-success btn-sm mt-1 no-print">
+                                <i class="bi bi-box-arrow-up-right me-1"></i>Verify on FBR
+                            </a>
+                        </div>
+                        @endif
+                    </div>
+
+                    {{-- Archived FBR Response (for audit/5-year record keeping) --}}
+                    @if($invoice->fbr_response && auth()->user()->hasRole('Owner'))
+                    <details class="mt-3 no-print">
+                        <summary class="small" style="color:var(--text-muted); cursor:pointer;">
+                            <i class="bi bi-archive me-1"></i>Archived FBR Response (5-year compliance record)
+                        </summary>
+                        <pre class="mt-2 p-2 rounded small" style="background:var(--bg-secondary,#f8f9fa); max-height:200px; overflow:auto; font-size:.7rem;">{{ json_encode($invoice->fbr_response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre>
+                    </details>
+                    @endif
+
+                @elseif($invoice->fbr_status === 'failed' || is_null($invoice->fbr_status))
+                    <p class="small mb-3" style="color:var(--text-muted);">
+                        @if($invoice->fbr_status === 'failed')
+                            FBR submission failed for this invoice.
+                            @if(isset($invoice->fbr_response['error']))
+                                <br><span class="text-danger">Error: {{ $invoice->fbr_response['error'] }}</span>
+                            @endif
+                        @elseif(!$fbrSettings->isFbrReady())
+                            FBR IRIS is not configured. Ask the Owner to set up FBR settings in their profile.
+                        @else
+                            This invoice has not yet been submitted to FBR.
+                        @endif
+                    </p>
+                    @if($fbrSettings->isFbrReady())
+                    <form action="{{ route('receptionist.invoices.fbr-resubmit', $invoice) }}" method="POST" class="no-print">
+                        @csrf
+                        <button type="submit" class="btn btn-success btn-sm"
+                                onclick="return confirm('Submit this invoice to FBR IRIS now?')">
+                            <i class="bi bi-send me-1"></i>Submit to FBR IRIS
+                        </button>
+                    </form>
+                    @endif
+                @elseif($invoice->fbr_status === 'not_configured')
+                    <div class="alert alert-info py-2">
+                        <i class="bi bi-info-circle me-2"></i>
+                        FBR integration is not yet configured. Please set up your FBR IRIS credentials in
+                        <a href="{{ route('profile.edit') }}">Owner Profile → FBR Settings</a>.
+                    </div>
+                @endif
+
+                @if($invoice->fbr_status === 'submitted' && $fbrSettings->isFbrReady())
+                <div class="mt-3 no-print">
+                    <form action="{{ route('receptionist.invoices.fbr-resubmit', $invoice) }}" method="POST" class="d-inline">
+                        @csrf
+                        <button type="submit" class="btn btn-outline-secondary btn-sm"
+                                onclick="return confirm('Resubmit this invoice to FBR IRIS? Only use if the original submission was rejected by FBR.')">
+                            <i class="bi bi-arrow-repeat me-1"></i>Resubmit to FBR
+                        </button>
+                    </form>
+                </div>
+                @endif
+            </div>
+            @endif
     </div>
 </div>
 @endsection
+
+@push('scripts')
+@if($invoice->isPaid() && $invoice->fbr_qr_code)
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSe2s9qnDN7oD6eblnBHyH3P1pAzrBDxhxNSw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+    var container = document.getElementById('fbr-qr-container');
+    if (container) {
+        new QRCode(container, {
+            text: {{ json_encode($invoice->fbr_qr_code) }},
+            width: 120,
+            height: 120,
+            colorDark : '#000000',
+            colorLight : '#ffffff',
+            correctLevel : QRCode.CorrectLevel.M
+        });
+    }
+})();
+</script>
+@endif
+@endpush
+

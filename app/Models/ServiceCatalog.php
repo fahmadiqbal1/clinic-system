@@ -13,7 +13,7 @@ class ServiceCatalog extends Model
     protected $table = 'service_catalog';
 
     protected $fillable = [
-        'department', 'name', 'code', 'description', 'category', 'price',
+        'department', 'name', 'code', 'hs_code', 'description', 'category', 'price',
         'turnaround_time', 'is_active', 'default_parameters',
     ];
 
