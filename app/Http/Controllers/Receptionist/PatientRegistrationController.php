@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Notifications\PatientAwaitingTriage;
 use App\Notifications\PatientRegistered;
 use App\Services\AuditableService;
+use App\Services\FbrService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -49,6 +50,7 @@ class PatientRegistrationController extends Controller
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'phone' => 'nullable|string|max:20',
+            'cnic' => 'nullable|string|max:15',
             'gender' => 'required|string|in:Male,Female,Other',
             'date_of_birth' => 'nullable|date',
             'doctor_id' => 'required|exists:users,id',
@@ -80,6 +82,7 @@ class PatientRegistrationController extends Controller
                     'first_name' => $validated['first_name'],
                     'last_name' => $validated['last_name'],
                     'phone' => $validated['phone'],
+                    'cnic' => $validated['cnic'] ?? null,
                     'gender' => $validated['gender'],
                     'date_of_birth' => $validated['date_of_birth'],
                     'doctor_id' => $validated['doctor_id'],
@@ -111,6 +114,9 @@ class PatientRegistrationController extends Controller
                 $invoice->markPaid($validated['payment_method'], Auth::id());
 
                 AuditableService::logInvoicePayment($invoice->fresh(), $validated['payment_method']);
+
+                // Auto-submit to FBR IRIS in real-time
+                FbrService::make()->submitInvoice($invoice->fresh());
 
                 return $patient;
             });

@@ -304,17 +304,53 @@
                                value="{{ old('fbr_api_url', $fbr->api_url) }}"
                                placeholder="https://gst.fbr.gov.pk/invoices/v1">
                         @error('fbr_api_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <div class="form-text">
+                            Sandbox: <code>https://sdnfbr.fbr.gov.pk/invoices/v1</code><br>
+                            Live: <code>https://gst.fbr.gov.pk/invoices/v1</code>
+                        </div>
                     </div>
-                    <div class="col-md-6 d-flex align-items-end">
+                    <div class="col-md-6 d-flex align-items-center pt-4">
                         <div class="form-check form-switch mt-2">
                             <input class="form-check-input" type="checkbox" id="fbr_is_sandbox" name="fbr_is_sandbox"
                                    value="1" {{ $fbr->getMeta('is_sandbox', true) ? 'checked' : '' }}>
                             <label class="form-check-label" for="fbr_is_sandbox">
-                                Use Sandbox / Test Environment
-                                <span class="text-muted small">(disable for live FBR submissions)</span>
+                                <strong>Sandbox / Test Mode</strong>
+                                <span class="text-muted small d-block">Disable this for live FBR IRIS submissions</span>
+                                <span class="text-muted small d-block">Auto-updates the endpoint above only if it matches the default sandbox/live URLs.</span>
                             </label>
                         </div>
                     </div>
+                </div>
+
+                <div class="mb-4">
+                    <label for="fbr_signing_secret" class="form-label fw-semibold">
+                        Digital Signing Secret
+                        <span class="badge bg-info text-dark ms-1" style="font-size:.6rem;">HMAC-SHA256</span>
+                    </label>
+                    <input type="password" id="fbr_signing_secret" name="fbr_signing_secret"
+                           class="form-control"
+                           placeholder="{{ $fbr->getMeta('signing_secret') ? '••••••••  (secret saved)' : 'Optional — leave blank to use application key' }}"
+                           autocomplete="off">
+                    <div class="form-text">
+                        Used to generate the <strong>digital signature</strong> on every FBR invoice payload (HMAC-SHA256).
+                        If left blank, the application's built-in key is used.
+                        Keep this value secure — it verifies invoice integrity for audit purposes.
+                    </div>
+                </div>
+
+                {{-- FBR Compliance Checklist --}}
+                <div class="alert py-3 mb-4" style="background:rgba(var(--accent-success-rgb, 25,135,84),0.07); border:1px solid rgba(25,135,84,0.2);">
+                    <p class="fw-semibold mb-2" style="color:var(--accent-success);"><i class="bi bi-shield-check me-2"></i>FBR IRIS Compliance Checklist</p>
+                    <ul class="small mb-0 ps-3" style="color:var(--text-primary);">
+                        <li>✅ Every paid invoice is <strong>auto-submitted in real-time</strong> upon payment.</li>
+                        <li>✅ Every submission receives a unique <strong>IRN</strong> (Invoice Reference Number).</li>
+                        <li>✅ A scannable <strong>QR code</strong> (FBR verification URL) is attached to each invoice.</li>
+                        <li>✅ Payloads carry an <strong>HMAC-SHA256 digital signature</strong> for tamper detection.</li>
+                        <li>✅ Full FBR API response is <strong>archived on the invoice record</strong> (5-year retention).</li>
+                        <li>✅ Sequential <strong>FBR invoice numbers</strong> (POSID-YYYY-NNNNNN) assigned atomically.</li>
+                        <li>⚠️ Invoices submitted <strong>more than 24 hours</strong> after payment will show an overdue warning.</li>
+                        <li>ℹ️ Register on <a href="https://iris.fbr.gov.pk" target="_blank" rel="noopener">iris.fbr.gov.pk</a> to obtain your POSID, STRN, and Bearer Token.</li>
+                    </ul>
                 </div>
 
                 <div class="d-flex align-items-center gap-2">

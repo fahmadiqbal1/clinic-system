@@ -46,6 +46,9 @@ class Invoice extends Model
         'fbr_submitted_at',    // FBR: submission timestamp
         'fbr_irn',             // FBR: Invoice Reference Number
         'fbr_qr_code',         // FBR: QR code data
+        'fbr_invoice_seq',     // FBR: sequential invoice number
+        'fbr_signature',       // FBR: digital signature
+        'fbr_response',        // FBR: archived API response
     ];
 
     /*
@@ -128,6 +131,9 @@ class Invoice extends Model
         'fbr_submitted_at',
         'fbr_irn',
         'fbr_qr_code',
+        'fbr_invoice_seq',
+        'fbr_signature',
+        'fbr_response',
     ];
 
     protected $casts = [
@@ -143,6 +149,7 @@ class Invoice extends Model
         'lab_results' => 'json',
         'radiology_images' => 'json',
         'fbr_submitted_at' => 'datetime',
+        'fbr_response' => 'json',
     ];
 
     /**

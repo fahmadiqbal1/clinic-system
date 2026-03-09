@@ -49,7 +49,7 @@ class PlatformSetting extends Model
             ['platform_name' => 'fbr'],
             [
                 'provider' => 'fbr_iris',
-                'api_url' => 'https://gst.fbr.gov.pk/invoices/v1',
+                'api_url' => 'https://sdnfbr.fbr.gov.pk/invoices/v1',
                 'status' => 'disconnected',
                 'meta' => [
                     'strn' => null,
@@ -60,6 +60,7 @@ class PlatformSetting extends Model
                     'posid' => null,
                     'tax_rate' => 0,
                     'is_sandbox' => true,
+                    'signing_secret' => null,
                 ],
             ]
         );

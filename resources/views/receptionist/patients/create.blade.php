@@ -44,6 +44,18 @@
                     @enderror
                 </div>
                 <div class="col-md-6">
+                    <label for="cnic" class="form-label"><i class="bi bi-credit-card me-1" style="color:var(--accent-info);"></i>CNIC</label>
+                    <input type="text" class="form-control @error('cnic') is-invalid @enderror" id="cnic" name="cnic"
+                           value="{{ old('cnic') }}" placeholder="e.g. 12345-1234567-1">
+                    @error('cnic')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    <div class="form-text">Required for FBR digital invoicing. Format: XXXXX-XXXXXXX-X</div>
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6">
                     <label for="gender" class="form-label"><i class="bi bi-gender-ambiguous me-1" style="color:var(--accent-warning);"></i>Gender <span class="text-danger">*</span></label>
                     <select class="form-select @error('gender') is-invalid @enderror" id="gender" name="gender" required>
                         <option value="">Select Gender</option>

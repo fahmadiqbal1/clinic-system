@@ -31,6 +31,7 @@ class FbrSettingsController extends Controller
             'fbr_city'             => ['nullable', 'string', 'max:100'],
             'fbr_tax_rate'         => ['nullable', 'numeric', 'min:0', 'max:100'],
             'fbr_is_sandbox'       => ['nullable', 'in:1,0'],
+            'fbr_signing_secret'   => ['nullable', 'string', 'max:255'],
         ]);
 
         $fbr = PlatformSetting::fbr();
@@ -42,18 +43,25 @@ class FbrSettingsController extends Controller
             ? 'https://sdnfbr.fbr.gov.pk/invoices/v1'
             : 'https://gst.fbr.gov.pk/invoices/v1';
 
+        $newMeta = array_merge($fbr->meta ?? [], [
+            'posid'            => $validated['fbr_posid'] ?? $fbr->getMeta('posid'),
+            'strn'             => $validated['fbr_strn'] ?? $fbr->getMeta('strn'),
+            'ntn'              => $validated['fbr_ntn'] ?? $fbr->getMeta('ntn'),
+            'business_name'    => $validated['fbr_business_name'] ?? $fbr->getMeta('business_name'),
+            'business_address' => $validated['fbr_business_address'] ?? $fbr->getMeta('business_address'),
+            'city'             => $validated['fbr_city'] ?? $fbr->getMeta('city'),
+            'tax_rate'         => $validated['fbr_tax_rate'] ?? $fbr->getMeta('tax_rate', 0),
+            'is_sandbox'       => $isSandbox,
+        ]);
+
+        // Only update signing secret if provided
+        if (!empty($validated['fbr_signing_secret'])) {
+            $newMeta['signing_secret'] = $validated['fbr_signing_secret'];
+        }
+
         $data = [
             'api_url' => $validated['fbr_api_url'] ?? $defaultUrl,
-            'meta'    => array_merge($fbr->meta ?? [], [
-                'posid'            => $validated['fbr_posid'] ?? $fbr->getMeta('posid'),
-                'strn'             => $validated['fbr_strn'] ?? $fbr->getMeta('strn'),
-                'ntn'              => $validated['fbr_ntn'] ?? $fbr->getMeta('ntn'),
-                'business_name'    => $validated['fbr_business_name'] ?? $fbr->getMeta('business_name'),
-                'business_address' => $validated['fbr_business_address'] ?? $fbr->getMeta('business_address'),
-                'city'             => $validated['fbr_city'] ?? $fbr->getMeta('city'),
-                'tax_rate'         => $validated['fbr_tax_rate'] ?? $fbr->getMeta('tax_rate', 0),
-                'is_sandbox'       => $isSandbox,
-            ]),
+            'meta'    => $newMeta,
         ];
 
         // Only update the bearer token if a non-empty value was submitted
