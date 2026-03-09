@@ -8,6 +8,7 @@ use App\Models\Patient;
 use App\Models\ServiceCatalog;
 use App\Models\User;
 use App\Services\AuditableService;
+use App\Services\FbrService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -172,6 +173,9 @@ class InvoiceController extends Controller
 
         AuditableService::logInvoicePayment($invoice->fresh(), $paymentMethod);
 
+        // Auto-submit to FBR IRIS in real-time
+        FbrService::make()->submitInvoice($invoice->fresh());
+
         return redirect()->route('receptionist.invoices.show', $invoice)
             ->with('success', 'Invoice marked as paid.');
     }
@@ -193,5 +197,25 @@ class InvoiceController extends Controller
 
         return redirect()->route('receptionist.invoices.show', $invoice)
             ->with('success', 'Invoice #' . $invoice->id . ' has been cancelled.');
+    }
+
+    /**
+     * Manually resubmit a paid invoice to FBR IRIS (for failed or missing submissions).
+     */
+    public function resubmitToFbr(Invoice $invoice): RedirectResponse
+    {
+        if (!$invoice->isPaid()) {
+            return redirect()->back()->withErrors('Only paid invoices can be submitted to FBR.');
+        }
+
+        $result = FbrService::make()->submitInvoice($invoice);
+
+        if ($result['success']) {
+            return redirect()->route('receptionist.invoices.show', $invoice)
+                ->with('success', 'Invoice successfully submitted to FBR IRIS. IRN: ' . $result['irn']);
+        }
+
+        return redirect()->route('receptionist.invoices.show', $invoice)
+            ->withErrors('FBR submission failed: ' . $result['error']);
     }
 }

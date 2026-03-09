@@ -36,6 +36,7 @@
     @if(auth()->user()->hasRole('Owner'))
     @php
         $medgemma = \App\Models\PlatformSetting::medgemma();
+        $fbr = \App\Models\PlatformSetting::fbr();
     @endphp
     <div class="card mb-4 fade-in delay-3">
         <div class="card-header d-flex align-items-center justify-content-between">
@@ -170,7 +171,177 @@
     </div>
     @endif
 
-    <div class="card mb-4 fade-in delay-{{ auth()->user()->hasRole('Owner') ? '4' : '3' }}">
+    {{-- FBR IRIS Digital Invoicing --}}
+    @if(auth()->user()->hasRole('Owner'))
+    <div class="card mb-4 fade-in delay-4">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <span><i class="bi bi-receipt-cutoff me-2" style="color:var(--accent-success);"></i>FBR IRIS — Digital Invoicing (Pakistan)</span>
+            <span id="fbr-status-badge">
+                @if($fbr->isFbrReady())
+                    <span class="badge {{ $fbr->statusBadgeClass() }}">
+                        <i class="bi {{ $fbr->statusIcon() }} me-1" style="font-size:.5rem;vertical-align:middle;"></i>{{ $fbr->statusLabel() }}
+                    </span>
+                @else
+                    <span class="badge bg-secondary">
+                        <i class="bi bi-dash-circle me-1" style="font-size:.5rem;vertical-align:middle;"></i>Not Configured
+                    </span>
+                @endif
+            </span>
+        </div>
+        <div class="card-body">
+            <p class="small mb-3" style="color:var(--text-muted);">
+                Configure <strong>FBR IRIS</strong> integration to enable mandatory digital invoicing under Pakistan's POS law.
+                Every paid invoice will be auto-submitted to FBR in real-time with an <strong>IRN</strong> and scannable <strong>QR code</strong>.
+            </p>
+
+            @if(session('success') && str_contains(session('success'), 'FBR'))
+                <div class="alert alert-success py-2"><i class="bi bi-check-circle me-2"></i>{{ session('success') }}</div>
+            @endif
+
+            <div id="fbr-test-result" class="alert py-2 mb-3 d-none"></div>
+
+            <form method="post" action="{{ route('owner.fbr-settings.update') }}">
+                @csrf
+                @method('PATCH')
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label for="fbr_strn" class="form-label fw-semibold">STRN <span class="text-danger">*</span></label>
+                        <input type="text" id="fbr_strn" name="fbr_strn"
+                               class="form-control @error('fbr_strn') is-invalid @enderror"
+                               value="{{ old('fbr_strn', $fbr->getMeta('strn')) }}"
+                               placeholder="e.g. 1234567890123">
+                        @error('fbr_strn')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <div class="form-text">Sales Tax Registration Number assigned by FBR.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="fbr_ntn" class="form-label fw-semibold">NTN</label>
+                        <input type="text" id="fbr_ntn" name="fbr_ntn"
+                               class="form-control @error('fbr_ntn') is-invalid @enderror"
+                               value="{{ old('fbr_ntn', $fbr->getMeta('ntn')) }}"
+                               placeholder="e.g. 1234567-8">
+                        @error('fbr_ntn')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <div class="form-text">National Tax Number.</div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label for="fbr_posid" class="form-label fw-semibold">POSID <span class="text-danger">*</span></label>
+                        <input type="text" id="fbr_posid" name="fbr_posid"
+                               class="form-control @error('fbr_posid') is-invalid @enderror"
+                               value="{{ old('fbr_posid', $fbr->getMeta('posid')) }}"
+                               placeholder="e.g. 1234567890">
+                        @error('fbr_posid')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <div class="form-text">Point-of-Sale ID assigned by FBR to your terminal.</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="fbr_tax_rate" class="form-label fw-semibold">GST Rate (%)</label>
+                        <input type="number" id="fbr_tax_rate" name="fbr_tax_rate"
+                               step="0.01" min="0" max="100"
+                               class="form-control @error('fbr_tax_rate') is-invalid @enderror"
+                               value="{{ old('fbr_tax_rate', $fbr->getMeta('tax_rate', 0)) }}"
+                               placeholder="0 (exempt) or 17">
+                        @error('fbr_tax_rate')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        <div class="form-text">GST percentage to apply to invoices. Set 0 if your services are tax-exempt.</div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label for="fbr_business_name" class="form-label fw-semibold">Business Name</label>
+                        <input type="text" id="fbr_business_name" name="fbr_business_name"
+                               class="form-control"
+                               value="{{ old('fbr_business_name', $fbr->getMeta('business_name')) }}"
+                               placeholder="{{ config('app.name') }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="fbr_city" class="form-label fw-semibold">City</label>
+                        <input type="text" id="fbr_city" name="fbr_city"
+                               class="form-control"
+                               value="{{ old('fbr_city', $fbr->getMeta('city')) }}"
+                               placeholder="e.g. Karachi">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="fbr_business_address" class="form-label fw-semibold">Business Address</label>
+                    <input type="text" id="fbr_business_address" name="fbr_business_address"
+                           class="form-control"
+                           value="{{ old('fbr_business_address', $fbr->getMeta('business_address')) }}"
+                           placeholder="Full registered address">
+                </div>
+
+                <div class="mb-3">
+                    <label for="fbr_bearer_token" class="form-label fw-semibold">FBR Bearer Token <span class="text-danger">*</span></label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-key"></i></span>
+                        <input type="password" id="fbr_bearer_token" name="fbr_bearer_token"
+                               class="form-control @error('fbr_bearer_token') is-invalid @enderror"
+                               placeholder="{{ $fbr->hasApiKey() ? '••••••••••••••••••••  (token saved — enter new value to change)' : 'Bearer token from FBR IRIS portal' }}"
+                               autocomplete="off">
+                        <button type="button" class="btn btn-outline-secondary" id="toggle-fbr-token" title="Show / hide token">
+                            <i class="bi bi-eye" id="toggle-fbr-token-icon"></i>
+                        </button>
+                    </div>
+                    @error('fbr_bearer_token')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                    @if($fbr->hasApiKey())
+                        <div class="form-text text-success">
+                            <i class="bi bi-check-circle me-1"></i>A token is saved. Leave blank to keep it.
+                        </div>
+                    @else
+                        <div class="form-text">
+                            Obtain your token from the <a href="https://iris.fbr.gov.pk" target="_blank" rel="noopener">FBR IRIS portal</a>.
+                        </div>
+                    @endif
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label for="fbr_api_url" class="form-label fw-semibold">API Endpoint</label>
+                        <input type="url" id="fbr_api_url" name="fbr_api_url"
+                               class="form-control @error('fbr_api_url') is-invalid @enderror"
+                               value="{{ old('fbr_api_url', $fbr->api_url) }}"
+                               placeholder="https://gst.fbr.gov.pk/invoices/v1">
+                        @error('fbr_api_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" id="fbr_is_sandbox" name="fbr_is_sandbox"
+                                   value="1" {{ $fbr->getMeta('is_sandbox', true) ? 'checked' : '' }}>
+                            <label class="form-check-label" for="fbr_is_sandbox">
+                                Use Sandbox / Test Environment
+                                <span class="text-muted small">(disable for live FBR submissions)</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2">
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-floppy me-1"></i>Save FBR Settings
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="test-fbr-btn"
+                            {{ !$fbr->isFbrReady() ? 'disabled' : '' }}>
+                        <i class="bi bi-plug me-1"></i>Test FBR Connection
+                    </button>
+                    <span id="fbr-spinner" class="spinner-border spinner-border-sm text-secondary d-none" role="status"></span>
+                    @if($fbr->last_tested_at)
+                        <small class="text-muted ms-2">Last tested: {{ $fbr->last_tested_at->diffForHumans() }}</small>
+                    @endif
+                </div>
+            </form>
+
+            @if($fbr->last_error)
+                <div class="alert alert-warning mt-3 py-2">
+                    <i class="bi bi-exclamation-triangle me-2"></i><strong>Last error:</strong> {{ $fbr->last_error }}
+                </div>
+            @endif
+        </div>
+    </div>
+    @endif
+
+    <div class="card mb-4 fade-in delay-{{ auth()->user()->hasRole('Owner') ? '5' : '3' }}">
         <div class="card-header"><i class="bi bi-trash3 me-2" style="color:var(--accent-danger);"></i>Delete Account</div>
         <div class="card-body">
             @include('profile.partials.delete-user-form')
@@ -267,6 +438,80 @@
             .finally(() => {
                 testBtn.disabled = false;
                 spinner.classList.add('d-none');
+            });
+        });
+    }
+    // FBR token visibility toggle
+    const fbrTokenInput = document.getElementById('fbr_bearer_token');
+    const fbrToggleBtn  = document.getElementById('toggle-fbr-token');
+    const fbrToggleIcon = document.getElementById('toggle-fbr-token-icon');
+    if (fbrToggleBtn) {
+        fbrToggleBtn.addEventListener('click', function () {
+            if (fbrTokenInput.type === 'password') {
+                fbrTokenInput.type = 'text';
+                fbrToggleIcon.className = 'bi bi-eye-slash';
+            } else {
+                fbrTokenInput.type = 'password';
+                fbrToggleIcon.className = 'bi bi-eye';
+            }
+        });
+    }
+
+    // FBR sandbox toggle — auto-update API endpoint
+    const fbrSandboxCheck = document.getElementById('fbr_is_sandbox');
+    const fbrApiUrlInput  = document.getElementById('fbr_api_url');
+    if (fbrSandboxCheck && fbrApiUrlInput) {
+        fbrSandboxCheck.addEventListener('change', function () {
+            const sandboxUrl = 'https://sdnfbr.fbr.gov.pk/invoices/v1';
+            const liveUrl    = 'https://gst.fbr.gov.pk/invoices/v1';
+            if (fbrApiUrlInput.value === sandboxUrl || fbrApiUrlInput.value === liveUrl || fbrApiUrlInput.value === '') {
+                fbrApiUrlInput.value = this.checked ? sandboxUrl : liveUrl;
+            }
+        });
+    }
+
+    // FBR test connection
+    const fbrTestBtn    = document.getElementById('test-fbr-btn');
+    const fbrSpinner    = document.getElementById('fbr-spinner');
+    const fbrResultDiv  = document.getElementById('fbr-test-result');
+    const fbrStatusBadge = document.getElementById('fbr-status-badge');
+
+    if (fbrTestBtn) {
+        fbrTestBtn.addEventListener('click', function () {
+            fbrTestBtn.disabled = true;
+            fbrSpinner.classList.remove('d-none');
+            fbrResultDiv.classList.add('d-none');
+
+            fetch('{{ route("owner.fbr-settings.test") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Accept': 'application/json',
+                },
+            })
+            .then(r => r.json())
+            .then(data => {
+                const connected = data.status === 'connected';
+                fbrResultDiv.className = 'alert py-2 mb-3 ' + (connected ? 'alert-success' : 'alert-warning');
+                fbrResultDiv.innerHTML = '<i class="bi bi-' + (connected ? 'check-circle' : 'exclamation-triangle') + ' me-2"></i>'
+                    + (connected ? 'FBR IRIS connection successful.' : (data.error || 'Connection test failed.'));
+                fbrResultDiv.classList.remove('d-none');
+
+                if (fbrStatusBadge) {
+                    fbrStatusBadge.innerHTML = connected
+                        ? '<span class="badge bg-success"><i class="bi bi-check-circle-fill me-1" style="font-size:.5rem;vertical-align:middle;"></i>Connected</span>'
+                        : '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1" style="font-size:.5rem;vertical-align:middle;"></i>Connection Failed</span>';
+                }
+            })
+            .catch(() => {
+                fbrResultDiv.className = 'alert alert-danger py-2 mb-3';
+                fbrResultDiv.innerHTML = '<i class="bi bi-x-circle me-2"></i>Request failed. Check your network connection.';
+                fbrResultDiv.classList.remove('d-none');
+            })
+            .finally(() => {
+                fbrTestBtn.disabled = false;
+                fbrSpinner.classList.add('d-none');
             });
         });
     }

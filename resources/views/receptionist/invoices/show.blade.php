@@ -327,6 +327,118 @@
                     </form>
                 @endif
             </div>
+
+            {{-- FBR IRIS Digital Invoice Block --}}
+            @php $fbrSettings = \App\Models\PlatformSetting::fbr(); @endphp
+            @if($invoice->isPaid())
+            <div class="mt-4 pt-4" style="border-top:1px solid var(--glass-border);">
+                <h5 class="fw-bold mb-3">
+                    <i class="bi bi-receipt-cutoff me-2" style="color:var(--accent-success);"></i>FBR Digital Invoice
+                    @if($invoice->fbr_status === 'submitted')
+                        <span class="badge bg-success ms-2" style="font-size:.65rem;">Submitted</span>
+                    @elseif($invoice->fbr_status === 'pending')
+                        <span class="badge bg-warning text-dark ms-2" style="font-size:.65rem;">Submitting…</span>
+                    @elseif($invoice->fbr_status === 'failed')
+                        <span class="badge bg-danger ms-2" style="font-size:.65rem;">Failed</span>
+                    @elseif($invoice->fbr_status === 'not_configured')
+                        <span class="badge bg-secondary ms-2" style="font-size:.65rem;">Not Configured</span>
+                    @else
+                        <span class="badge bg-secondary ms-2" style="font-size:.65rem;">Not Submitted</span>
+                    @endif
+                </h5>
+
+                @if($invoice->fbr_irn)
+                    <div class="row g-3 align-items-start">
+                        <div class="col-md-8">
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">IRN (Invoice Reference Number)</p>
+                                    <p class="fw-semibold mb-0 font-monospace small">{{ $invoice->fbr_irn }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">FBR Invoice Number</p>
+                                    <p class="fw-semibold mb-0">{{ $invoice->fbr_invoice_number ?? $invoice->id }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">Submitted At</p>
+                                    <p class="fw-semibold mb-0">{{ $invoice->fbr_submitted_at?->format('M d, Y H:i') ?? '—' }}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p class="small mb-1" style="color:var(--text-muted);">STRN</p>
+                                    <p class="fw-semibold mb-0">{{ $fbrSettings->getMeta('strn') ?? '—' }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        @if($invoice->fbr_qr_code)
+                        <div class="col-md-4 text-center">
+                            <p class="small mb-1" style="color:var(--text-muted);">Scan to Verify</p>
+                            <div id="fbr-qr-container" class="d-inline-block p-2 bg-white rounded border"></div>
+                            <p class="small mt-1" style="color:var(--text-muted);">FBR Verification QR</p>
+                        </div>
+                        @endif
+                    </div>
+                @elseif($invoice->fbr_status === 'failed' || is_null($invoice->fbr_status))
+                    <p class="small mb-3" style="color:var(--text-muted);">
+                        @if($invoice->fbr_status === 'failed')
+                            FBR submission failed for this invoice.
+                        @elseif(!$fbrSettings->isFbrReady())
+                            FBR IRIS is not configured. Ask the Owner to set up FBR settings in their profile.
+                        @else
+                            This invoice has not yet been submitted to FBR.
+                        @endif
+                    </p>
+                    @if($fbrSettings->isFbrReady())
+                    <form action="{{ route('receptionist.invoices.fbr-resubmit', $invoice) }}" method="POST" class="no-print">
+                        @csrf
+                        <button type="submit" class="btn btn-success btn-sm"
+                                onclick="return confirm('Submit this invoice to FBR IRIS now?')">
+                            <i class="bi bi-send me-1"></i>Submit to FBR IRIS
+                        </button>
+                    </form>
+                    @endif
+                @elseif($invoice->fbr_status === 'not_configured')
+                    <div class="alert alert-info py-2">
+                        <i class="bi bi-info-circle me-2"></i>
+                        FBR integration is not yet configured. Please set up your FBR IRIS credentials in
+                        <a href="{{ route('profile.edit') }}#fbr">Owner Profile → FBR Settings</a>.
+                    </div>
+                @endif
+
+                @if($invoice->isPaid() && $invoice->fbr_status === 'submitted' && $fbrSettings->isFbrReady())
+                <div class="mt-2 no-print">
+                    <form action="{{ route('receptionist.invoices.fbr-resubmit', $invoice) }}" method="POST" class="d-inline">
+                        @csrf
+                        <button type="submit" class="btn btn-outline-secondary btn-sm"
+                                onclick="return confirm('Resubmit this invoice to FBR IRIS? Use only if the original submission needs correction.')">
+                            <i class="bi bi-arrow-repeat me-1"></i>Resubmit to FBR
+                        </button>
+                    </form>
+                </div>
+                @endif
+            </div>
+            @endif
     </div>
 </div>
 @endsection
+
+@push('scripts')
+@if($invoice->isPaid() && $invoice->fbr_qr_code)
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSe2s9qnDN7oD6eblnBHyH3P1pAzrBDxhxNSw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+    var container = document.getElementById('fbr-qr-container');
+    if (container) {
+        new QRCode(container, {
+            text: {{ json_encode($invoice->fbr_qr_code) }},
+            width: 120,
+            height: 120,
+            colorDark : '#000000',
+            colorLight : '#ffffff',
+            correctLevel : QRCode.CorrectLevel.M
+        });
+    }
+})();
+</script>
+@endif
+@endpush
+

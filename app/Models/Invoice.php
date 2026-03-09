@@ -41,6 +41,11 @@ class Invoice extends Model
         'radiology_images',
         'total_amount',        // pharmacy: totals computed after dispensing items
         'net_amount',          // pharmacy: net recalculated after dispensing
+        'fbr_invoice_number',  // FBR: assigned after payment
+        'fbr_status',          // FBR: submission status
+        'fbr_submitted_at',    // FBR: submission timestamp
+        'fbr_irn',             // FBR: Invoice Reference Number
+        'fbr_qr_code',         // FBR: QR code data
     ];
 
     /*
@@ -118,6 +123,11 @@ class Invoice extends Model
         'visit_id',
         'lab_results',
         'radiology_images',
+        'fbr_invoice_number',
+        'fbr_status',
+        'fbr_submitted_at',
+        'fbr_irn',
+        'fbr_qr_code',
     ];
 
     protected $casts = [
@@ -132,6 +142,7 @@ class Invoice extends Model
         'distribution_snapshot' => 'json',
         'lab_results' => 'json',
         'radiology_images' => 'json',
+        'fbr_submitted_at' => 'datetime',
     ];
 
     /**
