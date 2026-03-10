@@ -35,20 +35,17 @@ php artisan serve
 
 ## Default Accounts
 
-| Email | Password | Role |
-|-------|----------|------|
-| owner@clinic.com | password123 | Owner |
-| doctor@clinic.com | password123 | Doctor |
-| doctor2@clinic.com | password123 | Doctor |
-| receptionist@clinic.com | password123 | Receptionist |
-| triage@clinic.com | password123 | Triage |
-| lab@clinic.com | password123 | Laboratory |
-| radiology@clinic.com | password123 | Radiology |
-| pharmacy@clinic.com | password123 | Pharmacy |
+Default accounts are created by the seeder. Credentials are printed to the console during seeding.
+
+**For development environments only**, the seeder uses:
+- Email format: `{role}@clinic.com` (e.g., `owner@clinic.com`, `doctor@clinic.com`)
+- Password: Set via `SEED_DEFAULT_PASSWORD` environment variable, or randomly generated
+
+> ⚠️ **Security Note:** Never use default credentials in production. Run fresh seeders with secure passwords or create users through the Owner portal.
 
 ## Stack
 
-- **Backend:** Laravel 11, Spatie Permission
+- **Backend:** Laravel 12, Spatie Permission
 - **Frontend:** Blade, Vite, Tailwind CSS
 - **Database:** MySQL
 - **Mail:** SMTP (Gmail)

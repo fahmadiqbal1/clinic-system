@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Prescription extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'patient_id',
@@ -18,6 +19,14 @@ class Prescription extends Model
         'diagnosis',
         'notes',
         'status',
+    ];
+
+    /**
+     * PHI fields encrypted at rest for HIPAA compliance.
+     */
+    protected $casts = [
+        'diagnosis' => 'encrypted',
+        'notes' => 'encrypted',
     ];
 
     public function patient(): BelongsTo

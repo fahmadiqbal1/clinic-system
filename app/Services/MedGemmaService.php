@@ -6,6 +6,7 @@ use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\Patient;
 use App\Models\PlatformSetting;
+use App\Jobs\AnalyseConsultationJob;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -46,55 +47,131 @@ class MedGemmaService
     }
 
     /**
-     * Analyse a consultation (vitals + doctor notes + lab/radiology findings + prescriptions).
-     *
-     * Collects all available data for a comprehensive review including
-     * radiology images for multimodal analysis.
+     * Queue a consultation analysis (async).
+     * 
+     * Creates a pending AiAnalysis record and dispatches a job
+     * to process it asynchronously, preventing HTTP timeouts.
      */
     public function analyseConsultation(Patient $patient, int $requestedBy): AiAnalysis
+    {
+        $analysis = AiAnalysis::create([
+            'patient_id' => $patient->id,
+            'invoice_id' => null,
+            'requested_by' => $requestedBy,
+            'context_type' => 'consultation',
+            'prompt_summary' => "Consultation analysis for patient: {$patient->full_name}",
+            'status' => 'pending',
+        ]);
+
+        AnalyseConsultationJob::dispatch($analysis, 'consultation');
+
+        return $analysis;
+    }
+
+    /**
+     * Queue a lab analysis (async).
+     */
+    public function analyseLab(Invoice $invoice, int $requestedBy): AiAnalysis
+    {
+        $analysis = AiAnalysis::create([
+            'patient_id' => $invoice->patient_id,
+            'invoice_id' => $invoice->id,
+            'requested_by' => $requestedBy,
+            'context_type' => 'lab',
+            'prompt_summary' => "Lab analysis for invoice #{$invoice->id}",
+            'status' => 'pending',
+        ]);
+
+        AnalyseConsultationJob::dispatch($analysis, 'lab', $invoice->id);
+
+        return $analysis;
+    }
+
+    /**
+     * Queue a radiology analysis (async).
+     */
+    public function analyseRadiology(Invoice $invoice, int $requestedBy): AiAnalysis
+    {
+        $analysis = AiAnalysis::create([
+            'patient_id' => $invoice->patient_id,
+            'invoice_id' => $invoice->id,
+            'requested_by' => $requestedBy,
+            'context_type' => 'radiology',
+            'prompt_summary' => "Radiology analysis for invoice #{$invoice->id}",
+            'status' => 'pending',
+        ]);
+
+        AnalyseConsultationJob::dispatch($analysis, 'radiology', $invoice->id);
+
+        return $analysis;
+    }
+
+    /**
+     * Process consultation analysis (called by job).
+     */
+    public function processConsultationAnalysis(AiAnalysis $analysis, Patient $patient): void
     {
         $patient->load(['triageVitals', 'prescriptions.items', 'invoices.items.serviceCatalog']);
 
         $latestVitals = $patient->triageVitals()->latest()->first();
-
         $prompt = $this->buildConsultationPrompt($patient, $latestVitals);
-
-        // Collect radiology images from completed invoices for multimodal analysis
         $imageContents = $this->getPatientRadiologyImages($patient);
 
-        return $this->runAnalysis($patient->id, null, $requestedBy, 'consultation', $prompt, $imageContents);
+        $this->executeAnalysis($analysis, $prompt, $imageContents);
     }
 
     /**
-     * Analyse a lab invoice (report + structured results).
+     * Process lab analysis (called by job).
      */
-    public function analyseLab(Invoice $invoice, int $requestedBy): AiAnalysis
+    public function processLabAnalysis(AiAnalysis $analysis, Invoice $invoice): void
     {
         $invoice->load(['patient', 'items.serviceCatalog']);
-
         $prompt = $this->buildLabPrompt($invoice);
 
-        return $this->runAnalysis($invoice->patient_id, $invoice->id, $requestedBy, 'lab', $prompt);
+        $this->executeAnalysis($analysis, $prompt);
     }
 
     /**
-     * Analyse a radiology invoice (report + images description).
+     * Process radiology analysis (called by job).
      */
-    public function analyseRadiology(Invoice $invoice, int $requestedBy): AiAnalysis
+    public function processRadiologyAnalysis(AiAnalysis $analysis, Invoice $invoice): void
     {
         $invoice->load(['patient', 'items.serviceCatalog']);
-
         $prompt = $this->buildRadiologyPrompt($invoice);
         $imageContents = $this->getRadiologyImages($invoice);
 
-        return $this->runAnalysis(
-            $invoice->patient_id,
-            $invoice->id,
-            $requestedBy,
-            'radiology',
-            $prompt,
-            $imageContents
-        );
+        $this->executeAnalysis($analysis, $prompt, $imageContents);
+    }
+
+    /**
+     * Execute the actual API call and update the analysis record.
+     */
+    private function executeAnalysis(AiAnalysis $analysis, string $prompt, array $imageContents = []): void
+    {
+        try {
+            $analysis->update([
+                'prompt_summary' => mb_substr($prompt, 0, 2000),
+            ]);
+
+            $response = $this->callApi($prompt, $imageContents);
+
+            $analysis->update([
+                'ai_response' => $response,
+                'status' => 'completed',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('MedGemma API error', [
+                'analysis_id' => $analysis->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $analysis->update([
+                'ai_response' => 'Analysis could not be completed: ' . $e->getMessage(),
+                'status' => 'failed',
+            ]);
+
+            throw $e;
+        }
     }
 
     /**
@@ -313,48 +390,6 @@ class MedGemmaService
         }
 
         return $images;
-    }
-
-    /**
-     * Execute analysis via Hugging Face Inference API.
-     */
-    private function runAnalysis(
-        int $patientId,
-        ?int $invoiceId,
-        int $requestedBy,
-        string $contextType,
-        string $prompt,
-        array $imageContents = []
-    ): AiAnalysis {
-        $analysis = AiAnalysis::create([
-            'patient_id' => $patientId,
-            'invoice_id' => $invoiceId,
-            'requested_by' => $requestedBy,
-            'context_type' => $contextType,
-            'prompt_summary' => mb_substr($prompt, 0, 2000),
-            'status' => 'pending',
-        ]);
-
-        try {
-            $response = $this->callApi($prompt, $imageContents);
-
-            $analysis->update([
-                'ai_response' => $response,
-                'status' => 'completed',
-            ]);
-        } catch (\Exception $e) {
-            Log::error('MedGemma API error', [
-                'analysis_id' => $analysis->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $analysis->update([
-                'ai_response' => 'Analysis could not be completed: ' . $e->getMessage(),
-                'status' => 'failed',
-            ]);
-        }
-
-        return $analysis;
     }
 
     /**

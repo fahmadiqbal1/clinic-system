@@ -102,19 +102,21 @@ Route::get('/notifications/unread', [NotificationController::class, 'unread'])->
 Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');
 
-// ── MedGemma AI Analysis ──
-Route::middleware('role:Doctor')->group(function () {
+// ── MedGemma AI Analysis (with rate limiting) ──
+Route::middleware(['role:Doctor', 'throttle:ai-analysis'])->group(function () {
     Route::post('/ai-analysis/consultation/{patient}', [AiAnalysisController::class, 'analyseConsultation'])->name('ai-analysis.consultation');
     Route::get('/ai-analysis/patient/{patient}', [AiAnalysisController::class, 'patientAnalyses'])->name('ai-analysis.patient');
 });
 
-Route::middleware('role:Laboratory')->group(function () {
+Route::middleware(['role:Laboratory', 'throttle:ai-analysis'])->group(function () {
     Route::post('/ai-analysis/lab/{invoice}', [AiAnalysisController::class, 'analyseLab'])->name('ai-analysis.lab');
 });
 
-Route::middleware('role:Radiology')->group(function () {
+Route::middleware(['role:Radiology', 'throttle:ai-analysis'])->group(function () {
     Route::post('/ai-analysis/radiology/{invoice}', [AiAnalysisController::class, 'analyseRadiology'])->name('ai-analysis.radiology');
 });
 
-// ── Global Search (command palette) ──
-Route::get('/search/global', [SearchController::class, 'global'])->name('search.global');
+// ── Global Search (command palette) with rate limiting ──
+Route::middleware('throttle:global-search')->group(function () {
+    Route::get('/search/global', [SearchController::class, 'global'])->name('search.global');
+});

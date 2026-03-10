@@ -118,4 +118,58 @@ class AuditableService
             ],
         );
     }
+
+    /**
+     * Generic log for model creation.
+     */
+    public static function logCreate($model, string $modelName, array $afterState = []): void
+    {
+        AuditLog::log(
+            action: strtolower($modelName) . '_created',
+            auditableType: get_class($model),
+            auditableId: $model->id,
+            afterState: $afterState ?: $model->toArray(),
+        );
+    }
+
+    /**
+     * Generic log for model update.
+     */
+    public static function logUpdate($model, string $modelName, array $changes = []): void
+    {
+        AuditLog::log(
+            action: strtolower($modelName) . '_updated',
+            auditableType: get_class($model),
+            auditableId: $model->id,
+            beforeState: $changes['before'] ?? [],
+            afterState: $changes['after'] ?? $model->getChanges(),
+        );
+    }
+
+    /**
+     * Generic log for model deletion.
+     */
+    public static function logDelete($model, string $modelName): void
+    {
+        AuditLog::log(
+            action: strtolower($modelName) . '_deleted',
+            auditableType: get_class($model),
+            auditableId: $model->id,
+            beforeState: $model->toArray(),
+        );
+    }
+
+    /**
+     * Generic log for status/state transitions.
+     */
+    public static function logTransition($model, string $modelName, string $field, $oldValue, $newValue): void
+    {
+        AuditLog::log(
+            action: strtolower($modelName) . '_' . $field . '_changed',
+            auditableType: get_class($model),
+            auditableId: $model->id,
+            beforeState: [$field => $oldValue],
+            afterState: [$field => $newValue],
+        );
+    }
 }

@@ -5,10 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class TriageVital extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'triage_vitals';
 
@@ -28,6 +29,10 @@ class TriageVital extends Model
         'recorded_by',
     ];
 
+    /**
+     * PHI fields encrypted at rest for HIPAA compliance.
+     * Chief complaint and notes contain sensitive medical information.
+     */
     protected $casts = [
         'temperature' => 'decimal:1',
         'pulse_rate' => 'integer',
@@ -35,6 +40,9 @@ class TriageVital extends Model
         'weight' => 'decimal:2',
         'height' => 'decimal:2',
         'oxygen_saturation' => 'decimal:1',
+        // PHI encryption
+        'chief_complaint' => 'encrypted',
+        'notes' => 'encrypted',
     ];
 
     public function patient(): BelongsTo

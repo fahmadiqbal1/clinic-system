@@ -5,10 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AiAnalysis extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'patient_id',
@@ -18,6 +19,15 @@ class AiAnalysis extends Model
         'prompt_summary',
         'ai_response',
         'status',
+    ];
+
+    /**
+     * PHI fields encrypted at rest for HIPAA compliance.
+     * AI response may contain sensitive medical analysis.
+     */
+    protected $casts = [
+        'prompt_summary' => 'encrypted',
+        'ai_response' => 'encrypted',
     ];
 
     public function patient(): BelongsTo

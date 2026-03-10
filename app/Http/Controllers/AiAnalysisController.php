@@ -18,14 +18,12 @@ class AiAnalysisController extends Controller
      */
     public function analyseConsultation(Patient $patient, MedGemmaService $service): RedirectResponse
     {
-        $user = Auth::user();
-        if ($patient->doctor_id !== $user->id) {
-            abort(403, 'This patient is not assigned to you.');
-        }
+        // Use policy instead of inline authorization
+        $this->authorize('analyseConsultation', [AiAnalysis::class, $patient]);
 
-        $service->analyseConsultation($patient, $user->id);
+        $service->analyseConsultation($patient, Auth::id());
 
-        return redirect()->back()->with('success', 'MedGemma analysis requested. Results are shown below.');
+        return redirect()->back()->with('success', 'MedGemma analysis queued. Results will appear shortly.');
     }
 
     /**
@@ -33,13 +31,11 @@ class AiAnalysisController extends Controller
      */
     public function analyseLab(Invoice $invoice, MedGemmaService $service): RedirectResponse
     {
-        if ($invoice->department !== 'lab') {
-            abort(404);
-        }
+        $this->authorize('analyseLab', [AiAnalysis::class, $invoice]);
 
         $service->analyseLab($invoice, Auth::id());
 
-        return redirect()->back()->with('success', 'MedGemma analysis completed.');
+        return redirect()->back()->with('success', 'MedGemma analysis queued. Results will appear shortly.');
     }
 
     /**
@@ -47,13 +43,11 @@ class AiAnalysisController extends Controller
      */
     public function analyseRadiology(Invoice $invoice, MedGemmaService $service): RedirectResponse
     {
-        if ($invoice->department !== 'radiology') {
-            abort(404);
-        }
+        $this->authorize('analyseRadiology', [AiAnalysis::class, $invoice]);
 
         $service->analyseRadiology($invoice, Auth::id());
 
-        return redirect()->back()->with('success', 'MedGemma analysis completed.');
+        return redirect()->back()->with('success', 'MedGemma analysis queued. Results will appear shortly.');
     }
 
     /**
@@ -61,6 +55,8 @@ class AiAnalysisController extends Controller
      */
     public function patientAnalyses(Patient $patient): View
     {
+        $this->authorize('view', $patient);
+
         $analyses = AiAnalysis::where('patient_id', $patient->id)
             ->with('requester')
             ->latest()

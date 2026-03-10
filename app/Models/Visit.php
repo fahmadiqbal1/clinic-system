@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Visit extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'patient_id',
@@ -26,11 +27,15 @@ class Visit extends Model
         'completed_at',
     ];
 
+    /**
+     * PHI fields encrypted at rest for HIPAA compliance.
+     */
     protected $casts = [
         'registered_at' => 'datetime',
         'triage_started_at' => 'datetime',
         'doctor_started_at' => 'datetime',
         'completed_at' => 'datetime',
+        'consultation_notes' => 'encrypted',
     ];
 
     public function patient(): BelongsTo

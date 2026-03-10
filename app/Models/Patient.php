@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Patient extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
         'first_name',
@@ -30,12 +31,21 @@ class Patient extends Model
         'completed_at',
     ];
 
+    /**
+     * PHI (Protected Health Information) fields are encrypted at rest.
+     * Phone and email are encrypted for HIPAA compliance.
+     * Consultation notes contain sensitive medical information.
+     */
     protected $casts = [
         'date_of_birth' => 'date',
         'registered_at' => 'datetime',
         'triage_started_at' => 'datetime',
         'doctor_started_at' => 'datetime',
         'completed_at' => 'datetime',
+        // PHI encryption
+        'phone' => 'encrypted',
+        'email' => 'encrypted',
+        'consultation_notes' => 'encrypted',
     ];
 
     public function doctor(): BelongsTo

@@ -69,15 +69,14 @@ class PatientPortalController extends Controller
 
     /**
      * Get the patient record linked to the logged-in user.
-     * Links via explicit user_id foreign key, with email fallback.
+     * 
+     * SECURITY: Only links via explicit user_id foreign key.
+     * Email fallback removed to prevent PHI exposure when
+     * multiple users share an email address.
      */
     private function getPatient(): ?Patient
     {
         $user = Auth::user();
-        return Patient::where('user_id', $user->id)
-            ->orWhere(function ($query) use ($user) {
-                $query->whereNull('user_id')->where('email', $user->email);
-            })
-            ->first();
+        return Patient::where('user_id', $user->id)->first();
     }
 }

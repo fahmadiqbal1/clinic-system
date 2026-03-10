@@ -1,13 +1,15 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "aviva/clinic-erp",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
-    "license": "MIT",
+    "description": "Aviva HealthCare — Full-featured Clinic ERP with AI integration, FBR compliance, and comprehensive clinical workflows.",
+    "keywords": ["clinic", "healthcare", "erp", "laravel", "medical", "hospital"],
+    "license": "proprietary",
     "require": {
         "php": "^8.2",
+        "barryvdh/laravel-dompdf": "^3.0",
         "laravel/framework": "^12.0",
+        "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
         "sentry/sentry-laravel": "^4.20",
         "spatie/laravel-permission": "^6.24"
