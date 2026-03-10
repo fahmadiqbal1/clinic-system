@@ -1,6 +1,9 @@
 # Aviva HealthCare — Clinic ERP
 
-A full-featured clinic management system built with Laravel, Blade, and Vite.
+A Laravel-based clinic management system with PHI encryption, AI-assisted diagnostics (MedGemma/Gemini), patient portal, triage, lab, prescriptions, and FBR IRIS digital invoicing.
+
+> ⚠️ **Security Notice — PHI System**
+> This system handles Protected Health Information (PHI). The production `.env` file must **never** be committed to version control. Any credentials that were ever committed to the repository's git history must be rotated immediately. See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 ## Roles
 
@@ -17,6 +20,10 @@ A full-featured clinic management system built with Laravel, Blade, and Vite.
 ## Quick Start
 
 ```bash
+# Clone the repository
+git clone https://github.com/fahmadiqbal1/clinic-system.git
+cd clinic-system
+
 # Install dependencies
 composer install
 npm install && npm run build
@@ -25,8 +32,10 @@ npm install && npm run build
 cp .env.example .env
 php artisan key:generate
 
+# Configure .env with your DB credentials, API keys, and mail settings
+
 # Database (MySQL)
-php artisan migrate:fresh --seed
+php artisan migrate
 php artisan db:seed --class=LaboratoryStockSeeder
 
 # Serve
