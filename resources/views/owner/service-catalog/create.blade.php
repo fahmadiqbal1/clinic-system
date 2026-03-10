@@ -31,12 +31,22 @@
             </div>
 
             <div class="row">
-                <div class="col-md-6 mb-3">
+                <div class="col-md-4 mb-3">
                     <label for="code" class="form-label">Service Code</label>
                     <input type="text" name="code" id="code" class="form-control @error('code') is-invalid @enderror" value="{{ old('code') }}">
                     @error('code') <div class="invalid-feedback">{{ $message }}</div> @enderror
                 </div>
-                <div class="col-md-6 mb-3">
+                <div class="col-md-4 mb-3">
+                    <label for="hs_code" class="form-label">
+                        HS Code
+                        <span class="badge bg-info text-dark ms-1" style="font-size:.6rem;">FBR</span>
+                    </label>
+                    <input type="text" name="hs_code" id="hs_code" class="form-control @error('hs_code') is-invalid @enderror"
+                           value="{{ old('hs_code') }}" placeholder="e.g. 9018.90.10">
+                    @error('hs_code') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    <div class="form-text">Harmonized System code for FBR IRIS. Default: <code>9018.90.10</code> (medical services).</div>
+                </div>
+                <div class="col-md-4 mb-3">
                     <label for="category" class="form-label">Category</label>
                     <input type="text" name="category" id="category" class="form-control @error('category') is-invalid @enderror" value="{{ old('category') }}">
                     @error('category') <div class="invalid-feedback">{{ $message }}</div> @enderror

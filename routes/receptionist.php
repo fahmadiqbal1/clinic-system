@@ -38,6 +38,7 @@ Route::middleware('role:Receptionist|Owner')->group(function () {
     Route::post('/receptionist/invoices/{invoice}/complete', [ReceptionistInvoiceController::class, 'markComplete'])->name('receptionist.invoices.mark-complete');
     Route::post('/receptionist/invoices/{invoice}/pay', [ReceptionistInvoiceController::class, 'markPaid'])->name('receptionist.invoices.mark-paid');
     Route::post('/receptionist/invoices/{invoice}/cancel', [ReceptionistInvoiceController::class, 'cancel'])->name('receptionist.invoices.cancel');
+    Route::post('/receptionist/invoices/{invoice}/fbr-resubmit', [ReceptionistInvoiceController::class, 'resubmitToFbr'])->name('receptionist.invoices.fbr-resubmit');
 
     // Discount requests (Receptionist can request, Owner approves)
     Route::post('/invoices/{invoice}/discount/request', [InvoiceDiscountController::class, 'requestDiscount'])->name('invoices.discount.request');

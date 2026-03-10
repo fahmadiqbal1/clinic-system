@@ -88,8 +88,15 @@ class PlatformSettingsController extends Controller
             if ($medgemma->isHuggingFace() && $medgemma->hasApiKey()) {
                 $headers['Authorization'] = 'Bearer ' . $medgemma->api_key;
             }
+            // Bypass the Localtunnel browser-reminder page that returns 401
+            // when the request does not come from a real browser.
+            if ($medgemma->isOllama()) {
+                $headers['bypass-tunnel-reminder'] = 'true';
+            }
 
-            $response = Http::withHeaders($headers)->timeout(30)->post($url, [
+            // Use a 60-second timeout — tunnels (Localtunnel, ngrok, Cloudflare)
+            // can add several seconds of latency on the first request.
+            $response = Http::withHeaders($headers)->timeout(60)->post($url, [
                 'model'      => $medgemma->model,
                 'messages'   => [['role' => 'user', 'content' => 'Hi']],
                 'max_tokens' => 1,
@@ -108,7 +115,7 @@ class PlatformSettingsController extends Controller
                 ]);
             }
 
-            $error = 'API returned HTTP ' . $response->status() . ': ' . mb_substr($response->body(), 0, 300);
+            $error = $this->enrichHttpError($response->status(), $response->body(), $medgemma->api_url);
 
             $medgemma->update([
                 'status'         => 'failed',
@@ -119,6 +126,7 @@ class PlatformSettingsController extends Controller
             return response()->json(['status' => 'failed', 'error' => $error]);
         } catch (\Exception $e) {
             $error = $e->getMessage();
+            $error = $this->enrichConnectionError($error, $medgemma->api_url);
 
             $medgemma->update([
                 'status'         => 'failed',
@@ -128,5 +136,112 @@ class PlatformSettingsController extends Controller
 
             return response()->json(['status' => 'failed', 'error' => $error]);
         }
+    }
+
+    /**
+     * Return a human-friendly error message for non-exception HTTP failures,
+     * especially the Localtunnel 401 "Tunnel Password" reminder page.
+     */
+    private function enrichHttpError(int $status, string $body, ?string $configuredUrl): string
+    {
+        // Localtunnel returns a 401 HTML page when the bypass header is not respected.
+        // We already send the header, but surface a clear message if it still occurs.
+        if (
+            $status === 401 && (
+                str_contains($body, 'Tunnel Password') ||
+                str_contains($body, 'loca.lt') ||
+                (str_contains($configuredUrl ?? '', '.loca.lt') && str_contains($body, '<html'))
+            )
+        ) {
+            return "Localtunnel returned a '401 Tunnel Password' reminder page. "
+                 . "The tunnel is reachable but requires browser verification. "
+                 . "Try restarting the tunnel (`npx localtunnel --port 11434`) "
+                 . "and pasting the new URL above. "
+                 . "If the issue persists, consider using ngrok or a Cloudflare Tunnel instead.";
+        }
+
+        return 'API returned HTTP ' . $status . ': ' . mb_substr($body, 0, 300);
+    }
+
+    /**
+     * Return a human-friendly error message for common connection failures,
+     * especially the "localhost not reachable from the server" scenario.
+     */
+    private function enrichConnectionError(string $rawError, ?string $configuredUrl): string
+    {
+        $isLocalhost = $configuredUrl && (
+            str_contains($configuredUrl, 'localhost') ||
+            str_contains($configuredUrl, '127.0.0.1')
+        );
+
+        // cURL error 7: connection refused / host unreachable
+        if (
+            str_contains($rawError, 'cURL error 7') ||
+            str_contains($rawError, 'Connection refused') ||
+            str_contains($rawError, 'Failed to connect')
+        ) {
+            $url = rtrim($configuredUrl ?? 'the configured URL', '/');
+
+            if ($isLocalhost) {
+                return "Cannot reach Ollama at {$url} — this URL points to the web server itself, "
+                     . "not your local computer. To fix this you have two options: "
+                     . "(1) Install and start Ollama on this VPS/server (recommended for production — "
+                     . "run `curl -fsSL https://ollama.com/install.sh | sh` then `ollama serve`), or "
+                     . "(2) Expose your local Ollama publicly using a tunnel such as ngrok "
+                     . "(`ngrok http 11434`) or Cloudflare Tunnel, then paste the public HTTPS URL "
+                     . "into the API Base URL field above and save. "
+                     . "Original error: {$rawError}";
+            }
+
+            return "Cannot reach Ollama at {$url} from the server. "
+                 . "Make sure Ollama is running and the URL is reachable from the VPS. "
+                 . "Original error: {$rawError}";
+        }
+
+        // cURL error 28: operation timed out (common with tunnels)
+        if (
+            str_contains($rawError, 'cURL error 28') ||
+            str_contains($rawError, 'Operation timed out')
+        ) {
+            $url = rtrim($configuredUrl ?? 'the configured URL', '/');
+
+            if ($this->isTunnelUrl($configuredUrl)) {
+                return "Connection to {$url} timed out. "
+                     . "Your tunnel (Localtunnel / ngrok / Cloudflare) may have disconnected or restarted. "
+                     . "Check that the tunnel is still running and update the URL here if it changed. "
+                     . "Original error: {$rawError}";
+            }
+
+            return "Connection to {$url} timed out. "
+                 . "Ensure Ollama is running and the URL is reachable from the VPS. "
+                 . "Original error: {$rawError}";
+        }
+
+        // DNS resolution failure
+        if (
+            str_contains($rawError, 'cURL error 6') ||
+            str_contains($rawError, 'Could not resolve host')
+        ) {
+            return "DNS resolution failed for the configured URL. "
+                 . "Please double-check the API Base URL and ensure the hostname is correct. "
+                 . "Original error: {$rawError}";
+        }
+
+        return $rawError;
+    }
+
+    /**
+     * Detect whether a URL belongs to a known tunnel service.
+     */
+    private function isTunnelUrl(?string $url): bool
+    {
+        if (!$url) {
+            return false;
+        }
+
+        return str_contains($url, '.loca.lt')
+            || str_contains($url, '.ngrok')
+            || str_contains($url, 'ngrok-free.app')
+            || str_contains($url, 'trycloudflare.com');
     }
 }

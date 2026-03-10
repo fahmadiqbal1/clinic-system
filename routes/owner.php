@@ -17,6 +17,7 @@ use App\Http\Controllers\Owner\ZakatController;
 use App\Http\Controllers\Owner\InvoiceDiscountController;
 use App\Http\Controllers\Owner\DiscountApprovalController;
 use App\Http\Controllers\Owner\PlatformSettingsController;
+use App\Http\Controllers\Owner\FbrSettingsController;
 use App\Http\Controllers\Dashboard\ExpenseIntelligenceController;
 use App\Http\Controllers\Dashboard\InventoryHealthController;
 use App\Http\Controllers\Dashboard\ProcurementPipelineController;
@@ -96,4 +97,8 @@ Route::middleware('role:Owner')->group(function () {
     Route::get('/owner/platform-settings', [PlatformSettingsController::class, 'index'])->name('owner.platform-settings.index');
     Route::patch('/owner/platform-settings', [PlatformSettingsController::class, 'update'])->name('owner.platform-settings.update');
     Route::post('/owner/platform-settings/test', [PlatformSettingsController::class, 'testConnection'])->name('owner.platform-settings.test');
+
+    // FBR IRIS Digital Invoicing Settings
+    Route::patch('/owner/fbr-settings', [FbrSettingsController::class, 'update'])->name('owner.fbr-settings.update');
+    Route::post('/owner/fbr-settings/test', [FbrSettingsController::class, 'testConnection'])->name('owner.fbr-settings.test');
 });
