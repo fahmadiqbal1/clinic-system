@@ -1,9 +1,15 @@
 *.log
 .DS_Store
+
+# Environment & secrets
 .env
+.env.*
+!.env.example
 .env.backup
 .env.production
 .env.testing
+*.key
+storage/app/private/
 .phpactor.json
 .phpunit.result.cache
 /.fleet
@@ -23,3 +29,12 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Laravel
+bootstrap/cache/
+npm-debug.log
+yarn-error.log
+
+# IDE
+*.swp
+*.swo
