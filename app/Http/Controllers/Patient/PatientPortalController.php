@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\Patient;
+use App\Services\PdfService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class PatientPortalController extends Controller
 {
@@ -68,6 +70,22 @@ class PatientPortalController extends Controller
     }
 
     /**
+     * Download invoice PDF for the logged-in patient.
+     */
+    public function downloadInvoicePdf(Invoice $invoice, PdfService $pdfService): BinaryFileResponse
+    {
+        $patient = $this->getPatient();
+        if (!$patient || $invoice->patient_id !== $patient->id) {
+            abort(403, 'You do not have access to this record.');
+        }
+
+        $path = $pdfService->generateInvoicePdf($invoice);
+
+        return response()->download(storage_path('app/' . $path), "invoice-{$invoice->id}.pdf")
+            ->deleteFileAfterSend();
+    }
+
+    /**
      * Get the patient record linked to the logged-in user.
      * 
      * SECURITY: Only links via explicit user_id foreign key.
@@ -76,7 +94,7 @@ class PatientPortalController extends Controller
      */
     private function getPatient(): ?Patient
     {
-        $user = Auth::user();
-        return Patient::where('user_id', $user->id)->first();
+        $userId = Auth::id();
+        return $userId ? Patient::where('user_id', $userId)->first() : null;
     }
 }

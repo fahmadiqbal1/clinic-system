@@ -85,6 +85,7 @@ Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology|Receptionist')->grou
 Route::middleware('role:Owner')->group(function () {
     Route::post('/procurement/{procurementRequest}/approve', [ProcurementApprovalController::class, 'approve'])->name('procurement.approve');
     Route::post('/procurement/{procurementRequest}/reject', [ProcurementApprovalController::class, 'reject'])->name('procurement.reject');
+    Route::post('/procurement/bulk-approve', [ProcurementApprovalController::class, 'bulkApprove'])->name('procurement.bulk-approve');
 });
 
 Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology')->group(function () {
@@ -98,6 +99,7 @@ Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology')->group(function ()
 });
 
 // ── Notifications (all authenticated users) ──
+Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
 Route::get('/notifications/unread', [NotificationController::class, 'unread'])->name('notifications.unread');
 Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');
@@ -105,8 +107,14 @@ Route::post('/notifications/mark-all-read', [NotificationController::class, 'mar
 // ── MedGemma AI Analysis (with rate limiting) ──
 Route::middleware(['role:Doctor', 'throttle:ai-analysis'])->group(function () {
     Route::post('/ai-analysis/consultation/{patient}', [AiAnalysisController::class, 'analyseConsultation'])->name('ai-analysis.consultation');
+    Route::post('/ai-analysis/chat/{patient}', [AiAnalysisController::class, 'quickChat'])->name('ai-analysis.quick-chat');
     Route::get('/ai-analysis/patient/{patient}', [AiAnalysisController::class, 'patientAnalyses'])->name('ai-analysis.patient');
 });
+
+// Status check for polling (Doctor + Lab + Radiology)
+Route::middleware('role:Doctor|Laboratory|Radiology')
+    ->get('/ai-analysis/{analysis}/status', [AiAnalysisController::class, 'statusCheck'])
+    ->name('ai-analysis.status-check');
 
 Route::middleware(['role:Laboratory', 'throttle:ai-analysis'])->group(function () {
     Route::post('/ai-analysis/lab/{invoice}', [AiAnalysisController::class, 'analyseLab'])->name('ai-analysis.lab');

@@ -57,6 +57,14 @@ class ConsultationController extends Controller
             ->latest()
             ->get();
 
+        // Previous completed visits (excluding current open visit)
+        $previousVisits = \App\Models\Visit::where('patient_id', $patient->id)
+            ->where('status', 'completed')
+            ->with(['doctor', 'prescriptions.items', 'invoices.items.serviceCatalog'])
+            ->latest('completed_at')
+            ->limit(10)
+            ->get();
+
         return view('doctor.consultation.show', [
             'patient' => $patient,
             'latestVitals' => $latestVitals,
@@ -64,6 +72,7 @@ class ConsultationController extends Controller
             'invoices' => $invoices,
             'serviceCatalog' => $serviceCatalog,
             'aiAnalyses' => $aiAnalyses,
+            'previousVisits' => $previousVisits,
         ]);
     }
 

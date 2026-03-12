@@ -2,21 +2,37 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
 
 class NotificationController extends Controller
 {
+    /**
+     * Show paginated notification history for the current user.
+     */
+    public function index(): View
+    {
+        /** @var User $user */
+        $user          = Auth::user();
+        $notifications = $user->notifications()->latest()->paginate(25);
+
+        return view('notifications.index', compact('notifications'));
+    }
+
     /**
      * Return unread notifications as JSON (for AJAX polling).
      */
     public function unread(): JsonResponse
     {
-        $notifications = Auth::user()->unreadNotifications->take(10);
+        /** @var User $user */
+        $user          = Auth::user();
+        $notifications = $user->unreadNotifications->take(10);
 
         return response()->json([
-            'count' => Auth::user()->unreadNotifications->count(),
+            'count' => $user->unreadNotifications->count(),
             'notifications' => $notifications->map(function ($n) {
                 return [
                     'id' => $n->id,
@@ -35,9 +51,16 @@ class NotificationController extends Controller
     /**
      * Mark a single notification as read.
      */
-    public function markRead(string $id)
+    public function markRead(string $id): JsonResponse
     {
-        $notification = Auth::user()->notifications->find($id);
+        /** @var User $user */
+        $user         = Auth::user();
+        $notification = $user->notifications->find($id);
+
+        if (!$notification) {
+            return response()->json(['ok' => false], 404);
+        }
+
         $notification->markAsRead();
 
         return response()->json(['ok' => true]);
@@ -48,7 +71,9 @@ class NotificationController extends Controller
      */
     public function markAllRead(): RedirectResponse
     {
-        Auth::user()->unreadNotifications->markAsRead();
+        /** @var User $user */
+        $user = Auth::user();
+        $user->unreadNotifications->markAsRead();
 
         return redirect()->back()->with('success', 'All notifications marked as read.');
     }

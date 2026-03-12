@@ -217,6 +217,147 @@ cloudflared tunnel --url http://localhost:11434</pre>
             </div>
         </div>
 
+        {{-- ── Interactive Cloudflare Tunnel Setup Wizard ── --}}
+        <div class="mt-4" id="tunnelWizardWrap">
+            <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-2"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#tunnelWizard"
+                    aria-expanded="false"
+                    id="tunnelWizardToggle">
+                <i class="bi bi-magic me-1"></i>
+                Step-by-Step: Connect your local Ollama via Cloudflare Tunnel
+                <i class="bi bi-chevron-down ms-auto" id="tunnelWizardChevron"></i>
+            </button>
+
+            <div class="collapse mt-3" id="tunnelWizard">
+                <div class="border rounded-3 p-4" style="background:var(--glass-bg,#f8f9fa);">
+                    <p class="mb-3 text-muted small">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Follow these steps on your <strong>local Windows PC</strong> (where Ollama is installed),
+                        then paste the URL into the field above.
+                    </p>
+
+                    {{-- Step list --}}
+                    <div id="wizardSteps">
+
+                        {{-- Step 1: Download cloudflared --}}
+                        <div class="wizard-step d-flex gap-3 mb-4" id="wstep-1">
+                            <div class="flex-shrink-0">
+                                <div class="wizard-circle" id="wcirc-1">1</div>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">Download <code>cloudflared</code></div>
+                                <p class="small text-muted mb-2">Choose your platform and download the binary.</p>
+                                <div class="d-flex flex-wrap gap-2" id="wstep1-btns">
+                                    <a id="dl-windows"
+                                       href="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+                                       class="btn btn-sm btn-outline-secondary"
+                                       download>
+                                        <i class="bi bi-windows me-1"></i>Windows (.exe)
+                                    </a>
+                                    <a id="dl-linux"
+                                       href="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+                                       class="btn btn-sm btn-outline-secondary"
+                                       download>
+                                        <i class="bi bi-terminal me-1"></i>Linux
+                                    </a>
+                                    <a id="dl-mac"
+                                       href="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz"
+                                       class="btn btn-sm btn-outline-secondary"
+                                       download>
+                                        <i class="bi bi-apple me-1"></i>macOS
+                                    </a>
+                                </div>
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-success" onclick="wizardComplete(1)">
+                                        <i class="bi bi-check me-1"></i>Done, I have cloudflared
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Step 2: Run tunnel --}}
+                        <div class="wizard-step d-flex gap-3 mb-4 opacity-50" id="wstep-2">
+                            <div class="flex-shrink-0">
+                                <div class="wizard-circle" id="wcirc-2">2</div>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">Start the tunnel</div>
+                                <p class="small text-muted mb-2">
+                                    Open a terminal on your PC and run this command.
+                                    <strong>Keep it running</strong> while you use AI features.
+                                </p>
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    <code class="flex-grow-1 p-2 rounded bg-dark text-light d-block small" id="tunnel-cmd">
+                                        cloudflared tunnel --url http://localhost:11434
+                                    </code>
+                                    <button class="btn btn-sm btn-outline-light bg-dark"
+                                            onclick="copyToClipboard('cloudflared tunnel --url http://localhost:11434', this)"
+                                            title="Copy command">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <p class="small text-muted mb-2">
+                                    Wait for a line like:<br>
+                                    <code>https://abc123-xyz.trycloudflare.com</code>
+                                </p>
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-success" onclick="wizardComplete(2)">
+                                        <i class="bi bi-check me-1"></i>Tunnel is running, I see the URL
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Step 3: Paste URL --}}
+                        <div class="wizard-step d-flex gap-3 mb-4 opacity-50" id="wstep-3">
+                            <div class="flex-shrink-0">
+                                <div class="wizard-circle" id="wcirc-3">3</div>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">Paste the tunnel URL into API Base URL</div>
+                                <p class="small text-muted mb-2">
+                                    Copy the <code>https://xxxx.trycloudflare.com</code> URL from your terminal
+                                    and paste it into the <em>API Base URL</em> field above, then save.
+                                </p>
+                                <button class="btn btn-sm btn-outline-primary" onclick="focusApiUrl()">
+                                    <i class="bi bi-arrow-up me-1"></i>Jump to API Base URL field
+                                </button>
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-success" onclick="wizardComplete(3)">
+                                        <i class="bi bi-check me-1"></i>URL pasted and settings saved
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- Step 4: Test --}}
+                        <div class="wizard-step d-flex gap-3 mb-2 opacity-50" id="wstep-4">
+                            <div class="flex-shrink-0">
+                                <div class="wizard-circle" id="wcirc-4">4</div>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold mb-1">Test the connection</div>
+                                <p class="small text-muted mb-2">
+                                    Click the button below to verify the server can reach Ollama through the tunnel.
+                                </p>
+                                <button class="btn btn-sm btn-outline-success" onclick="triggerServerTest()">
+                                    <i class="bi bi-lightning me-1"></i>Run connection test now
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>{{-- /wizardSteps --}}
+
+                    <div id="wizardDone" class="d-none alert alert-success mt-3 mb-0">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        <strong>All set!</strong> Your local Ollama is now bridged to this server. AI analysis features are ready.
+                    </div>
+                </div>
+            </div>
+        </div>{{-- /tunnelWizardWrap --}}
+
         {{-- Information box about what MedGemma does --}}
         <div class="alert alert-info mt-4 mb-0" role="alert">
             <h6 class="alert-heading"><i class="bi bi-info-circle me-1"></i>About MedGemma AI</h6>
@@ -410,5 +551,105 @@ cloudflared tunnel --url http://localhost:11434</pre>
 <style>
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { display: inline-block; animation: spin 1s linear infinite; }
+
+/* Tunnel wizard */
+.wizard-circle {
+    width: 2rem; height: 2rem; border-radius: 50%;
+    background: var(--bs-primary, #0d6efd); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: .85rem; flex-shrink: 0;
+    transition: background .25s;
+}
+.wizard-circle.done {
+    background: var(--bs-success, #198754);
+}
+.wizard-step { transition: opacity .3s; }
+.wizard-step.active { opacity: 1 !important; }
 </style>
+@endpush
+
+@push('scripts')
+<script>
+(function() {
+    // Auto-detect platform and highlight the relevant download button
+    const ua = navigator.userAgent.toLowerCase();
+    const platformId = ua.includes('mac') ? 'dl-mac' : (ua.includes('linux') ? 'dl-linux' : 'dl-windows');
+    const dlBtn = document.getElementById(platformId);
+    if (dlBtn) {
+        dlBtn.classList.remove('btn-outline-secondary');
+        dlBtn.classList.add('btn-primary');
+    }
+
+    // Chevron rotation on accordion toggle
+    const wizardEl = document.getElementById('tunnelWizard');
+    const chevron  = document.getElementById('tunnelWizardChevron');
+    if (wizardEl && chevron) {
+        wizardEl.addEventListener('show.bs.collapse',  () => chevron.style.transform = 'rotate(180deg)');
+        wizardEl.addEventListener('hide.bs.collapse',  () => chevron.style.transform = 'rotate(0deg)');
+        // Auto-expand if provider is ollama (likely needs tunnel)
+        const ollamaRadio = document.getElementById('ps_provider_ollama');
+        if (ollamaRadio && ollamaRadio.checked) {
+            new bootstrap.Collapse(wizardEl, { toggle: false }).show();
+        }
+    }
+})();
+
+// Step progression
+let currentStep = 1;
+
+function wizardComplete(step) {
+    const circle = document.getElementById('wcirc-' + step);
+    if (circle) {
+        circle.classList.add('done');
+        circle.innerHTML = '<i class="bi bi-check"></i>';
+    }
+    // Unlock next step
+    const next = document.getElementById('wstep-' + (step + 1));
+    if (next) {
+        next.classList.remove('opacity-50');
+        next.classList.add('active');
+    } else {
+        // All steps done
+        document.getElementById('wizardDone')?.classList.remove('d-none');
+    }
+    currentStep = step + 1;
+}
+
+function focusApiUrl() {
+    const field = document.getElementById('api_url');
+    if (field) {
+        field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        field.focus();
+        field.select();
+    }
+}
+
+function triggerServerTest() {
+    const btn = document.getElementById('test-btn');
+    if (btn && !btn.disabled) {
+        btn.click();
+        wizardComplete(4);
+    } else {
+        alert('Save your settings first, then click Test Connection.');
+    }
+}
+
+function copyToClipboard(text, btn) {
+    navigator.clipboard?.writeText(text).then(() => {
+        const icon = btn.querySelector('i');
+        if (icon) {
+            icon.className = 'bi bi-clipboard-check';
+            setTimeout(() => { icon.className = 'bi bi-clipboard'; }, 2000);
+        }
+    }).catch(() => {
+        // Fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    });
+}
+</script>
 @endpush

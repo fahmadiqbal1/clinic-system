@@ -16,6 +16,9 @@
         </div>
         <div class="d-flex gap-2 no-print">
             <button onclick="window.print()" class="btn btn-outline-info btn-sm" data-no-disable="true"><i class="bi bi-printer me-1"></i>Print</button>
+            @if($invoice->isWorkCompleted() || $invoice->status === 'completed')
+                <a href="{{ route('laboratory.invoices.report-pdf', $invoice) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF Report</a>
+            @endif
             <a href="{{ route('laboratory.invoices.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Tests</a>
         </div>
     </div>

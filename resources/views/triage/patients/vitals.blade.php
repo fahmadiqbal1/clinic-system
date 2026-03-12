@@ -288,4 +288,97 @@
         </div>
     </div>
 </div>
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const form = document.querySelector('form[action*="save-vitals"]');
+    if (!form) return;
+
+    // Modal HTML
+    const modal = document.createElement('div');
+    modal.innerHTML = `
+        <div id="criticalVitalsModal" class="modal fade" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-danger">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2"></i>Critical Values Detected</h5>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-2">The following critical vital sign values were entered:</p>
+                        <ul id="criticalValuesList" class="mb-3 text-danger fw-semibold"></ul>
+                        <p class="mb-0">Do you want to save these values and send the patient to the doctor?</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Go Back & Review</button>
+                        <button type="button" id="confirmCriticalSave" class="btn btn-danger">Yes, Save & Proceed</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+
+    const bsModal = new bootstrap.Modal(document.getElementById('criticalVitalsModal'));
+
+    document.getElementById('confirmCriticalSave').addEventListener('click', function () {
+        bsModal.hide();
+        form.dataset.confirmed = '1';
+        form.requestSubmit();
+    });
+
+    form.addEventListener('submit', function (e) {
+        if (form.dataset.confirmed === '1') return;
+
+        const alerts = [];
+
+        // Blood pressure: "systolic/diastolic"
+        const bpField = form.querySelector('[name="blood_pressure"]');
+        if (bpField && bpField.value) {
+            const parts = bpField.value.split('/');
+            const systolic = parseInt(parts[0]);
+            const diastolic = parseInt(parts[1]);
+            if (!isNaN(systolic)) {
+                if (systolic > 180) alerts.push(`Blood pressure systolic ${systolic} mmHg — severely elevated (>180)`);
+                if (systolic < 90) alerts.push(`Blood pressure systolic ${systolic} mmHg — hypotension (<90)`);
+            }
+            if (!isNaN(diastolic) && diastolic > 120) alerts.push(`Blood pressure diastolic ${diastolic} mmHg — severely elevated (>120)`);
+        }
+
+        // Oxygen saturation
+        const o2Field = form.querySelector('[name="oxygen_saturation"]');
+        if (o2Field && o2Field.value !== '') {
+            const o2 = parseFloat(o2Field.value);
+            if (!isNaN(o2) && o2 < 92) alerts.push(`Oxygen saturation ${o2}% — critically low (<92%)`);
+        }
+
+        // Heart rate / pulse
+        const hrField = form.querySelector('[name="heart_rate"]');
+        if (hrField && hrField.value !== '') {
+            const hr = parseInt(hrField.value);
+            if (!isNaN(hr)) {
+                if (hr < 50) alerts.push(`Heart rate ${hr} bpm — bradycardia (<50)`);
+                if (hr > 120) alerts.push(`Heart rate ${hr} bpm — tachycardia (>120)`);
+            }
+        }
+
+        // Temperature
+        const tempField = form.querySelector('[name="temperature"]');
+        if (tempField && tempField.value !== '') {
+            const temp = parseFloat(tempField.value);
+            if (!isNaN(temp)) {
+                if (temp > 39) alerts.push(`Temperature ${temp}°C — fever (>39°C)`);
+                if (temp < 36) alerts.push(`Temperature ${temp}°C — hypothermia (<36°C)`);
+            }
+        }
+
+        if (alerts.length > 0) {
+            e.preventDefault();
+            const list = document.getElementById('criticalValuesList');
+            list.innerHTML = alerts.map(a => `<li>${a}</li>`).join('');
+            bsModal.show();
+        }
+    });
+});
+</script>
+@endpush
+
 @endsection

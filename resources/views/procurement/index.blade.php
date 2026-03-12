@@ -13,6 +13,16 @@
         @endcan
     </div>
 
+    @can('approve', App\Models\ProcurementRequest::class)
+    <form action="{{ route('procurement.bulk-approve') }}" method="POST" id="bulkApproveForm">
+        @csrf
+        <div id="bulkBar" style="display:none;" class="alert d-flex align-items-center gap-3 mb-3 fade-in" style="background:rgba(var(--accent-success-rgb),0.12); border:1px solid var(--accent-success); border-radius:var(--radius-md);">
+            <span id="bulkCount" class="fw-semibold" style="color:var(--accent-success);">0 selected</span>
+            <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Approve all selected pending requests?')"><i class="bi bi-check-all me-1"></i>Bulk Approve Selected</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelection">Clear</button>
+        </div>
+    @endcan
+
     @if (session('success'))
         <div class="alert alert-success alert-dismissible fade show">
             {{ session('success') }}
@@ -31,6 +41,9 @@
                 <table class="table table-hover mb-0">
                     <thead>
                         <tr>
+                            @can('approve', App\Models\ProcurementRequest::class)
+                            <th style="width:36px;"><input type="checkbox" id="selectAll" title="Select all pending"></th>
+                            @endcan
                             <th class="sortable-th">ID</th>
                             <th class="sortable-th">Department</th>
                             <th class="sortable-th">Type</th>
@@ -44,6 +57,13 @@
                     <tbody>
                         @foreach ($requests as $request)
                             <tr>
+                                @can('approve', App\Models\ProcurementRequest::class)
+                                <td>
+                                    @if($request->status === 'pending' && !$request->isChangeRequest())
+                                        <input type="checkbox" name="ids[]" value="{{ $request->id }}" class="bulk-checkbox">
+                                    @endif
+                                </td>
+                                @endcan
                                 <td><span class="code-tag">#{{ $request->id }}</span></td>
                                 <td>{{ ucfirst($request->department) }}</td>
                                 <td>
@@ -78,5 +98,46 @@
             </div>
         @endif
     </div>
+    @can('approve', App\Models\ProcurementRequest::class)
+    </form>
+    @endcan
 </div>
+
+@can('approve', App\Models\ProcurementRequest::class)
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const checkboxes = document.querySelectorAll('.bulk-checkbox');
+    const selectAll = document.getElementById('selectAll');
+    const bulkBar = document.getElementById('bulkBar');
+    const bulkCount = document.getElementById('bulkCount');
+    const clearBtn = document.getElementById('clearSelection');
+
+    function updateBar() {
+        const checked = document.querySelectorAll('.bulk-checkbox:checked').length;
+        bulkBar.style.display = checked > 0 ? 'flex' : 'none';
+        bulkCount.textContent = checked + ' selected';
+        if (selectAll) selectAll.indeterminate = checked > 0 && checked < checkboxes.length;
+    }
+
+    checkboxes.forEach(cb => cb.addEventListener('change', updateBar));
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            checkboxes.forEach(cb => cb.checked = this.checked);
+            updateBar();
+        });
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function () {
+            checkboxes.forEach(cb => cb.checked = false);
+            if (selectAll) selectAll.checked = false;
+            updateBar();
+        });
+    }
+});
+</script>
+@endpush
+@endcan
 @endsection

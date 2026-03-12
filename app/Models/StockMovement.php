@@ -16,14 +16,19 @@ class StockMovement extends Model
         'type',
         'quantity',
         'unit_cost',
+        'batch_number',
+        'expiry_date',
+        'manufacturer',
         'reference_type',
         'reference_id',
+        'notes',
         'created_by',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'unit_cost' => 'decimal:2',
+        'expiry_date' => 'date',
     ];
 
     public function inventoryItem(): BelongsTo

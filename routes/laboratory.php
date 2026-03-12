@@ -28,6 +28,7 @@ Route::middleware('role:Laboratory')->group(function () {
     Route::post('/laboratory/invoices/{invoice}/save-report', [LaboratoryInvoiceController::class, 'saveReport'])->name('laboratory.invoices.save-report');
     Route::post('/laboratory/invoices/{invoice}/save-results', [LaboratoryInvoiceController::class, 'saveResults'])->name('laboratory.invoices.save-results');
     Route::post('/laboratory/invoices/{invoice}/complete', [LaboratoryInvoiceController::class, 'markComplete'])->name('laboratory.invoices.mark-complete');
+    Route::get('/laboratory/invoices/{invoice}/report-pdf', [LaboratoryInvoiceController::class, 'reportPdf'])->name('laboratory.invoices.report-pdf');
 });
 
 // Lab + Owner shared routes

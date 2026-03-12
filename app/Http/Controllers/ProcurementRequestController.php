@@ -89,6 +89,7 @@ class ProcurementRequestController extends Controller
             $rules['items'] = 'required|array|min:1';
             $rules['items.*.inventory_item_id'] = 'required|exists:inventory_items,id';
             $rules['items.*.quantity_requested'] = 'required|integer|min:1';
+            $rules['items.*.quoted_unit_price'] = 'nullable|numeric|min:0';
         } elseif ($requestType === 'service') {
             // Service procurements are work orders: item name, quantity, unit_price only
             $rules['items'] = 'required|array|min:1';
@@ -119,6 +120,9 @@ class ProcurementRequestController extends Controller
                 $proc->items()->create([
                     'inventory_item_id' => $item['inventory_item_id'],
                     'quantity_requested' => $item['quantity_requested'],
+                    'quoted_unit_price' => isset($item['quoted_unit_price']) && $item['quoted_unit_price'] > 0
+                        ? (float) $item['quoted_unit_price']
+                        : null,
                 ]);
             }
         } elseif ($requestType === 'service') {

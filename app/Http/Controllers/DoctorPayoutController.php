@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DoctorPayout;
 use App\Models\RevenueLedger;
 use App\Models\User;
+use App\Notifications\PayoutDecision;
 use App\Services\DoctorPayoutService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -194,6 +195,10 @@ class DoctorPayoutController extends Controller
 
         try {
             $this->payoutService->approvePayout($payout, Auth::user());
+
+            // Notify the staff member
+            $payout->doctor?->notify(new PayoutDecision($payout, PayoutDecision::DECISION_APPROVED));
+
             return redirect()->route('reception.payouts.show', $payout)->with('success', 'Payout approved successfully');
         } catch (\InvalidArgumentException $e) {
             return redirect()->back()->withError('Error: ' . $e->getMessage());
@@ -212,7 +217,12 @@ class DoctorPayoutController extends Controller
         ]);
 
         try {
-            $this->payoutService->rejectPayout($payout, Auth::user(), $validated['reason'] ?? null);
+            $reason = $validated['reason'] ?? null;
+            $this->payoutService->rejectPayout($payout, Auth::user(), $reason);
+
+            // Notify the staff member
+            $payout->doctor?->notify(new PayoutDecision($payout, PayoutDecision::DECISION_REJECTED, $reason));
+
             return redirect()->route('reception.payouts.show', $payout)->with('success', 'Payout rejected — commission entries released');
         } catch (\InvalidArgumentException $e) {
             return redirect()->back()->withError('Error: ' . $e->getMessage());

@@ -131,13 +131,30 @@
 
     {{-- Consultation Notes --}}
     <div class="card mb-4 fade-in delay-2">
-        <div class="card-header"><i class="bi bi-pencil-square me-2" style="color:var(--accent-warning);"></i>Consultation Notes</div>
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-pencil-square me-2" style="color:var(--accent-warning);"></i>Consultation Notes</span>
+            @if($patient->status === 'with_doctor')
+                <button type="button" id="soapToggle" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-layout-text-sidebar me-1"></i>SOAP Template
+                </button>
+            @endif
+        </div>
         <div class="card-body">
             @if($patient->status === 'with_doctor')
+                <div id="soapPanel" class="mb-3 p-3 rounded" style="display:none; background:var(--glass-bg); border:1px solid var(--glass-border);">
+                    <p class="small fw-semibold mb-2" style="color:var(--text-muted);">Click a section to insert at cursor position:</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm soap-insert" data-text="S - Subjective:&#10;Chief Complaint: &#10;History of Present Illness: &#10;&#10;">Subjective (S)</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm soap-insert" data-text="O - Objective:&#10;Vital Signs: BP:  / , HR:  bpm, Temp:  °C, SpO₂:  %&#10;Physical Exam: &#10;&#10;">Objective (O)</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm soap-insert" data-text="A - Assessment:&#10;Diagnosis: &#10;Differential Diagnoses: &#10;&#10;">Assessment (A)</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm soap-insert" data-text="P - Plan:&#10;Investigations: &#10;Treatment: &#10;Follow-up: &#10;&#10;">Plan (P)</button>
+                        <button type="button" class="btn btn-outline-info btn-sm soap-insert" data-text="S - Subjective:&#10;Chief Complaint: &#10;History of Present Illness: &#10;&#10;O - Objective:&#10;Vital Signs: BP:  / , HR:  bpm, Temp:  °C, SpO₂:  %&#10;Physical Exam: &#10;&#10;A - Assessment:&#10;Diagnosis: &#10;Differential Diagnoses: &#10;&#10;P - Plan:&#10;Investigations: &#10;Treatment: &#10;Follow-up: &#10;&#10;">Full SOAP</button>
+                    </div>
+                </div>
                 <form action="{{ route('doctor.consultation.save-notes', $patient) }}" method="POST">
                     @csrf
                     <div class="mb-3">
-                        <textarea name="consultation_notes" class="form-control" rows="5" placeholder="Enter consultation notes..." required minlength="3">{{ old('consultation_notes', $patient->consultation_notes) }}</textarea>
+                        <textarea id="consultationNotesTA" name="consultation_notes" class="form-control" rows="8" placeholder="Enter consultation notes..." required minlength="3">{{ old('consultation_notes', $patient->consultation_notes) }}</textarea>
                         @error('consultation_notes')
                             <div class="invalid-feedback d-block">{{ $message }}</div>
                         @enderror
@@ -588,6 +605,79 @@
     @endif
     @endif
 
+    {{-- Previous Visits --}}
+    @if($previousVisits->count() > 0)
+    <div class="card mb-4 fade-in delay-4">
+        <div class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#prevVisitsCollapse">
+            <span><i class="bi bi-clock-history me-2" style="color:var(--accent-secondary);"></i>Previous Visits <span class="badge bg-secondary ms-1">{{ $previousVisits->count() }}</span></span>
+            <i class="bi bi-chevron-down" id="prevVisitsChevron"></i>
+        </div>
+        <div id="prevVisitsCollapse" class="collapse">
+            <div class="card-body p-0">
+                <div class="accordion accordion-flush" id="prevVisitsAccordion">
+                    @foreach($previousVisits as $vi => $visit)
+                    <div class="accordion-item" style="background:var(--glass-bg); border-color:var(--glass-border);">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#visit-{{ $visit->id }}"
+                                    style="background:var(--glass-bg); color:var(--text-primary); font-size:0.9rem;">
+                                <span class="me-2"><i class="bi bi-calendar3 me-1" style="color:var(--accent-secondary);"></i>{{ $visit->completed_at?->format('d M Y') ?? $visit->created_at->format('d M Y') }}</span>
+                                @if($visit->doctor)
+                                    <span class="me-2" style="color:var(--text-muted); font-size:0.85rem;">Dr. {{ $visit->doctor->name }}</span>
+                                @endif
+                                @if($visit->prescriptions->count() > 0)
+                                    <span class="badge-glass ms-auto me-2" style="font-size:0.75rem;">{{ $visit->prescriptions->count() }} Rx</span>
+                                @endif
+                            </button>
+                        </h2>
+                        <div id="visit-{{ $visit->id }}" class="accordion-collapse collapse" data-bs-parent="#prevVisitsAccordion">
+                            <div class="accordion-body">
+                                @if($visit->consultation_notes)
+                                    <div class="mb-3">
+                                        <small class="fw-semibold d-block mb-1" style="color:var(--text-muted);">Consultation Notes:</small>
+                                        <div class="p-2 rounded" style="background:var(--glass-bg); border:1px solid var(--glass-border); white-space:pre-wrap; font-size:0.875rem;">{!! e($visit->consultation_notes) !!}</div>
+                                    </div>
+                                @endif
+
+                                @if($visit->prescriptions->count() > 0)
+                                    <div class="mb-3">
+                                        <small class="fw-semibold d-block mb-1" style="color:var(--text-muted);">Prescriptions:</small>
+                                        @foreach($visit->prescriptions as $rx)
+                                            <div class="mb-1 p-2 rounded" style="background:var(--glass-bg); border:1px solid var(--glass-border);">
+                                                @foreach($rx->items as $rxItem)
+                                                    <span class="badge-glass me-1" style="font-size:0.8rem;">{{ $rxItem->medicine_name }} {{ $rxItem->dosage }}</span>
+                                                @endforeach
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
+
+                                @if($visit->invoices->count() > 0)
+                                    <div>
+                                        <small class="fw-semibold d-block mb-1" style="color:var(--text-muted);">Services Ordered:</small>
+                                        <div class="d-flex flex-wrap gap-1">
+                                            @foreach($visit->invoices as $vinv)
+                                                <span class="badge-glass" style="font-size:0.8rem;">
+                                                    {{ ucfirst($vinv->department) }}: {{ $vinv->service_name }}
+                                                </span>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endif
+
+                                @if(!$visit->consultation_notes && $visit->prescriptions->count() === 0 && $visit->invoices->count() === 0)
+                                    <p class="mb-0" style="color:var(--text-muted); font-size:0.875rem;">No detailed records for this visit.</p>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     {{-- MedGemma AI Second Opinion --}}
     @php
         $hasVitals = !empty($latestVitals);
@@ -618,6 +708,7 @@
         'formAction' => route('ai-analysis.consultation', $patient),
         'contextLabel' => 'consultation',
         'readinessNote' => $consultReadinessNote,
+        'quickChatAction' => route('ai-analysis.quick-chat', $patient),
     ])
 
     {{-- Complete / Back --}}
@@ -634,4 +725,48 @@
         <a href="{{ route('doctor.patients.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
     </div>
 </div>
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // SOAP template toggle
+    const soapToggle = document.getElementById('soapToggle');
+    const soapPanel = document.getElementById('soapPanel');
+    const notesTA = document.getElementById('consultationNotesTA');
+
+    if (soapToggle && soapPanel) {
+        soapToggle.addEventListener('click', function () {
+            soapPanel.style.display = soapPanel.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+
+    if (notesTA) {
+        document.querySelectorAll('.soap-insert').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const text = btn.dataset.text;
+                const start = notesTA.selectionStart;
+                const end = notesTA.selectionEnd;
+                const before = notesTA.value.substring(0, start);
+                const after = notesTA.value.substring(end);
+                notesTA.value = before + text + after;
+                notesTA.selectionStart = notesTA.selectionEnd = start + text.length;
+                notesTA.focus();
+            });
+        });
+    }
+
+    // Previous visits chevron rotation
+    const prevCollapse = document.getElementById('prevVisitsCollapse');
+    const prevChevron = document.getElementById('prevVisitsChevron');
+    if (prevCollapse && prevChevron) {
+        prevCollapse.addEventListener('show.bs.collapse', function () {
+            prevChevron.classList.replace('bi-chevron-down', 'bi-chevron-up');
+        });
+        prevCollapse.addEventListener('hide.bs.collapse', function () {
+            prevChevron.classList.replace('bi-chevron-up', 'bi-chevron-down');
+        });
+    }
+});
+</script>
+@endpush
 @endsection

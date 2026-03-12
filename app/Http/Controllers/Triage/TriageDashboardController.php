@@ -26,11 +26,21 @@ class TriageDashboardController extends Controller
             ->limit(10)
             ->get();
 
-        // Currently in triage
+        // Currently in triage — sort by priority (emergency → urgent → routine) then by time
         $inTriagePatients = Patient::where('status', 'triage')
+            ->with(['triageVitals' => fn ($q) => $q->latest()->limit(1)])
             ->latest('updated_at')
             ->limit(10)
-            ->get();
+            ->get()
+            ->sortBy(function ($patient) {
+                $priority = $patient->triageVitals->first()?->priority ?? 'routine';
+                return match ($priority) {
+                    'emergency' => 0,
+                    'urgent'    => 1,
+                    default     => 2,
+                };
+            })
+            ->values();
 
         return view('triage.dashboard', [
             'registeredCount' => $registeredCount,

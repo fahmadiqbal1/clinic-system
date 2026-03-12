@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Jobs\AnalyseConsultationJob;
 use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\Patient;
 use App\Models\PlatformSetting;
-use App\Jobs\AnalyseConsultationJob;
+use App\Models\User;
+use App\Notifications\AiAnalysisCompleted;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -47,23 +49,55 @@ class MedGemmaService
     }
 
     /**
-     * Queue a consultation analysis (async).
-     * 
-     * Creates a pending AiAnalysis record and dispatches a job
-     * to process it asynchronously, preventing HTTP timeouts.
+     * Check whether the configured AI endpoint is currently reachable.
+     *
+     * Uses a 3-second timeout against the Ollama /api/version health endpoint
+     * (or a generic GET of the configured base URL for Hugging Face).
+     * Returns false on any connection error — never throws.
      */
-    public function analyseConsultation(Patient $patient, int $requestedBy): AiAnalysis
+    public function isReachable(): bool
+    {
+        try {
+            $pingUrl = $this->provider === 'ollama'
+                ? rtrim($this->apiUrl, '/') . '/api/version'
+                : rtrim($this->apiUrl, '/');
+
+            $headers = [];
+            if ($this->provider === 'ollama') {
+                $headers['bypass-tunnel-reminder'] = 'true';
+            }
+
+            $response = Http::withHeaders($headers)->timeout(3)->get($pingUrl);
+            return $response->successful() || $response->status() === 404;
+        } catch (\Exception) {
+            return false;
+        }
+    }
+
+    /**
+     * Queue a consultation analysis (async).
+     *
+     * If the AI endpoint is unreachable, marks the analysis as offline_pending
+     * and notifies the requester — the scheduler retries every 5 minutes.
+     */
+    public function analyseConsultation(Patient $patient, int $requestedBy, ?string $customQuestion = null): AiAnalysis
     {
         $analysis = AiAnalysis::create([
-            'patient_id' => $patient->id,
-            'invoice_id' => null,
-            'requested_by' => $requestedBy,
-            'context_type' => 'consultation',
-            'prompt_summary' => "Consultation analysis for patient: {$patient->full_name}",
-            'status' => 'pending',
+            'patient_id'     => $patient->id,
+            'invoice_id'     => null,
+            'requested_by'   => $requestedBy,
+            'context_type'   => 'consultation',
+            'prompt_summary' => $customQuestion
+                ? "Quick question: {$customQuestion}"
+                : "Consultation analysis for patient: {$patient->full_name}",
+            'status'         => 'pending',
         ]);
 
-        AnalyseConsultationJob::dispatch($analysis, 'consultation');
+        if (!$this->isReachable()) {
+            return $this->markOfflinePending($analysis, $requestedBy);
+        }
+
+        AnalyseConsultationJob::dispatch($analysis, 'consultation', null, $customQuestion);
 
         return $analysis;
     }
@@ -74,13 +108,17 @@ class MedGemmaService
     public function analyseLab(Invoice $invoice, int $requestedBy): AiAnalysis
     {
         $analysis = AiAnalysis::create([
-            'patient_id' => $invoice->patient_id,
-            'invoice_id' => $invoice->id,
-            'requested_by' => $requestedBy,
-            'context_type' => 'lab',
+            'patient_id'     => $invoice->patient_id,
+            'invoice_id'     => $invoice->id,
+            'requested_by'   => $requestedBy,
+            'context_type'   => 'lab',
             'prompt_summary' => "Lab analysis for invoice #{$invoice->id}",
-            'status' => 'pending',
+            'status'         => 'pending',
         ]);
+
+        if (!$this->isReachable()) {
+            return $this->markOfflinePending($analysis, $requestedBy);
+        }
 
         AnalyseConsultationJob::dispatch($analysis, 'lab', $invoice->id);
 
@@ -93,13 +131,17 @@ class MedGemmaService
     public function analyseRadiology(Invoice $invoice, int $requestedBy): AiAnalysis
     {
         $analysis = AiAnalysis::create([
-            'patient_id' => $invoice->patient_id,
-            'invoice_id' => $invoice->id,
-            'requested_by' => $requestedBy,
-            'context_type' => 'radiology',
+            'patient_id'     => $invoice->patient_id,
+            'invoice_id'     => $invoice->id,
+            'requested_by'   => $requestedBy,
+            'context_type'   => 'radiology',
             'prompt_summary' => "Radiology analysis for invoice #{$invoice->id}",
-            'status' => 'pending',
+            'status'         => 'pending',
         ]);
+
+        if (!$this->isReachable()) {
+            return $this->markOfflinePending($analysis, $requestedBy);
+        }
 
         AnalyseConsultationJob::dispatch($analysis, 'radiology', $invoice->id);
 
@@ -107,14 +149,37 @@ class MedGemmaService
     }
 
     /**
+     * Mark an analysis as offline_pending and immediately notify the requester.
+     */
+    private function markOfflinePending(AiAnalysis $analysis, int $requestedBy): AiAnalysis
+    {
+        $analysis->update([
+            'status'      => 'offline_pending',
+            'ai_response' => 'AI model is currently offline. Analysis will run automatically when your computer and tunnel are connected.',
+        ]);
+
+        /** @var User|null $requester */
+        $requester = User::find($requestedBy);
+        $requester?->notify(new AiAnalysisCompleted($analysis, offline: true));
+
+        return $analysis;
+    }
+
+    /**
      * Process consultation analysis (called by job).
      */
-    public function processConsultationAnalysis(AiAnalysis $analysis, Patient $patient): void
+    public function processConsultationAnalysis(AiAnalysis $analysis, Patient $patient, ?string $customQuestion = null): void
     {
         $patient->load(['triageVitals', 'prescriptions.items', 'invoices.items.serviceCatalog']);
 
         $latestVitals = $patient->triageVitals()->latest()->first();
         $prompt = $this->buildConsultationPrompt($patient, $latestVitals);
+
+        // Append custom question if provided (Quick Chat feature)
+        if ($customQuestion) {
+            $prompt .= "\n\n---\nDOCTOR'S SPECIFIC QUESTION:\n{$customQuestion}\n\nPlease answer this question directly, then provide any additional relevant observations.";
+        }
+
         $imageContents = $this->getPatientRadiologyImages($patient);
 
         $this->executeAnalysis($analysis, $prompt, $imageContents);

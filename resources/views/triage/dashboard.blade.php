@@ -128,15 +128,29 @@
                                 <tr>
                                     <th>#</th>
                                     <th>Patient Name</th>
+                                    <th>Priority</th>
                                     <th>Started</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @foreach($inTriagePatients as $patient)
+                                    @php
+                                        $triagePriority = $patient->triageVitals->first()?->priority ?? 'routine';
+                                        $priorityBadge = match($triagePriority) {
+                                            'emergency' => ['label' => 'Emergency', 'color' => 'var(--accent-danger)'],
+                                            'urgent'    => ['label' => 'Urgent',    'color' => 'var(--accent-warning)'],
+                                            default     => ['label' => 'Routine',   'color' => 'var(--accent-success)'],
+                                        };
+                                    @endphp
                                     <tr>
                                         <td style="color:var(--text-muted);">{{ $patient->id }}</td>
                                         <td class="fw-medium">{{ $patient->full_name }}</td>
+                                        <td>
+                                            <span class="badge-glass fw-semibold" style="background:rgba(0,0,0,0.1);color:{{ $priorityBadge['color'] }};">
+                                                {{ $priorityBadge['label'] }}
+                                            </span>
+                                        </td>
                                         <td>
                                             <span class="wait-timer fw-semibold" data-since="{{ ($patient->triage_started_at ?? $patient->updated_at)->toIso8601String() }}"></span>
                                         </td>

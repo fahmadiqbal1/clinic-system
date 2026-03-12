@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ProcurementRequest;
+use App\Notifications\ProcurementStatusUpdated;
 use App\Services\ProcurementService;
 use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -104,6 +105,11 @@ class ProcurementReceiptController extends Controller
             } else {
                 $procurementRequest->update(['received_at' => now()]);
             }
+
+            // Notify the requester that goods have been received
+            $procurementRequest->requester?->notify(
+                new ProcurementStatusUpdated($procurementRequest, ProcurementStatusUpdated::EVENT_RECEIVED)
+            );
 
             return redirect()->route('procurement.show', $procurementRequest)
                 ->with('success', 'Procurement received and stock updated.');

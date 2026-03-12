@@ -67,7 +67,8 @@
                     <thead>
                         <tr>
                             <th>Inventory Item</th>
-                            <th style="width: 150px;">Qty Requested</th>
+                            <th style="width: 140px;">Qty Requested</th>
+                            <th style="width: 160px;">Quoted Price ({{ currency_symbol() }}) <small class="text-muted fw-normal">optional</small></th>
                             <th style="width: 80px;"></th>
                         </tr>
                     </thead>
@@ -147,14 +148,27 @@ document.addEventListener('DOMContentLoaded', function() {
             <td>
                 <select name="items[${i}][inventory_item_id]" class="form-select" required>
                     <option value="">Select Item</option>
-                    ${inventoryItems.map(item => `<option value="${item.id}">${item.name} (${item.department}) - ${item.unit}</option>`).join('')}
+                    ${inventoryItems.map(item => `<option value="${item.id}" data-price="${item.purchase_price || ''}">${item.name} (${item.department}) - ${item.unit}</option>`).join('')}
                 </select>
             </td>
             <td><input type="number" name="items[${i}][quantity_requested]" class="form-control" min="1" value="1" required></td>
+            <td>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text">Rs.</span>
+                    <input type="number" name="items[${i}][quoted_unit_price]" class="form-control quoted-price" min="0" step="0.01" placeholder="0.00">
+                </div>
+            </td>
             <td><button type="button" class="btn btn-sm btn-outline-danger remove-row">✕</button></td>
         `;
         inventoryRows.appendChild(tr);
         tr.querySelector('.remove-row').addEventListener('click', () => tr.remove());
+        // Auto-fill price from item's purchase price when item selected
+        tr.querySelector('select').addEventListener('change', function() {
+            const priceInput = tr.querySelector('.quoted-price');
+            if (!priceInput.value) {
+                priceInput.value = this.selectedOptions[0]?.dataset.price || '';
+            }
+        });
     }
 
     function addServiceRow() {

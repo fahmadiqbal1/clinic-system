@@ -248,15 +248,16 @@
                                     <span class="dropdown-item text-muted text-center py-3" id="noNotifMsg"><i class="bi bi-check-circle me-1"></i>All caught up!</span>
                                 @endforelse
                                 </li>
-                                @if($unreadCount > 0)
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li>
-                                        <form action="/notifications/mark-all-read" method="POST" class="px-3 py-1">
+                                <li><hr class="dropdown-divider"></li>
+                                <li class="d-flex gap-2 px-3 py-1">
+                                    <a href="{{ route('notifications.index') }}" class="btn btn-sm btn-outline-secondary flex-fill">View All</a>
+                                    @if($unreadCount > 0)
+                                        <form action="/notifications/mark-all-read" method="POST" class="flex-fill">
                                             @csrf
-                                            <button type="submit" class="btn btn-sm btn-outline-primary w-100">Mark all as read</button>
+                                            <button type="submit" class="btn btn-sm btn-outline-primary w-100">Mark all read</button>
                                         </form>
-                                    </li>
-                                @endif
+                                    @endif
+                                </li>
                             </ul>
                         </li>
 

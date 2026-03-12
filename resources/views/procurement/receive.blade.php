@@ -33,35 +33,57 @@
         @csrf
 
         <div class="glass-card p-4 fade-in delay-2">
-            <h5 class="fw-bold mb-2"><i class="bi bi-cash-coin me-2" style="color:var(--accent-warning);"></i>Enter Unit Prices for Received Items</h5>
-            <p style="color:var(--text-muted);" class="mb-3">Quantities will be received as requested. Enter the actual purchase price per unit for each item.</p>
+            <h5 class="fw-bold mb-2"><i class="bi bi-cash-coin me-2" style="color:var(--accent-warning);"></i>Confirm Received Items &amp; Prices</h5>
+            <p style="color:var(--text-muted);" class="mb-3">Unit prices are pre-filled from the approved Purchase Order. Update if the supplier invoice shows a different price.</p>
             <div class="table-responsive">
                 <table class="table mb-0">
                     <thead>
                         <tr>
                             <th>#</th>
                             <th>Inventory Item</th>
-                            <th>Qty Requested</th>
-                            <th>Unit Price ({{ currency_symbol() }})</th>
-                            <th>Subtotal</th>
+                            <th style="width:110px;">PO Qty</th>
+                            <th style="width:130px;">PO Price ({{ currency_symbol() }})</th>
+                            <th style="width:160px;">Actual Price ({{ currency_symbol() }}) <span class="text-danger">*</span></th>
+                            <th style="width:110px;">Subtotal</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach ($procurementRequest->items as $index => $item)
+                            @php
+                                $quotedPrice = $item->quoted_unit_price;
+                                $defaultPrice = old('unit_prices.' . $item->id, $quotedPrice ?? $item->inventoryItem?->purchase_price ?? '');
+                            @endphp
                             <tr>
                                 <td>{{ $index + 1 }}</td>
-                                <td>{{ $item->inventoryItem?->name ?? 'Unknown Item' }} ({{ $item->inventoryItem?->unit ?? '' }})</td>
+                                <td>
+                                    <strong>{{ $item->inventoryItem?->name ?? 'Unknown Item' }}</strong>
+                                    <small class="text-muted d-block">{{ $item->inventoryItem?->unit ?? '' }}</small>
+                                </td>
                                 <td>{{ $item->quantity_requested }}</td>
                                 <td>
-                                    <input type="number"
-                                           name="unit_prices[{{ $item->id }}]"
-                                           class="form-control unit-price"
-                                           min="0.01"
-                                           step="0.01"
-                                           data-qty="{{ $item->quantity_requested }}"
-                                           data-row="{{ $index }}"
-                                           value="{{ old('unit_prices.' . $item->id, $item->inventoryItem?->purchase_price ?? '') }}"
-                                           required>
+                                    @if($quotedPrice)
+                                        <span class="fw-semibold text-muted">{{ currency_symbol() }}{{ number_format($quotedPrice, 2) }}</span>
+                                    @else
+                                        <span class="text-muted fst-italic">Not set</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">{{ currency_symbol() }}</span>
+                                        <input type="number"
+                                               name="unit_prices[{{ $item->id }}]"
+                                               class="form-control unit-price"
+                                               min="0.01"
+                                               step="0.01"
+                                               data-qty="{{ $item->quantity_requested }}"
+                                               data-row="{{ $index }}"
+                                               data-quoted="{{ $quotedPrice ?? '' }}"
+                                               value="{{ $defaultPrice }}"
+                                               required>
+                                    </div>
+                                    <small class="text-warning price-variance-note d-none" id="variance-{{ $index }}">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>Price differs from PO
+                                    </small>
                                 </td>
                                 <td class="subtotal fw-semibold" id="subtotal-{{ $index }}" style="color:var(--accent-success);">{{ currency_symbol() }}0.00</td>
                             </tr>
@@ -69,7 +91,7 @@
                     </tbody>
                     <tfoot>
                         <tr style="border-top:2px solid var(--glass-border);">
-                            <td colspan="4" class="text-end"><strong>Total:</strong></td>
+                            <td colspan="5" class="text-end"><strong>Total:</strong></td>
                             <td id="grandTotal"><strong style="color:var(--accent-warning);">{{ currency_symbol() }}0.00</strong></td>
                         </tr>
                     </tfoot>
@@ -105,6 +127,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const sub = qty * price;
             total += sub;
             document.getElementById('subtotal-' + input.dataset.row).textContent = '{{ currency_symbol() }}' + sub.toFixed(2);
+
+            // Show variance note if price differs from PO quoted price by more than 1 cent
+            const quoted = parseFloat(input.dataset.quoted) || 0;
+            const varianceNote = document.getElementById('variance-' + input.dataset.row);
+            if (varianceNote && quoted > 0 && price > 0 && Math.abs(price - quoted) > 0.01) {
+                varianceNote.classList.remove('d-none');
+            } else if (varianceNote) {
+                varianceNote.classList.add('d-none');
+            }
         });
         document.getElementById('grandTotal').innerHTML = '<strong style="color:var(--accent-warning);">{{ currency_symbol() }}' + total.toFixed(2) + '</strong>';
     }

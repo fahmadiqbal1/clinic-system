@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\Patient;
+use App\Notifications\AiAnalysisCompleted;
 use App\Services\MedGemmaService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -40,6 +41,7 @@ class AnalyseConsultationJob implements ShouldQueue
         public AiAnalysis $analysis,
         public string $contextType,
         public ?int $invoiceId = null,
+        public ?string $customQuestion = null,
     ) {}
 
     /**
@@ -57,11 +59,18 @@ class AnalyseConsultationJob implements ShouldQueue
 
             // Delegate to appropriate analysis method based on context
             match ($this->contextType) {
-                'consultation' => $service->processConsultationAnalysis($this->analysis, $patient),
+                'consultation' => $service->processConsultationAnalysis($this->analysis, $patient, $this->customQuestion),
                 'lab' => $this->processLabAnalysis($service),
                 'radiology' => $this->processRadiologyAnalysis($service),
                 default => throw new \InvalidArgumentException("Unknown context type: {$this->contextType}"),
             };
+
+            // Notify the requester that analysis is ready
+            $this->analysis->refresh();
+            $requester = $this->analysis->requester;
+            if ($requester) {
+                $requester->notify(new AiAnalysisCompleted($this->analysis));
+            }
 
         } catch (\Exception $e) {
             Log::error('AI Analysis job failed', [
@@ -129,5 +138,11 @@ class AnalyseConsultationJob implements ShouldQueue
             'status' => 'failed',
             'ai_response' => 'Analysis permanently failed after retries.',
         ]);
+
+        // Notify requester of permanent failure
+        $requester = $this->analysis->requester;
+        if ($requester) {
+            $requester->notify(new AiAnalysisCompleted($this->analysis, failed: true));
+        }
     }
 }

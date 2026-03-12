@@ -14,6 +14,7 @@ class ProcurementRequestItem extends Model
         'procurement_request_id',
         'inventory_item_id',
         'quantity_requested',
+        'quoted_unit_price',
         'quantity_received',
         'unit_price',
     ];
@@ -22,6 +23,7 @@ class ProcurementRequestItem extends Model
         'quantity_requested' => 'integer',
         'quantity_received' => 'integer',
         'unit_price' => 'decimal:2',
+        'quoted_unit_price' => 'decimal:2',
     ];
 
     public function procurementRequest(): BelongsTo

@@ -11,7 +11,10 @@
             </h2>
             <p class="page-subtitle mb-0">{{ $invoice->service_name }}</p>
         </div>
-        <a href="{{ route('patient.dashboard') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Profile</a>
+        <div class="d-flex gap-2">
+            <a href="{{ route('patient.invoice.download', $invoice) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
+            <a href="{{ route('patient.dashboard') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Profile</a>
+        </div>
     </div>
 
     {{-- Order Details --}}

@@ -116,8 +116,8 @@
                                         <span class="small mt-2" style="color:var(--text-muted);">PDF Document</span>
                                     </a>
                                 @else
-                                    <a href="{{ Storage::url($imagePath) }}" target="_blank">
-                                        <img src="{{ Storage::url($imagePath) }}" alt="Radiology Image {{ $idx + 1 }}" class="img-fluid w-100" style="min-height:160px; object-fit:cover;">
+                                    <a href="#" class="lightbox-trigger" data-src="{{ Storage::url($imagePath) }}" data-caption="Image {{ $idx + 1 }}">
+                                        <img src="{{ Storage::url($imagePath) }}" alt="Radiology Image {{ $idx + 1 }}" class="img-fluid w-100" style="min-height:160px; object-fit:cover; cursor:zoom-in;">
                                     </a>
                                 @endif
                                 @if($invoice->status !== 'completed' && !($invoice->isPaid() && $invoice->isWorkCompleted()))
@@ -265,4 +265,64 @@
     </div>
     @endif
 </div>
+
+{{-- Lightbox --}}
+<div id="lightbox" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:9999; align-items:center; justify-content:center; flex-direction:column;">
+    <button id="lightbox-close" style="position:absolute; top:18px; right:24px; background:none; border:none; color:#fff; font-size:2rem; cursor:pointer; line-height:1;" title="Close">&times;</button>
+    <div style="position:relative; max-width:92vw; max-height:88vh; display:flex; align-items:center; justify-content:center;">
+        <img id="lightbox-img" src="" alt="" style="max-width:100%; max-height:85vh; border-radius:6px; object-fit:contain; transition:transform 0.15s ease; transform-origin:center;">
+    </div>
+    <p id="lightbox-caption" style="color:#aaa; font-size:0.85rem; margin-top:10px;"></p>
+    <p style="color:#555; font-size:0.75rem; margin-top:4px;">Scroll to zoom &nbsp;|&nbsp; Click outside to close</p>
+</div>
+
+@push('scripts')
+<script>
+(function () {
+    const lb = document.getElementById('lightbox');
+    const lbImg = document.getElementById('lightbox-img');
+    const lbCaption = document.getElementById('lightbox-caption');
+    let scale = 1;
+
+    function openLightbox(src, caption) {
+        scale = 1;
+        lbImg.style.transform = 'scale(1)';
+        lbImg.src = src;
+        lbCaption.textContent = caption || '';
+        lb.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+        lb.style.display = 'none';
+        lbImg.src = '';
+        document.body.style.overflow = '';
+    }
+
+    document.querySelectorAll('.lightbox-trigger').forEach(function (el) {
+        el.addEventListener('click', function (e) {
+            e.preventDefault();
+            openLightbox(el.dataset.src, el.dataset.caption);
+        });
+    });
+
+    document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+
+    lb.addEventListener('click', function (e) {
+        if (e.target === lb) closeLightbox();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (lb.style.display !== 'none' && (e.key === 'Escape' || e.key === 'Esc')) closeLightbox();
+    });
+
+    lbImg.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        scale += e.deltaY < 0 ? 0.15 : -0.15;
+        scale = Math.min(Math.max(scale, 0.5), 5);
+        lbImg.style.transform = 'scale(' + scale + ')';
+    }, { passive: false });
+}());
+</script>
+@endpush
 @endsection

@@ -8,8 +8,10 @@ use App\Models\User;
 use App\Notifications\InvoiceStatusChanged;
 use App\Notifications\ResultsReady;
 use App\Services\AuditableService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
@@ -194,6 +196,20 @@ class InvoiceController extends Controller
         $invoice->update(['lab_results' => $grouped]);
 
         return redirect()->back()->with('success', $totalCount . ' test parameter(s) saved.');
+    }
+
+    /**
+     * Download lab report as PDF.
+     */
+    public function reportPdf(Invoice $invoice): Response
+    {
+        $this->authorize('view', $invoice);
+
+        $invoice->load('items.serviceCatalog', 'patient', 'prescribingDoctor', 'performedBy');
+
+        $pdf = Pdf::loadView('laboratory.reports.pdf', compact('invoice'));
+
+        return $pdf->download("lab-report-{$invoice->id}.pdf");
     }
 
     /**

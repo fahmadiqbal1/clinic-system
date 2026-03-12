@@ -28,11 +28,11 @@ return [
     | Model Identifier
     |--------------------------------------------------------------------------
     |
-    | Ollama: 'medgemma' (after running `ollama pull medgemma`)
+    | Ollama: 'medgemma3:4b' (after running `ollama pull medgemma3:4b`)
     | Hugging Face: 'google/medgemma-4b-it'
     |
     */
-    'model' => env('MEDGEMMA_MODEL', 'medgemma'),
+    'model' => env('MEDGEMMA_MODEL', 'medgemma3:4b'),
 
     /*
     |--------------------------------------------------------------------------

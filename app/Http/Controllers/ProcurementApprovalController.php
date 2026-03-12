@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Equipment;
 use App\Models\ProcurementRequest;
 use App\Models\ServiceCatalog;
+use App\Notifications\ProcurementStatusUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
@@ -67,8 +68,63 @@ class ProcurementApprovalController extends Controller
             $this->createServiceExpense($procurementRequest);
         }
 
+        // Notify the requester
+        $procurementRequest->requester?->notify(
+            new ProcurementStatusUpdated($procurementRequest, ProcurementStatusUpdated::EVENT_APPROVED)
+        );
+
         return redirect()->route('procurement.show', $procurementRequest)
             ->with('success', 'Procurement request approved.');
+    }
+
+    /**
+     * Bulk approve multiple pending procurement requests (Owner only)
+     */
+    public function bulkApprove(Request $request)
+    {
+        $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer|exists:procurement_requests,id',
+        ]);
+
+        $approved = 0;
+        $skipped = 0;
+
+        foreach ($request->input('ids') as $id) {
+            $pr = ProcurementRequest::find($id);
+            if (!$pr || $pr->status !== 'pending') {
+                $skipped++;
+                continue;
+            }
+
+            // Skip change requests — they need individual attention
+            if ($pr->isChangeRequest()) {
+                $skipped++;
+                continue;
+            }
+
+            $pr->update([
+                'status' => 'approved',
+                'approved_by' => Auth::user()->id,
+            ]);
+
+            if ($pr->type === 'service') {
+                $this->createServiceExpense($pr);
+            }
+
+            $pr->requester?->notify(
+                new ProcurementStatusUpdated($pr, ProcurementStatusUpdated::EVENT_APPROVED)
+            );
+
+            $approved++;
+        }
+
+        $msg = "{$approved} request(s) approved.";
+        if ($skipped > 0) {
+            $msg .= " {$skipped} skipped (already processed or change requests).";
+        }
+
+        return redirect()->route('procurement.index')->with('success', $msg);
     }
 
     /**
@@ -82,11 +138,18 @@ class ProcurementApprovalController extends Controller
             'rejection_reason' => 'required|string|max:500',
         ]);
 
+        $rejectionReason = $request->input('rejection_reason');
+
         $procurementRequest->update([
             'status' => 'rejected',
             'approved_by' => Auth::user()->id,
-            'notes' => $request->input('rejection_reason'),
+            'notes' => $rejectionReason,
         ]);
+
+        // Notify the requester
+        $procurementRequest->requester?->notify(
+            new ProcurementStatusUpdated($procurementRequest, ProcurementStatusUpdated::EVENT_REJECTED, $rejectionReason)
+        );
 
         return redirect()->route('procurement.show', $procurementRequest)
             ->with('success', 'Procurement request rejected.');
