@@ -73,7 +73,7 @@ class TextBeeSmsChannel
             try {
                 $response = Http::withHeaders(['x-api-key' => $apiKey])
                     ->timeout(10)
-                    ->get("{$baseUrl}/gateway/getDevices");
+                    ->get("{$baseUrl}/gateway/devices");
 
                 if ($response->successful()) {
                     $devices = $response->json('data') ?? $response->json() ?? [];
