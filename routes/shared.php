@@ -100,7 +100,7 @@ Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology')->group(function ()
 
 // ── Notifications (all authenticated users) ──
 Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
-Route::get('/notifications/unread', [NotificationController::class, 'unread'])->name('notifications.unread');
+Route::get('/notifications/unread', [NotificationController::class, 'unread'])->middleware('throttle:notifications-poll')->name('notifications.unread');
 Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');
 

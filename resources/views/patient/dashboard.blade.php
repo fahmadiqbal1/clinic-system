@@ -10,6 +10,19 @@
         </div>
     </div>
 
+    {{-- Check-In Banner --}}
+    @if($patient->status === 'registered' && $patient->registered_at?->isToday())
+    <div class="card mb-4 fade-in" style="border:2px solid var(--accent-success);">
+        <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+                <h5 class="mb-1"><i class="bi bi-calendar-check me-2" style="color:var(--accent-success);"></i>Ready for check-in</h5>
+                <p class="mb-0 text-muted">You have a visit registered today. Use the kiosk or check in here.</p>
+            </div>
+            <a href="{{ route('patient.checkin') }}" class="btn btn-success">Check In Now</a>
+        </div>
+    </div>
+    @endif
+
     {{-- Patient Info --}}
     <div class="card mb-4 fade-in delay-1">
         <div class="card-header"><i class="bi bi-person-badge me-2" style="color:var(--accent-info);"></i>Personal Details</div>
@@ -37,53 +50,146 @@
         </div>
     </div>
 
-    {{-- Latest Vitals --}}
-    @php $latestVitals = $patient->triageVitals->first(); @endphp
-    @if($latestVitals)
+    {{-- Latest Vitals — Animated Arc Rings --}}
+    @php
+        $latestVitals = $patient->triageVitals->first();
+        // Thresholds: [normal_min, normal_max, borderline_max, absolute_max]
+        $vitalDefs = [
+            'bp_systolic'   => ['label'=>'BP Systolic', 'unit'=>'mmHg', 'icon'=>'bi-heart-pulse',  'min'=>90,  'max'=>180, 'normal'=>[90,120],  'borderline'=>[120,140], 'color_ok'=>'#34d399','color_warn'=>'#fbbf24','color_bad'=>'#f87171'],
+            'temperature'   => ['label'=>'Temperature', 'unit'=>'°C',   'icon'=>'bi-thermometer', 'min'=>35,  'max'=>42,  'normal'=>[36.1,37.2],'borderline'=>[37.2,38], 'color_ok'=>'#34d399','color_warn'=>'#fbbf24','color_bad'=>'#f87171'],
+            'pulse_rate'    => ['label'=>'Heart Rate',  'unit'=>'bpm',  'icon'=>'bi-activity',    'min'=>40,  'max'=>160, 'normal'=>[60,100],   'borderline'=>[50,110],  'color_ok'=>'#34d399','color_warn'=>'#fbbf24','color_bad'=>'#f87171'],
+            'spo2'          => ['label'=>'SpO₂',        'unit'=>'%',    'icon'=>'bi-lungs',        'min'=>85,  'max'=>100, 'normal'=>[95,100],   'borderline'=>[90,95],   'color_ok'=>'#34d399','color_warn'=>'#fbbf24','color_bad'=>'#f87171'],
+        ];
+        $vitalsData = [];
+        if ($latestVitals) {
+            // Parse BP systolic from "120/80" format
+            $bp = $latestVitals->blood_pressure ?? null;
+            $bpSys = $bp ? (int) explode('/', $bp)[0] : null;
+            $vitalsData['bp_systolic'] = $bpSys;
+            $vitalsData['temperature'] = $latestVitals->temperature ? (float) $latestVitals->temperature : null;
+            $vitalsData['pulse_rate']  = $latestVitals->pulse_rate  ? (int)   $latestVitals->pulse_rate  : null;
+            $vitalsData['spo2']        = $latestVitals->oxygen_saturation ? (float) $latestVitals->oxygen_saturation : null;
+        }
+        $hasAnyVital = $latestVitals && array_filter($vitalsData, fn($v) => $v !== null);
+    @endphp
+    @if($hasAnyVital)
     <div class="card mb-4 fade-in delay-1">
-        <div class="card-header"><i class="bi bi-activity me-2" style="color:var(--accent-danger);"></i>Latest Vitals</div>
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <span><i class="bi bi-activity me-2" style="color:var(--accent-danger);"></i>Latest Vitals</span>
+            <small style="color:var(--text-muted);">Recorded {{ $latestVitals->created_at->diffForHumans() }}</small>
+        </div>
         <div class="card-body">
-            <div class="info-grid" style="grid-template-columns: repeat(auto-fit, minmax(140px,1fr));">
-                @if($latestVitals->blood_pressure)
-                <div class="info-grid-item">
-                    <span class="info-label">Blood Pressure</span>
-                    <span class="info-value">{{ $latestVitals->blood_pressure }} mmHg</span>
-                </div>
-                @endif
-                @if($latestVitals->temperature)
-                <div class="info-grid-item">
-                    <span class="info-label">Temperature</span>
-                    <span class="info-value">{{ $latestVitals->temperature }}°C</span>
-                </div>
-                @endif
-                @if($latestVitals->pulse_rate)
-                <div class="info-grid-item">
-                    <span class="info-label">Heart Rate</span>
-                    <span class="info-value">{{ $latestVitals->pulse_rate }} bpm</span>
-                </div>
-                @endif
-                @if($latestVitals->oxygen_saturation)
-                <div class="info-grid-item">
-                    <span class="info-label">SpO₂</span>
-                    <span class="info-value">{{ $latestVitals->oxygen_saturation }}%</span>
-                </div>
-                @endif
-                @if($latestVitals->weight)
-                <div class="info-grid-item">
-                    <span class="info-label">Weight</span>
-                    <span class="info-value">{{ $latestVitals->weight }} kg</span>
-                </div>
-                @endif
-                @if($latestVitals->height)
-                <div class="info-grid-item">
-                    <span class="info-label">Height</span>
-                    <span class="info-value">{{ $latestVitals->height }} cm</span>
-                </div>
+            <div class="row g-3 justify-content-center">
+                @foreach($vitalDefs as $key => $def)
+                    @php
+                        $val = $vitalsData[$key] ?? null;
+                        if ($val === null) continue;
+                        $pct = min(100, max(0, (($val - $def['min']) / ($def['max'] - $def['min'])) * 100));
+                        $arcFill = round($pct);
+                        if ($val >= $def['normal'][0] && $val <= $def['normal'][1]) {
+                            $ringColor = $def['color_ok'];
+                            $status = 'Normal';
+                        } elseif ($val >= $def['borderline'][0] && $val <= $def['borderline'][1]) {
+                            $ringColor = $def['color_warn'];
+                            $status = 'Borderline';
+                        } else {
+                            $ringColor = $def['color_bad'];
+                            $status = 'Abnormal';
+                        }
+                    @endphp
+                    <div class="col-6 col-md-3 text-center">
+                        <div class="vital-ring-wrap" style="position:relative; display:inline-block;">
+                            <canvas class="vital-ring"
+                                    data-value="{{ $val }}"
+                                    data-pct="{{ $arcFill }}"
+                                    data-color="{{ $ringColor }}"
+                                    width="110" height="110"></canvas>
+                            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;line-height:1.2;">
+                                <div style="font-size:1.1rem;font-weight:700;color:{{ $ringColor }};">{{ $val }}</div>
+                                <div style="font-size:0.62rem;color:var(--text-muted);">{{ $def['unit'] }}</div>
+                            </div>
+                        </div>
+                        <div class="mt-1">
+                            <div style="font-size:0.78rem;font-weight:600;color:var(--text-primary);"><i class="bi {{ $def['icon'] }} me-1"></i>{{ $def['label'] }}</div>
+                            <span style="font-size:0.68rem;padding:1px 7px;border-radius:999px;background:rgba({{ $ringColor === '#34d399' ? '52,211,153' : ($ringColor === '#fbbf24' ? '251,191,36' : '248,113,113') }},0.18);color:{{ $ringColor }};">{{ $status }}</span>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+            {{-- Additional vitals --}}
+            @if($latestVitals->weight || $latestVitals->height)
+            <div class="d-flex gap-3 justify-content-center mt-3 pt-3" style="border-top:1px solid var(--glass-border);">
+                @if($latestVitals->weight)<div class="text-center"><div class="stat-label">Weight</div><div class="fw-semibold">{{ $latestVitals->weight }} kg</div></div>@endif
+                @if($latestVitals->height)<div class="text-center"><div class="stat-label">Height</div><div class="fw-semibold">{{ $latestVitals->height }} cm</div></div>@endif
+                @if($latestVitals->weight && $latestVitals->height)
+                    @php $bmi = round($latestVitals->weight / pow($latestVitals->height / 100, 2), 1); @endphp
+                    <div class="text-center"><div class="stat-label">BMI</div><div class="fw-semibold" style="color:{{ $bmi < 18.5 || $bmi > 30 ? 'var(--accent-danger)' : ($bmi > 25 ? 'var(--accent-warning)' : 'var(--accent-success)') }};">{{ $bmi }}</div></div>
                 @endif
             </div>
-            <small class="d-block mt-2" style="color:var(--text-muted);">Recorded {{ $latestVitals->created_at->diffForHumans() }}</small>
+            @endif
         </div>
     </div>
+
+    @push('scripts')
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.vital-ring').forEach(function(canvas) {
+            var pct   = parseInt(canvas.dataset.pct, 10);
+            var color = canvas.dataset.color;
+            var ctx   = canvas.getContext('2d');
+            var cx = 55, cy = 55, r = 44;
+            var startAngle = Math.PI * 0.75;  // 135deg — bottom-left
+            var fullArc    = Math.PI * 1.5;    // 270deg sweep
+
+            // Track (background arc)
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, startAngle, startAngle + fullArc);
+            ctx.lineWidth = 10;
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // Animated fill arc
+            var current = 0;
+            var target  = (pct / 100) * fullArc;
+            function draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // redraw track
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, startAngle, startAngle + fullArc);
+                ctx.lineWidth = 10;
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                // draw fill
+                if (current > 0) {
+                    var grad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+                    grad.addColorStop(0, color + 'aa');
+                    grad.addColorStop(1, color);
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r, startAngle, startAngle + current);
+                    ctx.lineWidth = 10;
+                    ctx.strokeStyle = grad;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
+                }
+            }
+            // Ease-out animation
+            var startTime = null;
+            var duration  = 900;
+            function animate(ts) {
+                if (!startTime) startTime = ts;
+                var progress = Math.min((ts - startTime) / duration, 1);
+                var ease = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+                current = ease * target;
+                draw();
+                if (progress < 1) requestAnimationFrame(animate);
+            }
+            requestAnimationFrame(animate);
+        });
+    });
+    </script>
+    @endpush
     @endif
 
     {{-- Consultation Notes --}}

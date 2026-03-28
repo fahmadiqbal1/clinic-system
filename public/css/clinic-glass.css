@@ -2453,3 +2453,126 @@ hr { border-color: var(--glass-border); opacity: 0.5; }
     font-size: 0.7rem;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   SKELETON LOADERS
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes skeleton-shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+.skeleton-pulse {
+    background: linear-gradient(90deg,
+        rgba(255,255,255,0.05) 25%,
+        rgba(255,255,255,0.12) 50%,
+        rgba(255,255,255,0.05) 75%);
+    background-size: 800px 100%;
+    animation: skeleton-shimmer 1.4s infinite linear;
+    border-radius: 6px;
+    color: transparent !important;
+    pointer-events: none;
+    user-select: none;
+}
+.skeleton-pulse * { visibility: hidden; }
+
+/* ═══════════════════════════════════════════════════════════════
+   NOTIFICATION OFF-CANVAS DRAWER
+   ═══════════════════════════════════════════════════════════════ */
+.notif-offcanvas {
+    background: var(--bg-glass) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border-left: 1px solid var(--border-glass) !important;
+    width: 380px !important;
+}
+.notif-offcanvas .offcanvas-header {
+    border-bottom: 1px solid var(--border-glass);
+    padding: 1rem 1.25rem;
+}
+.notif-offcanvas .offcanvas-body { padding: 0; }
+.notif-drawer-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    transition: background 0.15s;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+}
+.notif-drawer-item:hover { background: rgba(255,255,255,0.04); color: inherit; }
+.notif-drawer-item.unread { background: rgba(var(--accent-primary-rgb),0.05); }
+.notif-drawer-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 1rem;
+}
+.notif-drawer-empty {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: var(--text-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STAT SPARKLINE CARD
+   ═══════════════════════════════════════════════════════════════ */
+.sparkline-card { position: relative; overflow: hidden; }
+.sparkline-card canvas { max-height: 80px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   APPOINTMENT TIMELINE STRIP
+   ═══════════════════════════════════════════════════════════════ */
+.appt-timeline {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    scrollbar-width: thin;
+}
+.appt-timeline::-webkit-scrollbar { height: 4px; }
+.appt-timeline::-webkit-scrollbar-track { background: transparent; }
+.appt-timeline::-webkit-scrollbar-thumb { background: var(--border-glass); border-radius: 2px; }
+.appt-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 90px;
+    padding: 0.5rem 0.65rem;
+    border-radius: 10px;
+    border: 1px solid var(--border-glass);
+    background: rgba(255,255,255,0.04);
+    font-size: 0.72rem;
+    line-height: 1.4;
+    transition: transform 0.15s, background 0.15s;
+    cursor: default;
+    white-space: nowrap;
+}
+.appt-chip:hover { transform: translateY(-2px); background: rgba(255,255,255,0.08); }
+.appt-chip-time { font-size: 0.78rem; font-weight: 600; }
+.appt-chip-name { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ═══════════════════════════════════════════════════════════════
+   VITALS ARC RINGS
+   ═══════════════════════════════════════════════════════════════ */
+.vitals-ring-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: space-around;
+}
+.vitals-ring-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+}
+.vitals-ring-item canvas { max-width: 80px; max-height: 80px; }
+.vitals-ring-label { font-size: 0.72rem; color: var(--text-secondary); text-align: center; }
+.vitals-ring-value { font-size: 0.85rem; font-weight: 700; text-align: center; }
+
+/* cursor helper */
+.cursor-pointer { cursor: pointer; }
+

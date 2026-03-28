@@ -21,6 +21,7 @@ use App\Http\Controllers\Owner\FbrSettingsController;
 use App\Http\Controllers\Dashboard\ExpenseIntelligenceController;
 use App\Http\Controllers\Dashboard\InventoryHealthController;
 use App\Http\Controllers\Dashboard\ProcurementPipelineController;
+use App\Http\Controllers\Owner\RevenueForecastController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('role:Owner')->group(function () {
@@ -37,6 +38,9 @@ Route::middleware('role:Owner')->group(function () {
     // Department P&L
     Route::get('/owner/department-pnl', [OwnerDashboardController::class, 'departmentPnl'])
         ->name('owner.department-pnl');
+
+    // Revenue Forecast
+    Route::get('/owner/revenue-forecast', [RevenueForecastController::class, 'index'])->name('owner.revenue-forecast');
 
     // User Management
     Route::get('/owner/users', [UserController::class, 'index'])->name('owner.users.index');

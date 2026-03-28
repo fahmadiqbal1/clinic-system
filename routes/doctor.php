@@ -18,6 +18,7 @@ use App\Http\Controllers\Doctor\ConsultationController;
 use App\Http\Controllers\Doctor\InvoiceController as DoctorInvoiceController;
 use App\Http\Controllers\Doctor\PrescriptionController;
 use App\Http\Controllers\Doctor\ReferralPatientController;
+use App\Http\Controllers\Doctor\AppointmentController as DoctorAppointmentController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('role:Doctor')->group(function () {
@@ -43,6 +44,9 @@ Route::middleware('role:Doctor')->group(function () {
     Route::get('/doctor/prescriptions', [PrescriptionController::class, 'index'])->name('doctor.prescriptions.index');
     Route::get('/doctor/prescriptions/{patient}/create', [PrescriptionController::class, 'create'])->name('doctor.prescriptions.create');
     Route::post('/doctor/prescriptions/{patient}', [PrescriptionController::class, 'store'])->name('doctor.prescriptions.store');
+
+    // ─── Appointments ────────────────────────────────────────────────────────
+    Route::get('/doctor/appointments', [DoctorAppointmentController::class, 'index'])->name('doctor.appointments.index');
 
     // ─── Independent Doctor routes ────────────────────────────────────────────
     // These routes are only accessible to independent doctors (is_independent = true).

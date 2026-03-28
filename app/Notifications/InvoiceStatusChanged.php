@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Channels\TextBeeSmsChannel;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -18,7 +19,18 @@ class InvoiceStatusChanged extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        $channels = ['database'];
+        if (method_exists($notifiable, 'patient') && $notifiable->patient !== null) {
+            $channels[] = TextBeeSmsChannel::class;
+        }
+        return $channels;
+    }
+
+    public function toTextBee(object $notifiable): string
+    {
+        $statusLabel = ucfirst(str_replace('_', ' ', $this->newStatus));
+        $deptLabel = ucfirst($this->department);
+        return "Aviva HealthCare: Your {$deptLabel} Invoice #{$this->invoiceId} has been updated to {$statusLabel}.";
     }
 
     public function toArray(object $notifiable): array
@@ -30,7 +42,7 @@ class InvoiceStatusChanged extends Notification
             'title' => "{$deptLabel} Invoice #{$this->invoiceId} — {$statusLabel}",
             'message' => "Invoice #{$this->invoiceId} ({$deptLabel}) has been updated to {$statusLabel}.",
             'icon' => 'bi-receipt',
-            'url' => null, // Role-dependent, handled by frontend
+            'url' => null,
             'color' => match ($this->newStatus) {
                 'paid' => 'success',
                 'completed' => 'info',

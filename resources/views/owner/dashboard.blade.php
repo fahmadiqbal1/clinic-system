@@ -8,6 +8,22 @@
         <p class="page-subtitle">Financial overview and system status</p>
     </div>
 
+    {{-- 7-Day Revenue Sparkline --}}
+    <div class="glass-card p-3 mb-4 fade-in" style="position:relative; overflow:hidden;">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <div>
+                <span class="fw-semibold" style="color:var(--text-primary); font-size:0.92rem;"><i class="bi bi-activity me-2" style="color:var(--accent-success);"></i>7-Day Revenue Pulse</span>
+                <span class="ms-3 text-muted small">Last 7 days at a glance</span>
+            </div>
+            <a href="{{ route('owner.revenue-forecast') }}" class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">Full Forecast →</a>
+        </div>
+        <div style="height:70px; position:relative;">
+            <canvas id="sparklineChart"></canvas>
+        </div>
+        {{-- 3-D shimmer layer --}}
+        <div style="position:absolute;top:0;right:0;width:180px;height:100%;background:linear-gradient(90deg,transparent,rgba(129,140,248,0.05));pointer-events:none;border-radius:0 var(--card-radius) var(--card-radius) 0;"></div>
+    </div>
+
     {{-- Financial Overview --}}
     <div class="row g-3 mb-4">
         <div class="col-md-4 fade-in delay-1">
@@ -264,6 +280,53 @@ document.addEventListener('DOMContentLoaded', function() {
     // Chart defaults for dark theme
     Chart.defaults.color = 'rgba(255,255,255,0.6)';
     Chart.defaults.borderColor = 'rgba(255,255,255,0.08)';
+
+    // 7-Day Revenue Sparkline
+    var sparkCtx = document.getElementById('sparklineChart');
+    if (sparkCtx) {
+        var sparkRevenue = @json($trend_revenue ?? []);
+        var sparkLabels  = @json($trend_labels ?? []);
+        var sparkMax = Math.max(...sparkRevenue, 1);
+        new Chart(sparkCtx, {
+            type: 'line',
+            data: {
+                labels: sparkLabels,
+                datasets: [{
+                    data: sparkRevenue,
+                    borderColor: '#34d399',
+                    backgroundColor: function(ctx) {
+                        var gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 70);
+                        gradient.addColorStop(0,   'rgba(52,211,153,0.35)');
+                        gradient.addColorStop(1,   'rgba(52,211,153,0)');
+                        return gradient;
+                    },
+                    fill: true,
+                    tension: 0.45,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#34d399',
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 900, easing: 'easeInOutCubic' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) { return ' PKR ' + ctx.parsed.y.toLocaleString(); }
+                        }
+                    }
+                },
+                scales: {
+                    x: { display: false },
+                    y: { display: false, min: 0, max: sparkMax * 1.15 }
+                }
+            }
+        });
+    }
 
     // 7-Day Trend Line Chart
     var trendCtx = document.getElementById('trendChart');

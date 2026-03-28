@@ -68,6 +68,7 @@
                                     <li><a class="dropdown-item" href="{{ route('owner.zakat.index') }}"><i class="bi bi-moon-stars me-2"></i>Zakat Calculator</a></li>
                                     <li><a class="dropdown-item" href="{{ route('owner.financial-report') }}"><i class="bi bi-file-earmark-bar-graph me-2"></i>Financial Report</a></li>
                                     <li><a class="dropdown-item" href="{{ route('owner.department-pnl') }}"><i class="bi bi-building me-2"></i>Department P&L</a></li>
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.revenue-forecast') ? 'active' : '' }}" href="{{ route('owner.revenue-forecast') }}"><i class="bi bi-graph-up-arrow me-2"></i>Revenue Forecast</a></li>
                                 </ul>
                             </li>
                             <li class="nav-item dropdown">
@@ -100,6 +101,7 @@
                                     <li><a class="dropdown-item" href="{{ route('reception.payouts.create') }}"><i class="bi bi-plus-circle me-2"></i>Custom Payout</a></li>
                                 </ul>
                             </li>
+                            <li class="nav-item"><a class="nav-link {{ request()->routeIs('receptionist.appointments.*') ? 'active' : '' }}" href="{{ route('receptionist.appointments.index') }}"><i class="bi bi-calendar-check me-1"></i>Appointments</a></li>
                             <li class="nav-item"><a class="nav-link" href="{{ route('contracts.show') }}">My Contract</a></li>
                         @endif
 
@@ -133,6 +135,7 @@
                                 <li class="nav-item"><a class="nav-link" href="{{ route('doctor.patients.index') }}">Patients</a></li>
                                 <li class="nav-item"><a class="nav-link" href="{{ route('doctor.prescriptions.index') }}">Prescriptions</a></li>
                                 <li class="nav-item"><a class="nav-link" href="{{ route('doctor.invoices.index') }}">Invoices</a></li>
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('doctor.appointments.*') ? 'active' : '' }}" href="{{ route('doctor.appointments.index') }}"><i class="bi bi-calendar-check me-1"></i>My Schedule</a></li>
                                 <li class="nav-item"><a class="nav-link" href="{{ route('reception.payouts.index') }}">Payouts</a></li>
                                 <li class="nav-item"><a class="nav-link" href="{{ route('contracts.show') }}">Contract</a></li>
                             @endif
@@ -212,11 +215,13 @@
 
                         {{-- Notification Bell --}}
                         @php
-                            $unreadNotifications = Auth::user()->unreadNotifications->take(10);
-                            $unreadCount = Auth::user()->unreadNotifications->count();
+                            $unreadNotifications = Auth::user()->unreadNotifications()->limit(10)->get();
+                            $unreadCount = Auth::user()->unreadNotifications()->count();
                         @endphp
-                        <li class="nav-item dropdown" id="notificationBell">
-                            <a class="nav-link position-relative" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifications">
+                        {{-- Notification Bell → Off-Canvas Drawer --}}
+                        <li class="nav-item" id="notificationBell">
+                            <a class="nav-link position-relative" href="#" role="button"
+                               data-bs-toggle="offcanvas" data-bs-target="#notifDrawer" aria-controls="notifDrawer" title="Notifications">
                                 <i class="bi bi-bell{{ $unreadCount > 0 ? '-fill' : '' }}" id="bellIcon"></i>
                                 @if($unreadCount > 0)
                                     <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:0.65rem;" id="bellBadge">
@@ -226,39 +231,6 @@
                                     <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:0.65rem; display:none;" id="bellBadge"></span>
                                 @endif
                             </a>
-                            <ul class="dropdown-menu dropdown-menu-end" style="min-width:360px; max-height:450px; overflow-y:auto;" id="notificationDropdown">
-                                <li><h6 class="dropdown-header d-flex justify-content-between align-items-center">
-                                    <span>Notifications</span>
-                                    <small class="text-muted" id="notifRefreshStatus"></small>
-                                </h6></li>
-                                <li id="notificationList">
-                                @forelse($unreadNotifications as $notif)
-                                    <a class="dropdown-item d-flex align-items-start gap-2 py-2 notif-item" href="{{ $notif->data['url'] ?? '#' }}" data-notif-id="{{ $notif->id }}" onclick="fetch('/notifications/{{ $notif->id }}/read', {method:'POST', headers:{'X-CSRF-TOKEN':'{{ csrf_token() }}'}})">
-                                        <i class="bi {{ $notif->data['icon'] ?? 'bi-bell' }} mt-1" style="color:var(--accent-{{ $notif->data['color'] ?? 'primary' }}); font-size:1.1rem;"></i>
-                                        <div class="flex-fill">
-                                            <strong class="d-block" style="font-size:0.82rem;">{{ $notif->data['title'] ?? 'Notification' }}</strong>
-                                            <small style="color:var(--text-secondary);">{{ Str::limit($notif->data['message'] ?? '', 80) }}</small>
-                                            <div class="d-flex align-items-center mt-1">
-                                                <i class="bi bi-clock me-1" style="font-size:0.65rem; color:var(--accent-warning);"></i>
-                                                <small class="notif-timer fw-semibold" data-assigned-at="{{ $notif->data['assigned_at'] ?? $notif->created_at->toIso8601String() }}" style="font-size:0.72rem; color:var(--accent-warning);"></small>
-                                            </div>
-                                        </div>
-                                    </a>
-                                @empty
-                                    <span class="dropdown-item text-muted text-center py-3" id="noNotifMsg"><i class="bi bi-check-circle me-1"></i>All caught up!</span>
-                                @endforelse
-                                </li>
-                                <li><hr class="dropdown-divider"></li>
-                                <li class="d-flex gap-2 px-3 py-1">
-                                    <a href="{{ route('notifications.index') }}" class="btn btn-sm btn-outline-secondary flex-fill">View All</a>
-                                    @if($unreadCount > 0)
-                                        <form action="/notifications/mark-all-read" method="POST" class="flex-fill">
-                                            @csrf
-                                            <button type="submit" class="btn btn-sm btn-outline-primary w-100">Mark all read</button>
-                                        </form>
-                                    @endif
-                                </li>
-                            </ul>
                         </li>
 
                         {{-- User Menu --}}
@@ -268,6 +240,8 @@
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li><span class="dropdown-item text-muted">{{ Auth::user()->roles->first()?->name ?? 'User' }}</span></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ route('profile.edit') }}"><i class="bi bi-person-gear me-1"></i>My Profile</a></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <form method="POST" action="{{ route('logout') }}">
@@ -374,7 +348,8 @@
 
         <!-- Bootstrap JS -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-        
+        <script src="{{ asset('js/clinic-timers.js') }}"></script>
+
         <!-- Intro.js -->
         <script src="https://cdnjs.cloudflare.com/ajax/libs/intro.js/7.2.0/intro.min.js"></script>
 
@@ -578,7 +553,7 @@
                     clearTimeout(cmdSearchTimer);
                     cmdSearchTimer = setTimeout(function() {
                         cmdResults.innerHTML = '<div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></div>';
-                        fetch('/search/global?q=' + encodeURIComponent(q), {
+                        fetch('{{ route('search.global') }}?q=' + encodeURIComponent(q), {
                             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' }
                         })
                         .then(function(r) { return r.ok ? r.json() : { results: [] }; })
@@ -729,50 +704,94 @@
                     }
                 });
             }
-            // Update timers every second
+            // Update timers every second (pauses when tab is hidden)
             updateTimers();
-            setInterval(updateTimers, 1000);
+            pauseOnHidden(updateTimers, 1000);
 
-            // Poll for new notifications every 30 seconds
-            setInterval(function() {
-                fetch('/notifications/unread', {
+            // Poll for new notifications every 30 seconds (pauses when tab is hidden)
+            var notifUnreadUrl = '{{ route('notifications.unread') }}';
+            var notifReadBaseUrl = '{{ url('/notifications') }}';
+            pauseOnHidden(function() {
+                fetch(notifUnreadUrl, {
                     headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' }
                 })
                 .then(function(r) { return r.ok ? r.json() : null; })
                 .then(function(data) {
                     if (!data) return;
                     var badge = document.getElementById('bellBadge');
+                    var drawerBadge = document.getElementById('drawerBadgeCount');
                     var icon = document.getElementById('bellIcon');
                     if (badge) {
                         if (data.count > 0) {
-                            badge.textContent = data.count > 99 ? '99+' : data.count;
+                            var countLabel = data.count > 99 ? '99+' : data.count;
+                            badge.textContent = countLabel;
                             badge.style.display = '';
+                            if (drawerBadge) { drawerBadge.textContent = countLabel; drawerBadge.style.display = ''; }
                             if (icon) { icon.className = 'bi bi-bell-fill'; }
                         } else {
                             badge.style.display = 'none';
+                            if (drawerBadge) { drawerBadge.style.display = 'none'; }
                             if (icon) { icon.className = 'bi bi-bell'; }
                         }
                     }
-                    // Re-render notification items
+                    // Re-render notification items (DOM-based to prevent XSS)
                     var list = document.getElementById('notificationList');
                     if (list && data.notifications && data.notifications.length > 0) {
-                        var html = '';
                         var csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                        list.innerHTML = '';
                         data.notifications.forEach(function(n) {
-                            html += '<a class="dropdown-item d-flex align-items-start gap-2 py-2 notif-item" href="' + (n.url || '#') + '" data-notif-id="' + n.id + '" onclick="fetch(\'/notifications/' + n.id + '/read\', {method:\'POST\', headers:{\'X-CSRF-TOKEN\':\'' + csrfToken + '\'}})">';
-                            html += '<i class="bi ' + (n.icon || 'bi-bell') + ' mt-1" style="color:var(--accent-' + (n.color || 'primary') + '); font-size:1.1rem;"></i>';
-                            html += '<div class="flex-fill">';
-                            html += '<strong class="d-block" style="font-size:0.82rem;">' + (n.title || 'Notification') + '</strong>';
-                            html += '<small style="color:var(--text-secondary);">' + (n.message || '').substring(0, 80) + '</small>';
-                            html += '<div class="d-flex align-items-center mt-1">';
-                            html += '<i class="bi bi-clock me-1" style="font-size:0.65rem; color:var(--accent-warning);"></i>';
-                            html += '<small class="notif-timer fw-semibold" data-assigned-at="' + (n.assigned_at || n.created_at) + '" style="font-size:0.72rem; color:var(--accent-warning);"></small>';
-                            html += '</div></div></a>';
+                            var a = document.createElement('a');
+                            a.className = 'dropdown-item d-flex align-items-start gap-2 py-2 notif-item';
+                            a.href = n.url || '#';
+                            a.dataset.notifId = n.id;
+                            a.addEventListener('click', function() {
+                                fetch(notifReadBaseUrl + '/' + n.id + '/read', {method: 'POST', headers: {'X-CSRF-TOKEN': csrfToken}});
+                            });
+
+                            var icon = document.createElement('i');
+                            icon.className = 'bi ' + (n.icon || 'bi-bell') + ' mt-1';
+                            icon.style.cssText = 'color:var(--accent-' + (n.color || 'primary') + '); font-size:1.1rem;';
+
+                            var div = document.createElement('div');
+                            div.className = 'flex-fill';
+
+                            var strong = document.createElement('strong');
+                            strong.className = 'd-block';
+                            strong.style.fontSize = '0.82rem';
+                            strong.textContent = n.title || 'Notification';
+
+                            var small = document.createElement('small');
+                            small.style.color = 'var(--text-secondary)';
+                            small.textContent = (n.message || '').substring(0, 80);
+
+                            var timeRow = document.createElement('div');
+                            timeRow.className = 'd-flex align-items-center mt-1';
+
+                            var clockIcon = document.createElement('i');
+                            clockIcon.className = 'bi bi-clock me-1';
+                            clockIcon.style.cssText = 'font-size:0.65rem; color:var(--accent-warning);';
+
+                            var timeSmall = document.createElement('small');
+                            timeSmall.className = 'notif-timer fw-semibold';
+                            timeSmall.dataset.assignedAt = n.assigned_at || n.created_at;
+                            timeSmall.style.cssText = 'font-size:0.72rem; color:var(--accent-warning);';
+
+                            timeRow.appendChild(clockIcon);
+                            timeRow.appendChild(timeSmall);
+                            div.appendChild(strong);
+                            div.appendChild(small);
+                            div.appendChild(timeRow);
+                            a.appendChild(icon);
+                            a.appendChild(div);
+                            list.appendChild(a);
                         });
-                        list.innerHTML = html;
                         updateTimers();
                     } else if (list && data.count === 0) {
-                        list.innerHTML = '<span class="dropdown-item text-muted text-center py-3"><i class="bi bi-check-circle me-1"></i>All caught up!</span>';
+                        list.innerHTML = '';
+                        var empty = document.createElement('span');
+                        empty.className = 'dropdown-item text-muted text-center py-3';
+                        empty.innerHTML = '<i class="bi bi-check-circle me-1"></i>All caught up!';
+                        list.appendChild(empty);
                     }
                 })
                 .catch(function() {}); // Silent fail for polling
@@ -884,5 +903,59 @@
             });
         @endif
         </script>
+
+        {{-- ── Notification Off-Canvas Drawer ── --}}
+        <div class="offcanvas offcanvas-end notif-offcanvas" tabindex="-1" id="notifDrawer" aria-labelledby="notifDrawerLabel">
+            <div class="offcanvas-header">
+                <h6 class="offcanvas-title fw-semibold d-flex align-items-center gap-2" id="notifDrawerLabel">
+                    <i class="bi bi-bell-fill" style="color:var(--accent-primary);"></i>
+                    Notifications
+                    <span id="drawerBadgeCount" class="badge rounded-pill ms-1"
+                          style="background:var(--accent-danger); font-size:0.65rem; {{ $unreadCount > 0 ? '' : 'display:none;' }}">
+                        {{ $unreadCount > 99 ? '99+' : $unreadCount }}
+                    </span>
+                </h6>
+                <div class="d-flex gap-2 align-items-center">
+                    @if($unreadCount > 0)
+                    <form action="{{ route('notifications.mark-all-read') }}" method="POST" class="mb-0">
+                        @csrf
+                        <button type="submit" class="btn btn-sm" style="font-size:0.72rem; color:var(--accent-primary); background:none; border:1px solid rgba(var(--accent-primary-rgb),0.3); padding:0.2rem 0.6rem;">
+                            Mark all read
+                        </button>
+                    </form>
+                    @endif
+                    <button type="button" class="btn-close btn-close-white opacity-50" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="offcanvas-body">
+                <div id="notificationList">
+                @forelse($unreadNotifications as $notif)
+                    <a class="notif-drawer-item unread" href="{{ $notif->data['url'] ?? '#' }}"
+                       onclick="fetch('{{ route('notifications.read', $notif->id) }}', {method:'POST', headers:{'X-CSRF-TOKEN':'{{ csrf_token() }}'}})">
+                        <div class="notif-drawer-icon" style="background:rgba(var(--accent-{{ $notif->data['color'] ?? 'primary' }}-rgb),0.15);">
+                            <i class="bi {{ $notif->data['icon'] ?? 'bi-bell' }}" style="color:var(--accent-{{ $notif->data['color'] ?? 'primary' }});"></i>
+                        </div>
+                        <div class="flex-fill">
+                            <div style="font-size:0.82rem; font-weight:600;">{{ $notif->data['title'] ?? 'Notification' }}</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;">{{ Str::limit($notif->data['message'] ?? '', 90) }}</div>
+                            <small class="notif-timer" data-assigned-at="{{ $notif->data['assigned_at'] ?? $notif->created_at->toIso8601String() }}"
+                                   style="font-size:0.68rem; color:var(--accent-warning);"></small>
+                        </div>
+                    </a>
+                @empty
+                    <div class="notif-drawer-empty" id="noNotifMsg">
+                        <i class="bi bi-check2-circle d-block mb-2" style="font-size:2rem; color:var(--accent-success);"></i>
+                        <div>All caught up!</div>
+                        <small>No unread notifications</small>
+                    </div>
+                @endforelse
+                </div>
+                <div class="p-3 border-top" style="border-color:rgba(255,255,255,0.06)!important;">
+                    <a href="{{ route('notifications.index') }}" class="btn btn-sm w-100" style="background:rgba(var(--accent-primary-rgb),0.1); color:var(--accent-primary); border:1px solid rgba(var(--accent-primary-rgb),0.2);">
+                        <i class="bi bi-list-ul me-1"></i>View Full History
+                    </a>
+                </div>
+            </div>
+        </div>
     </body>
 </html>

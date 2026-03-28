@@ -184,6 +184,48 @@
             </div>
         </div>
 
+        {{-- Today's Appointment Timeline --}}
+        @if(isset($todayAppointments) && $todayAppointments->count() > 0)
+        <div class="col-12 mb-2">
+            <div class="card fade-in delay-3" style="border-left:3px solid var(--accent-primary);">
+                <div class="card-header d-flex align-items-center justify-content-between py-2">
+                    <span style="font-size:0.88rem;"><i class="bi bi-clock-history me-2" style="color:var(--accent-primary);"></i>Today's Schedule
+                        <span class="badge ms-1" style="background:rgba(129,140,248,0.2);color:var(--accent-primary);font-size:0.7rem;">{{ $todayAppointments->count() }}</span>
+                    </span>
+                    <a href="{{ route('doctor.appointments.index') }}" class="btn btn-sm btn-outline-primary" style="font-size:0.72rem; padding:2px 8px;">View all</a>
+                </div>
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex align-items-center gap-2 flex-wrap" style="position:relative; padding-bottom:4px;">
+                        {{-- Timeline line --}}
+                        <div style="position:absolute; left:0; bottom:4px; width:100%; height:2px; background:linear-gradient(90deg,var(--accent-primary),rgba(129,140,248,0.1)); border-radius:1px; z-index:0;"></div>
+                        @foreach($todayAppointments as $appt)
+                            @php
+                                $chipColor = match($appt->status) {
+                                    'confirmed'   => 'var(--accent-success)',
+                                    'in_progress' => 'var(--accent-warning)',
+                                    default       => 'var(--accent-primary)',
+                                };
+                                $chipBg = match($appt->status) {
+                                    'confirmed'   => 'rgba(52,211,153,0.15)',
+                                    'in_progress' => 'rgba(251,191,36,0.15)',
+                                    default       => 'rgba(129,140,248,0.15)',
+                                };
+                            @endphp
+                            <div class="d-flex flex-column align-items-center" style="position:relative; z-index:1; flex:0 0 auto;">
+                                <div class="rounded-pill px-2 py-1 hover-lift"
+                                     title="{{ $appt->patient->first_name }} {{ $appt->patient->last_name }} — {{ ucfirst($appt->status) }}"
+                                     style="background:{{ $chipBg }}; border:1px solid {{ $chipColor }}; color:{{ $chipColor }}; font-size:0.72rem; white-space:nowrap; cursor:default; transition:transform 0.15s ease, box-shadow 0.15s ease;">
+                                    <i class="bi bi-person-fill me-1"></i>{{ \Illuminate\Support\Str::limit($appt->patient->first_name, 8) }}
+                                </div>
+                                <small style="color:var(--text-muted); font-size:0.65rem; margin-top:2px;">{{ $appt->scheduled_at->format('H:i') }}</small>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endif
+
         {{-- Quick Actions & Recent Earnings --}}
         <div class="col-lg-5">
             <div class="card mb-4 fade-in delay-4">
@@ -250,7 +292,7 @@ function updateWaitTimers() {
         el.textContent = (h > 0 ? h + 'h ' : '') + m + 'm ' + s + 's';
         if (diff < 180) { el.style.color = 'var(--accent-success)'; }
         else if (diff < 600) { el.style.color = 'var(--accent-warning)'; }
-        else if (diff < 1200) { el.style.color = '#fd7e14'; }
+        else if (diff < 1200) { el.style.color = 'var(--accent-secondary)'; }
         else { el.style.color = 'var(--accent-danger)'; }
     });
 }

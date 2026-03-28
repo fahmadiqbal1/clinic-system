@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Doctor;
 
 use App\Http\Controllers\Controller;
+use App\Models\Appointment;
 use App\Models\Prescription;
 use App\Models\RevenueLedger;
 use App\Models\DoctorPayout;
@@ -90,6 +91,15 @@ class DoctorDashboardController extends Controller
             ->limit(5)
             ->get();
 
+        // Today's appointments for timeline widget
+        $todayAppointments = Appointment::forDoctor($user->id)
+            ->with('patient')
+            ->whereDate('scheduled_at', today())
+            ->whereIn('status', ['scheduled', 'confirmed', 'in_progress'])
+            ->orderBy('scheduled_at')
+            ->limit(12)
+            ->get();
+
         return view('doctor.dashboard', [
             'patientCount' => $patientCount,
             'activePatients' => $activePatients,
@@ -104,6 +114,7 @@ class DoctorDashboardController extends Controller
             'todayInvoices' => $todayInvoices,
             'resultsReadyCount' => $resultsReadyCount,
             'recentPrescriptions' => $recentPrescriptions,
+            'todayAppointments' => $todayAppointments,
         ]);
     }
 }

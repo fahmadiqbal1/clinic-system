@@ -55,6 +55,11 @@ return Application::configure(basePath: dirname(__DIR__))
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
+
+        RateLimiter::for('notifications-poll', function (Request $request) {
+            // 30-second polling = max 2/min per user; allow 10 to handle tab burst
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

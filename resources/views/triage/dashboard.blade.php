@@ -201,7 +201,7 @@ function updateWaitTimers() {
         // Color escalation: green < 3min, yellow < 10min, orange < 20min, red >= 20min
         if (diff < 180) { el.style.color = 'var(--accent-success)'; }
         else if (diff < 600) { el.style.color = 'var(--accent-warning)'; }
-        else if (diff < 1200) { el.style.color = '#fd7e14'; }
+        else if (diff < 1200) { el.style.color = 'var(--accent-secondary)'; }
         else { el.style.color = 'var(--accent-danger)'; }
     });
 }

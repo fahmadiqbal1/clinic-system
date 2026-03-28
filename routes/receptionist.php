@@ -11,6 +11,7 @@ use App\Http\Controllers\Receptionist\ReceptionistDashboardController;
 use App\Http\Controllers\Receptionist\PatientRegistrationController;
 use App\Http\Controllers\Receptionist\InvoiceController as ReceptionistInvoiceController;
 use App\Http\Controllers\Receptionist\PayoutController as ReceptionistPayoutController;
+use App\Http\Controllers\Receptionist\AppointmentController;
 use App\Http\Controllers\Owner\InvoiceDiscountController;
 use Illuminate\Support\Facades\Route;
 
@@ -46,4 +47,11 @@ Route::middleware('role:Receptionist|Owner')->group(function () {
     // Payout Dashboard (one-click payout)
     Route::get('/receptionist/payouts/dashboard', [ReceptionistPayoutController::class, 'dashboard'])->name('receptionist.payouts.dashboard');
     Route::post('/receptionist/payouts/{user}/quick-pay', [ReceptionistPayoutController::class, 'quickPay'])->name('receptionist.payouts.quick-pay');
+
+    // Appointments
+    Route::get('/receptionist/appointments', [AppointmentController::class, 'index'])->name('receptionist.appointments.index');
+    Route::get('/receptionist/appointments/create', [AppointmentController::class, 'create'])->name('receptionist.appointments.create');
+    Route::post('/receptionist/appointments', [AppointmentController::class, 'store'])->name('receptionist.appointments.store');
+    Route::get('/receptionist/appointments/{appointment}', [AppointmentController::class, 'show'])->name('receptionist.appointments.show');
+    Route::post('/receptionist/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->name('receptionist.appointments.cancel');
 });

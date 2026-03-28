@@ -6,8 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\Patient;
+use App\Models\PatientCheckin;
+use App\Models\User;
+use App\Notifications\PatientSelfCheckedIn;
 use App\Services\PdfService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -83,6 +88,58 @@ class PatientPortalController extends Controller
 
         return response()->download(storage_path('app/' . $path), "invoice-{$invoice->id}.pdf")
             ->deleteFileAfterSend();
+    }
+
+    /**
+     * Show check-in kiosk page.
+     */
+    public function checkin(): View
+    {
+        /** @var \App\Models\User $authUser */
+        $authUser = Auth::user();
+        $patient = Patient::where('user_id', $authUser->id)->first();
+
+        if (!$patient) {
+            return view('patient.no-profile');
+        }
+
+        $alreadyCheckedIn = Cache::has("checkin_{$patient->id}");
+
+        return view('patient.checkin', compact('patient', 'alreadyCheckedIn'));
+    }
+
+    /**
+     * Confirm patient arrival (self check-in).
+     */
+    public function confirmArrival(): RedirectResponse
+    {
+        /** @var \App\Models\User $authUser */
+        $authUser = Auth::user();
+        $patient = Patient::where('user_id', $authUser->id)->firstOrFail();
+
+        $cacheKey = "checkin_{$patient->id}";
+
+        if (Cache::has($cacheKey)) {
+            return redirect()->route('patient.checkin')
+                ->with('info', 'You have already checked in. Please take a seat and wait to be called.');
+        }
+
+        Cache::put($cacheKey, true, now()->addHours(4));
+
+        // Persist check-in to DB for audit trail
+        PatientCheckin::create([
+            'patient_id'     => $patient->id,
+            'checked_in_by'  => null, // self check-in via kiosk
+            'checked_in_at'  => now(),
+            'checked_in_via' => 'kiosk',
+        ]);
+
+        User::role('Triage')->get()->each(function (User $triage) use ($patient): void {
+            $triage->notify(new PatientSelfCheckedIn($patient));
+        });
+
+        return redirect()->route('patient.checkin')
+            ->with('success', 'You are checked in! Please take a seat. The triage team has been notified.');
     }
 
     /**

@@ -43,5 +43,5 @@ return [
     | Hugging Face: 'https://router.huggingface.co/hf-inference/models/'
     |
     */
-    'api_url' => env('MEDGEMMA_API_URL', 'http://localhost:11434'),
+    'api_url' => env('MEDGEMMA_API_URL', 'http://127.0.0.1:11434'),
 ];
