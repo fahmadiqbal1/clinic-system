@@ -54,7 +54,10 @@ class PatientController extends Controller
             'registration_type' => 'required|in:walk_in,appointment,emergency,referral',
         ]);
 
-        $patient = Patient::create($validated);
+        $patient = Patient::create(array_merge($validated, [
+            'status' => 'waiting',
+            'registered_at' => now(),
+        ]));
 
         return new PatientResource($patient);
     }

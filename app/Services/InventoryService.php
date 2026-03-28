@@ -3,12 +3,17 @@
 namespace App\Services;
 
 use App\Models\InventoryItem;
+use App\Models\ProcurementRequest;
+use App\Models\ProcurementRequestItem;
 use App\Models\StockMovement;
 use App\Models\User;
 use App\Notifications\LowStockAlert;
+use App\Notifications\ProcurementAwaitingApproval;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 class InventoryService
@@ -119,6 +124,7 @@ class InventoryService
                         ->merge(User::role('Owner')->get())
                         ->unique('id');
                     Notification::send($recipients, new LowStockAlert($lockedItem, $currentStock));
+                    $this->autoCreateProcurementDraft($lockedItem, $currentStock);
                 }
             }
 
@@ -150,6 +156,48 @@ class InventoryService
     public function hasSufficientStock(InventoryItem $item, int $quantity): bool
     {
         return $this->getCurrentStock($item) >= $quantity;
+    }
+
+    /**
+     * Auto-create a pending procurement request when stock falls below minimum.
+     * Shares the 24-hour cache throttle with the LowStockAlert notification,
+     * so this fires at most once per item per day.
+     * A failure here must never interrupt the stock dispense transaction.
+     */
+    private function autoCreateProcurementDraft(InventoryItem $item, int $currentStock): void
+    {
+        try {
+            $reorderQty = max($item->minimum_stock_level - $currentStock, $item->minimum_stock_level);
+
+            $procurement = ProcurementRequest::create([
+                'department'   => $item->department,
+                'type'         => ProcurementRequest::TYPE_INVENTORY,
+                'requested_by' => Auth::id(),
+                'status'       => 'pending',
+                'notes'        => "Auto-created: {$item->name} stock below minimum ({$currentStock}/{$item->minimum_stock_level})",
+            ]);
+
+            ProcurementRequestItem::create([
+                'procurement_request_id' => $procurement->id,
+                'inventory_item_id'      => $item->id,
+                'quantity_requested'     => $reorderQty,
+                'quoted_unit_price'      => (float) $item->purchase_price,
+            ]);
+
+            /** @var string $requesterName */
+            $requesterName = Auth::user()?->name ?? 'System';
+
+            User::role('Owner')->get()->each(function (User $owner) use ($procurement, $requesterName): void {
+                $owner->notify(new ProcurementAwaitingApproval(
+                    $procurement->id,
+                    $procurement->department,
+                    $procurement->type,
+                    $requesterName,
+                ));
+            });
+        } catch (\Exception $e) {
+            Log::warning("Auto procurement draft failed for item #{$item->id}: {$e->getMessage()}");
+        }
     }
 
     /**

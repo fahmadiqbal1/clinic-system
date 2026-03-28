@@ -29,10 +29,11 @@ class NotificationController extends Controller
     {
         /** @var User $user */
         $user          = Auth::user();
-        $notifications = $user->unreadNotifications->take(10);
+        $notifications = $user->unreadNotifications()->limit(10)->get();
+        $count         = $user->unreadNotifications()->count();
 
         return response()->json([
-            'count' => $user->unreadNotifications->count(),
+            'count' => $count,
             'notifications' => $notifications->map(function ($n) {
                 return [
                     'id' => $n->id,
@@ -73,7 +74,7 @@ class NotificationController extends Controller
     {
         /** @var User $user */
         $user = Auth::user();
-        $user->unreadNotifications->markAsRead();
+        $user->unreadNotifications()->update(['read_at' => now()]);
 
         return redirect()->back()->with('success', 'All notifications marked as read.');
     }

@@ -35,9 +35,20 @@
 
     @if(auth()->user()->hasRole('Owner'))
     @php
-        $medgemma = \App\Models\PlatformSetting::medgemma();
-        $fbr = \App\Models\PlatformSetting::fbr();
+        try {
+            $medgemma = \App\Models\PlatformSetting::medgemma();
+            $fbr = \App\Models\PlatformSetting::fbr();
+            $platformSettingsError = null;
+        } catch (\Exception $e) {
+            $medgemma = null;
+            $fbr = null;
+            $platformSettingsError = 'Platform settings unavailable: run `php artisan migrate` to set up required tables.';
+        }
     @endphp
+    @if($platformSettingsError)
+        <div class="alert alert-warning mb-4"><i class="bi bi-exclamation-triangle me-2"></i>{{ $platformSettingsError }}</div>
+    @endif
+    @if($medgemma && $fbr)
     <div class="card mb-4 fade-in delay-3">
         <div class="card-header d-flex align-items-center justify-content-between">
             <span><i class="bi bi-robot me-2" style="color:var(--accent-primary);"></i>MedGemma AI — API Configuration</span>
@@ -169,10 +180,11 @@
             </form>
         </div>
     </div>
-    @endif
+    @endif {{-- end @if($medgemma && $fbr) --}}
+    @endif {{-- end @if(hasRole('Owner')) --}}
 
     {{-- FBR IRIS Digital Invoicing --}}
-    @if(auth()->user()->hasRole('Owner'))
+    @if(auth()->user()->hasRole('Owner') && isset($fbr) && $fbr)
     <div class="card mb-4 fade-in delay-4">
         <div class="card-header d-flex align-items-center justify-content-between">
             <span><i class="bi bi-receipt-cutoff me-2" style="color:var(--accent-success);"></i>FBR IRIS — Digital Invoicing (Pakistan)</span>

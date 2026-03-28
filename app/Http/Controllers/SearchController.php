@@ -24,18 +24,17 @@ class SearchController extends Controller
         $results = [];
         $like = "%{$q}%";
 
-        // Search patients
-        $patients = Patient::where('name', 'LIKE', $like)
-            ->orWhere('phone', 'LIKE', $like)
-            ->orWhere('id_number', 'LIKE', $like)
+        // Search patients by first_name or last_name (phone/email are encrypted, cannot SQL LIKE)
+        $patients = Patient::where('first_name', 'LIKE', $like)
+            ->orWhere('last_name', 'LIKE', $like)
             ->limit(5)
-            ->get(['id', 'name', 'phone']);
+            ->get(['id', 'first_name', 'last_name']);
 
         foreach ($patients as $p) {
             $results[] = [
                 'icon' => 'bi-person',
-                'title' => $p->name,
-                'subtitle' => 'Patient • ' . ($p->phone ?? 'No phone'),
+                'title' => $p->full_name,
+                'subtitle' => 'Patient',
                 'url' => route('receptionist.patients.show', $p->id),
             ];
         }
@@ -43,7 +42,8 @@ class SearchController extends Controller
         // Search invoices by ID or patient name
         $invoices = Invoice::with('patient')
             ->where('id', 'LIKE', $like)
-            ->orWhereHas('patient', fn ($pq) => $pq->where('name', 'LIKE', $like))
+            ->orWhereHas('patient', fn ($pq) => $pq->where('first_name', 'LIKE', $like)
+                ->orWhere('last_name', 'LIKE', $like))
             ->limit(5)
             ->get(['id', 'patient_id', 'department', 'status', 'total_amount']);
 
@@ -51,7 +51,7 @@ class SearchController extends Controller
             $results[] = [
                 'icon' => 'bi-receipt',
                 'title' => 'Invoice #' . $inv->id,
-                'subtitle' => ($inv->patient?->name ?? 'Unknown') . ' • ' . ucfirst($inv->department) . ' • ' . ucfirst($inv->status),
+                'subtitle' => ($inv->patient?->full_name ?? 'Unknown') . ' • ' . ucfirst($inv->department) . ' • ' . ucfirst($inv->status),
                 'url' => route('receptionist.invoices.show', $inv->id),
             ];
         }

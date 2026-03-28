@@ -45,6 +45,8 @@ class AuthenticatedSessionController extends Controller
             return redirect()->intended(route('radiology.dashboard', absolute: false));
         } elseif ($user && $user->hasRole('Pharmacy')) {
             return redirect()->intended(route('pharmacy.dashboard', absolute: false));
+        } elseif ($user && $user->hasRole('Patient')) {
+            return redirect()->intended(route('patient.dashboard', absolute: false));
         }
 
         return redirect()->intended(route('home', absolute: false));
@@ -61,6 +63,6 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerateToken();
 
-        return redirect('/');
+        return redirect()->route('login');
     }
 }

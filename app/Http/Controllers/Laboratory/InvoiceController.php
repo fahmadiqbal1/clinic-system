@@ -3,16 +3,20 @@
 namespace App\Http\Controllers\Laboratory;
 
 use App\Http\Controllers\Controller;
+use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Notifications\InvoiceStatusChanged;
+use App\Notifications\PatientResultsReadySms;
 use App\Notifications\ResultsReady;
 use App\Services\AuditableService;
+use App\Services\MedGemmaService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class InvoiceController extends Controller
@@ -28,6 +32,7 @@ class InvoiceController extends Controller
     {
         $invoices = Invoice::where('department', 'lab')
             ->where('status', '!=', Invoice::STATUS_CANCELLED)
+            ->with(['patient', 'items.serviceCatalog'])
             ->latest()
             ->paginate(10);
 
@@ -121,6 +126,23 @@ class InvoiceController extends Controller
 
         // Notify prescribing doctor that lab results are ready
         $this->notifyDoctorResultsReady($invoice);
+
+        // SMS patient when lab results are ready (silent if Twilio not configured or patient has no portal account)
+        $invoice->load('patient.user');
+        if ($invoice->patient?->user_id) {
+            $invoice->patient->user->notify(new PatientResultsReadySms($invoice->department));
+        }
+
+        // Auto-trigger AI analysis (skip if one already exists for this invoice)
+        if (AiAnalysis::where('invoice_id', $invoice->id)->doesntExist()) {
+            try {
+                /** @var int $userId */
+                $userId = Auth::id();
+                app(MedGemmaService::class)->analyseLab($invoice, $userId);
+            } catch (\Exception $e) {
+                Log::warning("Auto lab AI analysis failed for invoice #{$invoice->id}: {$e->getMessage()}");
+            }
+        }
 
         AuditableService::logInvoiceStatusChange($invoice, 'paid', 'paid (work completed)');
 
