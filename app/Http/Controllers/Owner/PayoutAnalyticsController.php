@@ -146,7 +146,7 @@ class PayoutAnalyticsController extends Controller
             ->join('invoices', 'revenue_ledgers.invoice_id', '=', 'invoices.id')
             ->join('invoice_items', 'invoices.id', '=', 'invoice_items.invoice_id')
             ->leftJoin('service_catalog', 'invoice_items.service_catalog_id', '=', 'service_catalog.id')
-            ->groupBy('service_catalog.name', 'invoices.department')
+            ->groupBy('service_catalog.name', 'invoices.department', 'invoices.service_name')
             ->selectRaw('COALESCE(service_catalog.name, invoices.service_name) as service_name, invoices.department, SUM(revenue_ledgers.amount) as total_earned, COUNT(DISTINCT invoices.id) as times_used')
             ->orderByDesc('total_earned')
             ->limit(10)
