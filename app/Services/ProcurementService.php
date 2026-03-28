@@ -47,18 +47,23 @@ class ProcurementService
                 throw new \Exception('Procurement request has no items to receive.');
             }
 
+            // Resolve auth user — supports both HTTP and queue/CLI contexts
+            $authUser = \Illuminate\Support\Facades\Auth::user()
+                ?? \App\Models\User::find($request->approved_by ?? $request->requested_by);
+
             // Validate unit prices provided for all items
             foreach ($items as $item) {
+                $itemName = $item->inventoryItem?->name ?? "Item #{$item->inventory_item_id}";
                 if (!isset($unitPrices[$item->id])) {
                     throw new \Exception(
-                        "Unit price missing for item '{$item->inventoryItem->name}' " .
+                        "Unit price missing for item '{$itemName}' " .
                         "(ProcurementRequestItem ID: {$item->id})."
                     );
                 }
 
                 if ($unitPrices[$item->id] === null) {
                     throw new \Exception(
-                        "Unit price cannot be null for item '{$item->inventoryItem->name}' " .
+                        "Unit price cannot be null for item '{$itemName}' " .
                         "(ProcurementRequestItem ID: {$item->id})."
                     );
                 }
@@ -67,8 +72,9 @@ class ProcurementService
             // Validate not already received (atomic: no partial receipt)
             foreach ($items as $item) {
                 if ($item->quantity_received !== null) {
+                    $itemName = $item->inventoryItem?->name ?? "Item #{$item->inventory_item_id}";
                     throw new \Exception(
-                        "Procurement request already received. Item '{$item->inventoryItem->name}' " .
+                        "Procurement request already received. Item '{$itemName}' " .
                         "has quantity_received = {$item->quantity_received}. " .
                         "Procurement receipts are atomic and cannot be repeated."
                     );
@@ -77,8 +83,11 @@ class ProcurementService
 
             // Process receipt: update quantities, create expenses, record stock
             foreach ($items as $item) {
-                $unitPrice = $unitPrices[$item->id];
-                $totalCost = $item->quantity_requested * $unitPrice;
+                $unitPrice    = $unitPrices[$item->id];
+                $totalCost    = $item->quantity_requested * $unitPrice;
+                $inventoryItem = $item->inventoryItem;
+                $itemName     = $inventoryItem?->name ?? "Item #{$item->inventory_item_id}";
+                $itemUnit     = $inventoryItem?->unit ?? 'unit';
 
                 // Atomically set quantity_received and unit_price together
                 $item->update([
@@ -91,20 +100,22 @@ class ProcurementService
                     'department' => $request->department,
                     'patient_id' => null,
                     'invoice_id' => null,
-                    'description' => "Procurement: {$item->inventoryItem->name} ({$item->quantity_requested} {$item->inventoryItem->unit})",
+                    'description' => "Procurement: {$itemName} ({$item->quantity_requested} {$itemUnit})",
                     'cost' => $totalCost,
-                    'created_by' => \Illuminate\Support\Facades\Auth::user()->id,
+                    'created_by' => $authUser?->id,
                 ]);
 
                 // Record stock movement (inbound) with unit cost for WAC
-                $this->inventoryService->recordInbound(
-                    item: $item->inventoryItem,
-                    quantity: $item->quantity_requested,
-                    unitCost: (float) $unitPrice,
-                    referenceType: 'procurement_request',
-                    referenceId: $request->id,
-                    user: \Illuminate\Support\Facades\Auth::user()
-                );
+                if ($inventoryItem) {
+                    $this->inventoryService->recordInbound(
+                        item: $inventoryItem,
+                        quantity: $item->quantity_requested,
+                        unitCost: (float) $unitPrice,
+                        referenceType: 'procurement_request',
+                        referenceId: $request->id,
+                        user: $authUser ?? new \App\Models\User(['id' => 0]),
+                    );
+                }
             }
 
             // Mark procurement request as received

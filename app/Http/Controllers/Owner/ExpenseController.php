@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Owner;
 
 use App\Http\Controllers\Controller;
 use App\Models\Expense;
+use App\Services\AuditableService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -132,6 +133,13 @@ class ExpenseController extends Controller
         if ($expense->invoice_id) {
             abort(403, 'Procurement-linked expenses cannot be deleted.');
         }
+
+        AuditableService::log(
+            'expense_deleted',
+            "Expense #{$expense->id} ({$expense->department}, PKR {$expense->cost}) deleted by Owner",
+            $expense->id,
+            Expense::class
+        );
 
         $expense->delete();
 

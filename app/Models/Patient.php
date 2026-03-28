@@ -46,6 +46,7 @@ class Patient extends Model
         // PHI encryption
         'phone' => 'encrypted',
         'email' => 'encrypted',
+        'cnic' => 'encrypted',
         'consultation_notes' => 'encrypted',
     ];
 

@@ -132,7 +132,7 @@
                             @foreach($recentPrescriptions as $rx)
                                 <div class="list-group-item d-flex justify-content-between align-items-center" style="background:transparent; border-color:var(--glass-border);">
                                     <div>
-                                        <div class="fw-medium" style="color:var(--text-primary);">{{ $rx->patient->first_name }} {{ $rx->patient->last_name }}</div>
+                                        <div class="fw-medium" style="color:var(--text-primary);">{{ $rx->patient?->first_name ?? 'Unknown' }} {{ $rx->patient?->last_name ?? '' }}</div>
                                         <small style="color:var(--text-muted);">{{ $rx->diagnosis ?? 'No diagnosis' }} &middot; {{ $rx->items->count() }} item(s)</small>
                                     </div>
                                     <div class="text-end">
@@ -213,9 +213,9 @@
                             @endphp
                             <div class="d-flex flex-column align-items-center" style="position:relative; z-index:1; flex:0 0 auto;">
                                 <div class="rounded-pill px-2 py-1 hover-lift"
-                                     title="{{ $appt->patient->first_name }} {{ $appt->patient->last_name }} — {{ ucfirst($appt->status) }}"
+                                     title="{{ $appt->patient?->first_name ?? 'Unknown' }} {{ $appt->patient?->last_name ?? '' }} — {{ ucfirst($appt->status) }}"
                                      style="background:{{ $chipBg }}; border:1px solid {{ $chipColor }}; color:{{ $chipColor }}; font-size:0.72rem; white-space:nowrap; cursor:default; transition:transform 0.15s ease, box-shadow 0.15s ease;">
-                                    <i class="bi bi-person-fill me-1"></i>{{ \Illuminate\Support\Str::limit($appt->patient->first_name, 8) }}
+                                    <i class="bi bi-person-fill me-1"></i>{{ \Illuminate\Support\Str::limit($appt->patient?->first_name ?? 'Unknown', 8) }}
                                 </div>
                                 <small style="color:var(--text-muted); font-size:0.65rem; margin-top:2px;">{{ $appt->scheduled_at->format('H:i') }}</small>
                             </div>

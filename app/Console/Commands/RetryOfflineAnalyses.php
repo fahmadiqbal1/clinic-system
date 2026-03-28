@@ -51,7 +51,7 @@ class RetryOfflineAnalyses extends Command
 
         foreach ($pending as $analysis) {
             $analysis->update(['status' => 'pending', 'ai_response' => null]);
-            AnalyseConsultationJob::dispatch($analysis->id);
+            AnalyseConsultationJob::dispatch($analysis, $analysis->context_type, $analysis->invoice_id);
             $retried++;
             $this->line("  Retried [{$analysis->id}] {$analysis->context_type} — patient #{$analysis->patient_id}");
         }

@@ -16,29 +16,31 @@ class CleanupRadiologyImages extends Command
         $days = (int) $this->option('days');
         $cutoff = now()->subDays($days);
 
-        $invoices = Invoice::where('department', 'radiology')
+        $totalDeleted  = 0;
+        $totalInvoices = 0;
+
+        Invoice::where('department', 'radiology')
             ->whereNotNull('radiology_images')
             ->where('created_at', '<', $cutoff)
-            ->get();
+            ->chunk(100, function ($invoices) use (&$totalDeleted, &$totalInvoices) {
+                foreach ($invoices as $invoice) {
+                    $images = $invoice->radiology_images ?? [];
 
-        $totalDeleted = 0;
+                    if (empty($images)) {
+                        continue;
+                    }
 
-        foreach ($invoices as $invoice) {
-            $images = $invoice->radiology_images ?? [];
+                    foreach ($images as $path) {
+                        Storage::disk('public')->delete($path);
+                    }
 
-            if (empty($images)) {
-                continue;
-            }
+                    $totalDeleted += count($images);
+                    $totalInvoices++;
+                    $invoice->update(['radiology_images' => null]);
+                }
+            });
 
-            foreach ($images as $path) {
-                Storage::disk('public')->delete($path);
-            }
-
-            $totalDeleted += count($images);
-            $invoice->update(['radiology_images' => null]);
-        }
-
-        $this->info("Cleaned up {$totalDeleted} image(s) from {$invoices->count()} invoice(s) older than {$days} days.");
+        $this->info("Cleaned up {$totalDeleted} image(s) from {$totalInvoices} invoice(s) older than {$days} days.");
 
         return self::SUCCESS;
     }
