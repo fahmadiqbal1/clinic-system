@@ -1,0 +1,47 @@
+# Phase 4 — NocoBase property & equipment admin (opt-in)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.admin.yml up -d
+#
+# NocoBase uses its own Postgres volume and never touches the app's MariaDB.
+# UI binds to 127.0.0.1:13000 only — Owner accesses directly; reverse-proxy optional.
+# Webhook auth: HMAC-SHA256 via X-NocoBase-Signature header (CLINIC_NOCOBASE_WEBHOOK_SECRET).
+#
+# SSO decision: NocoBase 0.x auth plugin does not support signed-cookie handoff from
+# PHP sessions. Fallback in use: separate Owner-only NocoBase login behind the 127.0.0.1
+# port binding (not reachable from outside the host).
+
+services:
+  nocobase:
+    image: nocobase/nocobase:latest
+    container_name: clinic-nocobase
+    restart: unless-stopped
+    environment:
+      DB_DIALECT: postgres
+      DB_HOST: nocobase-pg
+      DB_PORT: 5432
+      DB_DATABASE: nocobase
+      DB_USER: nocobase
+      DB_PASSWORD: ${NOCOBASE_DB_PASSWORD}
+      APP_KEY: ${NOCOBASE_APP_KEY}
+      # Webhook target — NocoBase will POST events here
+      WEBHOOK_AUDIT_URL: ${APP_URL:-http://host.docker.internal:8000}/api/nocobase/audit-hook
+      WEBHOOK_AUDIT_SECRET: ${CLINIC_NOCOBASE_WEBHOOK_SECRET}
+    ports:
+      - "127.0.0.1:13000:80"
+    depends_on:
+      - nocobase-pg
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  nocobase-pg:
+    image: postgres:15-alpine
+    container_name: clinic-nocobase-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nocobase
+      POSTGRES_USER: nocobase
+      POSTGRES_PASSWORD: ${NOCOBASE_DB_PASSWORD}
+    volumes:
+      - nocobase_pg_data:/var/lib/postgresql/data
+
+volumes:
+  nocobase_pg_data:

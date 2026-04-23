@@ -95,6 +95,22 @@ CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php 
   RAGFLOW_MYSQL_PASSWORD=        # ragflow user password for ragflow-mysql
   ```
 
+## Phase 4 Notes (NocoBase property & equipment admin)
+
+- **NocoBase stack:** added to `docker-compose.admin.yml` — `nocobase` (latest) + `nocobase-pg` (Postgres 15). Start with `docker compose -f docker-compose.yml -f docker-compose.admin.yml up -d`.
+- **NocoBase UI:** http://localhost:13000 (bound to 127.0.0.1 only). Owner creates schema via UI; import seed schema from `nocobase/schema.json` (Settings → Import/Export).
+- **Owner gateway:** `GET /owner/nocobase` — Spatie `role:Owner` enforced at route; shows link to NocoBase UI. Flag: `admin.nocobase.enabled` (seeded OFF in Phase 0 migration 000005).
+- **Audit webhook:** NocoBase POSTs to `POST /api/nocobase/audit-hook`. HMAC-SHA256 via `X-NocoBase-Signature: sha256=<hex>`. Controller verifies against `CLINIC_NOCOBASE_WEBHOOK_SECRET`. Writes to `audit_logs` as `action = 'nocobase.<table>.<event>'`, `auditable_type = 'Nocobase'`.
+- **SSO decision:** NocoBase auth plugin does not support signed-cookie handoff from PHP sessions. Fallback: separate Owner-only NocoBase login (UI only reachable at 127.0.0.1:13000; not internet-exposed).
+- **Schema tables:** `properties` (lease), `equipment` (serial/warranty/vendor), `service_history` (per-equipment), `vendors` (contacts/contracts). Schema export: `nocobase/schema.json`.
+- **New env vars:**
+  ```
+  CLINIC_NOCOBASE_WEBHOOK_SECRET=   # HMAC secret — generate: php -r "echo base64_encode(random_bytes(32));"
+  NOCOBASE_DB_PASSWORD=             # Postgres password for nocobase container
+  NOCOBASE_APP_KEY=                 # NocoBase app key — generate: php -r "echo base64_encode(random_bytes(32));"
+  NOCOBASE_URL=http://localhost:13000  # URL of NocoBase UI (displayed in owner gateway page)
+  ```
+
 ## Test Baseline
 
 - Phase -1 baseline: 178 pass / 3 pre-existing failures (logout session, 2x Ollama-offline)
@@ -102,3 +118,4 @@ CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php 
 - Phase 1 baseline: target 188 pass / 3 pre-existing failures (no new test files — Phase 1 is CI tooling only)
 - Phase 2 baseline: 195 pass / 3 pre-existing failures (+7 new Phase 2 tests: CircuitBreakerTest×4, AiSidecarClientTest×3)
 - Phase 3 baseline: target 202 pass / 3 pre-existing failures (+7 new Phase 3 tests: RagflowOutageTest×4, RagflowSyncPhiTest×3)
+- Phase 4 baseline: target 207 pass / 3 pre-existing failures (+5 new Phase 4 tests: NocobaseAuditHookTest×5)

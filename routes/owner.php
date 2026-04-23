@@ -24,6 +24,7 @@ use App\Http\Controllers\Dashboard\ProcurementPipelineController;
 use App\Http\Controllers\Owner\RevenueForecastController;
 use App\Http\Controllers\Owner\ArchitectureController;
 use App\Http\Controllers\Owner\AiOversightController;
+use App\Http\Controllers\Owner\NocobaseController;
 use App\Http\Controllers\Api\AiAssistantController;
 use Illuminate\Support\Facades\Route;
 
@@ -114,6 +115,9 @@ Route::middleware('role:Owner')->group(function () {
 
     // AI & Infrastructure (Phase 3 — flag-gated)
     Route::get('/owner/ai-oversight', [AiOversightController::class, 'index'])->name('owner.ai-oversight');
+
+    // Property & Equipment Admin — NocoBase gateway (Phase 4 — flag-gated)
+    Route::get('/owner/nocobase', [NocobaseController::class, 'index'])->name('owner.nocobase');
 });
 
 // AI Assistant AJAX — accessible to any authenticated user; flag-checked per role inside controller

@@ -19,4 +19,16 @@ return [
      * Generate with: php -r "echo base64_encode(random_bytes(32));"
      */
     'sidecar_jwt_secret' => env('CLINIC_SIDECAR_JWT_SECRET', ''),
+
+    /*
+     * HMAC-SHA256 secret for NocoBase → Laravel webhook calls (Phase 4).
+     * Generate with: php -r "echo base64_encode(random_bytes(32));"
+     */
+    'nocobase_webhook_secret' => env('CLINIC_NOCOBASE_WEBHOOK_SECRET', ''),
+
+    /*
+     * URL of the NocoBase admin UI (Phase 4).
+     * Binds to 127.0.0.1:13000 by default; owner accesses directly.
+     */
+    'nocobase_url' => env('NOCOBASE_URL', 'http://localhost:13000'),
 ];

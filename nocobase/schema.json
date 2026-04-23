@@ -1,0 +1,74 @@
+{
+  "_comment": "NocoBase schema export — disaster recovery seed. No data, schema only. Re-import via NocoBase UI: Settings → Import/Export → Import.",
+  "_version": "0.21.0",
+  "_exported_at": "2026-04-23",
+  "collections": [
+    {
+      "name": "properties",
+      "title": "Properties",
+      "fields": [
+        { "name": "id",           "type": "bigInt",    "primaryKey": true, "autoIncrement": true },
+        { "name": "name",         "type": "string",    "notNull": true },
+        { "name": "address",      "type": "text",      "notNull": false },
+        { "name": "lease_start",  "type": "date",      "notNull": false },
+        { "name": "lease_end",    "type": "date",      "notNull": false },
+        { "name": "monthly_rent", "type": "decimal",   "notNull": false, "precision": 12, "scale": 2 },
+        { "name": "landlord_name","type": "string",    "notNull": false },
+        { "name": "landlord_phone","type":"string",    "notNull": false },
+        { "name": "notes",        "type": "text",      "notNull": false },
+        { "name": "createdAt",    "type": "date",      "notNull": false },
+        { "name": "updatedAt",    "type": "date",      "notNull": false }
+      ]
+    },
+    {
+      "name": "vendors",
+      "title": "Vendors",
+      "fields": [
+        { "name": "id",           "type": "bigInt",    "primaryKey": true, "autoIncrement": true },
+        { "name": "name",         "type": "string",    "notNull": true },
+        { "name": "contact_name", "type": "string",    "notNull": false },
+        { "name": "phone",        "type": "string",    "notNull": false },
+        { "name": "email",        "type": "string",    "notNull": false },
+        { "name": "contract_ref", "type": "string",    "notNull": false },
+        { "name": "contract_expiry","type":"date",     "notNull": false },
+        { "name": "notes",        "type": "text",      "notNull": false },
+        { "name": "createdAt",    "type": "date",      "notNull": false },
+        { "name": "updatedAt",    "type": "date",      "notNull": false }
+      ]
+    },
+    {
+      "name": "equipment",
+      "title": "Equipment",
+      "fields": [
+        { "name": "id",            "type": "bigInt",   "primaryKey": true, "autoIncrement": true },
+        { "name": "name",          "type": "string",   "notNull": true },
+        { "name": "model",         "type": "string",   "notNull": false },
+        { "name": "serial_number", "type": "string",   "notNull": false },
+        { "name": "purchase_date", "type": "date",     "notNull": false },
+        { "name": "warranty_end",  "type": "date",     "notNull": false },
+        { "name": "vendor_id",     "type": "bigInt",   "notNull": false, "foreignKey": { "collection": "vendors", "field": "id" } },
+        { "name": "location",      "type": "string",   "notNull": false },
+        { "name": "status",        "type": "select",   "notNull": false, "options": ["active","under_service","retired"] },
+        { "name": "notes",         "type": "text",     "notNull": false },
+        { "name": "createdAt",     "type": "date",     "notNull": false },
+        { "name": "updatedAt",     "type": "date",     "notNull": false }
+      ]
+    },
+    {
+      "name": "service_history",
+      "title": "Service History",
+      "fields": [
+        { "name": "id",            "type": "bigInt",   "primaryKey": true, "autoIncrement": true },
+        { "name": "equipment_id",  "type": "bigInt",   "notNull": true,  "foreignKey": { "collection": "equipment", "field": "id" } },
+        { "name": "service_date",  "type": "date",     "notNull": true },
+        { "name": "technician",    "type": "string",   "notNull": false },
+        { "name": "description",   "type": "text",     "notNull": false },
+        { "name": "cost",          "type": "decimal",  "notNull": false, "precision": 12, "scale": 2 },
+        { "name": "next_service",  "type": "date",     "notNull": false },
+        { "name": "attachments",   "type": "attachment","notNull": false },
+        { "name": "createdAt",     "type": "date",     "notNull": false },
+        { "name": "updatedAt",     "type": "date",     "notNull": false }
+      ]
+    }
+  ]
+}

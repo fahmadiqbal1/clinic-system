@@ -10,6 +10,7 @@
 use App\Http\Controllers\Api\V1\PatientController;
 use App\Http\Controllers\Api\V1\InvoiceController;
 use App\Http\Controllers\Api\V1\AiAnalysisController;
+use App\Http\Controllers\Api\NocobaseAuditHookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -21,6 +22,10 @@ use Illuminate\Support\Facades\Route;
 | Use Laravel Sanctum for token authentication.
 |
 */
+
+// Phase 4 — NocoBase webhook (HMAC-verified, no Sanctum — NocoBase has no Laravel session)
+Route::post('/nocobase/audit-hook', [NocobaseAuditHookController::class, 'handle'])
+    ->name('nocobase.audit-hook');
 
 Route::prefix('v1')->middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Patients
