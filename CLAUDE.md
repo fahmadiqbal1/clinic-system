@@ -53,8 +53,26 @@ Run `php artisan migrate` — all Phase 0 migrations run in sequence:
 - Run `php artisan gitnexus:scan` to (re)generate the graph. Enable `ai.gitnexus.enabled` flag to see `/owner/architecture`.
 - Feature flag `ai.gitnexus.enabled` was seeded in Phase 0 migration 000005 (default OFF).
 
+## Phase 2 Notes (Python AI Sidecar)
+
+- **Sidecar:** `sidecar/` — FastAPI 0.115 + Pydantic v2. Run with `docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d`.
+- **`AiSidecarClient`** (`app/Services/AiSidecarClient.php`) — circuit breaker (3 failures/60s → open 5 min), 15s timeout, 1 retry. Logs every call to `ai_invocations` (hash-chained).
+- **`AiInvocation`** model (`app/Models/AiInvocation.php`) — SHA-256 hash chain identical to `audit_logs`.
+- **Feature flag:** `ai.sidecar.enabled` (seeded OFF in Phase 0 migration 000005). When ON, `AnalyseConsultationJob` routes consultation analyses through sidecar `/v1/consult` → Ollama. Direct MedGemma path preserved for parity.
+- **New env vars:** `CLINIC_SIDECAR_URL`, `CLINIC_SIDECAR_JWT_SECRET` (see `.env.example`).
+- **Python tests:** `cd sidecar && pip install -r requirements.txt && pytest` — 3 test modules (health, schemas, auth).
+- **Phase 2 migration:** `000007` — creates `ai_invocations` table.
+
+## Environment Variables (Phase 2 additions)
+
+```
+CLINIC_SIDECAR_URL=http://localhost:8001   # FastAPI sidecar URL (native) / http://sidecar:8001 (Docker)
+CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php -r "echo base64_encode(random_bytes(32));"
+```
+
 ## Test Baseline
 
 - Phase -1 baseline: 178 pass / 3 pre-existing failures (logout session, 2x Ollama-offline)
 - Phase 0 baseline: 188 pass / 3 pre-existing failures (same 3, +10 new Phase 0 tests all green)
 - Phase 1 baseline: target 188 pass / 3 pre-existing failures (no new test files — Phase 1 is CI tooling only)
+- Phase 2 baseline: 195 pass / 3 pre-existing failures (+7 new Phase 2 tests: CircuitBreakerTest×4, AiSidecarClientTest×3)

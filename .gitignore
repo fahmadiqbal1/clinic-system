@@ -35,3 +35,7 @@ Thumbs.db
 .gitnexus
 /storage/gitnexus/
 /tools/gitnexus/
+
+# Phase 2: Python sidecar artifacts (sidecar/.gitignore handles the rest)
+/sidecar/__pycache__/
+/sidecar/.venv/

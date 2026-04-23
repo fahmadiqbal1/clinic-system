@@ -1,0 +1,29 @@
+# Phase 2 — AI Sidecar (opt-in)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
+#
+# The sidecar joins the default network defined by docker-compose.yml,
+# so it can reach ollama:11434 and host.docker.internal for the MySQL RO user.
+
+services:
+  sidecar:
+    build:
+      context: ./sidecar
+      dockerfile: Dockerfile
+    container_name: clinic-sidecar
+    restart: unless-stopped
+    environment:
+      SIDECAR_JWT_SECRET: ${CLINIC_SIDECAR_JWT_SECRET}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${MEDGEMMA_MODEL:-medgemma}
+      # clinic_ro MySQL access for forecast endpoints (Phase 5)
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-clinic_system}
+      DB_RO_USER: clinic_ro
+      DB_RO_PASSWORD: ${CLINIC_RO_PASSWORD}
+    ports:
+      - "8001:8001"
+    depends_on:
+      - ollama
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
