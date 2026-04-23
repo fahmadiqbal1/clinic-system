@@ -22,9 +22,16 @@
                 @endif
             </p>
         </div>
-        <a href="{{ route('contracts.index') }}" class="btn btn-outline-light fw-semibold">
-            <i class="bi bi-arrow-left me-1"></i> Contract History
-        </a>
+        <div class="d-flex gap-2">
+            @if(isset($contract) && $contract)
+                <a href="{{ route('contracts.view', $contract) }}" class="btn btn-outline-light fw-semibold">
+                    <i class="bi bi-eye me-1"></i> Full Document
+                </a>
+            @endif
+            <a href="{{ route('contracts.index') }}" class="btn btn-outline-light fw-semibold">
+                <i class="bi bi-arrow-left me-1"></i> All Contracts
+            </a>
+        </div>
     </div>
 </div>
 
@@ -104,7 +111,7 @@
                 </div>
 
                 @if ($contract->resignation_notice_submitted_at || $contract->early_exit_flag)
-                    <div class="pipeline-connector {{ $contract->resignation_notice_submitted_at || $contract->early_exit_flag ? 'active' : '' }}"></div>
+                    <div class="pipeline-connector active"></div>
                     <div class="pipeline-step active">
                         <div class="pipeline-step-dot"></div>
                         <div>
@@ -136,17 +143,26 @@
                 <div class="glass-card">
                     {{-- Staff & Version Header --}}
                     <div class="d-flex justify-content-between align-items-start mb-3">
-                        <div>
-                            <p class="small text-white-50 mb-1"><i class="bi bi-person-badge me-1"></i> Staff Member</p>
-                            <h2 class="h4 fw-bold text-white mb-0">{{ $contract->user?->name ?? 'Unknown Staff' }}</h2>
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="stat-icon stat-icon-primary" style="width:48px;height:48px;font-size:1.1rem;">
+                                {{ strtoupper(substr($contract->user?->name ?? '?', 0, 1)) }}
+                            </div>
+                            <div>
+                                <h2 class="h4 fw-bold text-white mb-0">{{ $contract->user?->name ?? 'Unknown Staff' }}</h2>
+                                <small class="text-white-50">{{ $contract->user?->roles?->pluck('name')->join(', ') ?? '' }}</small>
+                            </div>
                         </div>
-                        <span class="badge-glass
-                            @if ($contract->status === 'active') glow-success
-                            @elseif ($contract->status === 'draft') glow-warning
-                            @else glow-info @endif
-                        ">
-                            {{ ucfirst($contract->status) }}
-                        </span>
+                        @if($contract->early_exit_flag)
+                            <span class="badge bg-danger"><i class="bi bi-flag-fill me-1"></i>Early Exit</span>
+                        @elseif($contract->resignation_notice_submitted_at)
+                            <span class="badge bg-warning text-dark"><i class="bi bi-box-arrow-right me-1"></i>Resigned</span>
+                        @elseif($contract->status === 'active')
+                            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Active</span>
+                        @elseif($contract->status === 'draft')
+                            <span class="badge bg-warning text-dark"><i class="bi bi-pen me-1"></i>Awaiting Signature</span>
+                        @else
+                            <span class="badge bg-secondary"><i class="bi bi-archive me-1"></i>Superseded</span>
+                        @endif
                     </div>
 
                     <div class="glass-divider mb-3"></div>
@@ -163,8 +179,19 @@
                         </div>
                         <div class="info-grid-item">
                             <span class="info-label"><i class="bi bi-clock-history me-1"></i> Minimum Term</span>
-                            <span class="info-value">{{ $contract->minimum_term_months }} months</span>
+                            <span class="info-value">
+                                {{ $contract->minimum_term_months }} months
+                                @if($contract->isActive() && $contract->isWithinMinimumTerm())
+                                    <i class="bi bi-hourglass-split text-warning ms-1" title="Within minimum term"></i>
+                                @endif
+                            </span>
                         </div>
+                        @if($contract->minimum_term_end)
+                            <div class="info-grid-item">
+                                <span class="info-label"><i class="bi bi-calendar-x me-1"></i> Term Ends</span>
+                                <span class="info-value">{{ $contract->minimum_term_end->format('M d, Y') }}</span>
+                            </div>
+                        @endif
                     </div>
 
                     <div class="glass-divider mb-4"></div>
@@ -177,13 +204,28 @@
             </div>
         </div>
 
-        {{-- Sidebar: Actions & Metadata --}}
+        {{-- Sidebar --}}
         <div class="col-lg-4">
+            {{-- Quick Actions Card --}}
+            <div class="fade-in delay-3">
+                <div class="glass-card mb-4">
+                    <h3 class="h6 fw-bold text-white mb-3"><i class="bi bi-lightning me-1"></i> Quick Actions</h3>
+                    <div class="d-grid gap-2">
+                        <a href="{{ route('contracts.pdf', $contract) }}" class="btn btn-primary fw-semibold">
+                            <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
+                        </a>
+                        <a href="{{ route('contracts.view', $contract) }}" class="btn btn-outline-light fw-semibold">
+                            <i class="bi bi-eye me-1"></i> Full Document View
+                        </a>
+                    </div>
+                </div>
+            </div>
+
             {{-- Sign Contract (Staff + Draft) --}}
             @if ($contract->status === 'draft' && !auth()->user()->hasRole('Owner') && $contract->user_id === auth()->id())
                 <div class="fade-in delay-3">
                     <div class="glass-card accent-left-primary mb-4">
-                        <h3 class="h5 fw-bold text-white mb-2">
+                        <h3 class="h6 fw-bold text-white mb-2">
                             <i class="bi bi-pen me-2"></i> Sign Contract
                         </h3>
                         <p class="small text-white-50 mb-3">
@@ -203,7 +245,7 @@
             @if ($contract->status === 'active' && !auth()->user()->hasRole('Owner') && $contract->user_id === auth()->id())
                 <div class="fade-in delay-4">
                     <div class="glass-card accent-left-danger mb-4">
-                        <h3 class="h5 fw-bold text-white mb-2">
+                        <h3 class="h6 fw-bold text-white mb-2">
                             <i class="bi bi-box-arrow-right me-2"></i> Submit Resignation
                         </h3>
                         <p class="small text-white-50 mb-3">
@@ -213,7 +255,7 @@
                             @csrf
                             <button type="submit" class="btn btn-danger w-100 fw-semibold"
                                 onclick="return confirm('Are you sure you want to submit a resignation notice?')">
-                                <i class="bi bi-exclamation-triangle me-1"></i> Submit Resignation Notice
+                                <i class="bi bi-exclamation-triangle me-1"></i> Submit Resignation
                             </button>
                         </form>
                     </div>
@@ -223,8 +265,8 @@
             {{-- Contract Information --}}
             <div class="fade-in delay-5">
                 <div class="glass-card">
-                    <h3 class="h5 fw-bold text-white mb-3">
-                        <i class="bi bi-info-circle me-2"></i> Contract Information
+                    <h3 class="h6 fw-bold text-white mb-3">
+                        <i class="bi bi-info-circle me-2"></i> Contract Details
                     </h3>
 
                     @if ($contract->isSigned())

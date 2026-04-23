@@ -16,6 +16,7 @@
             <p class="page-subtitle mb-0">Medication Dispensing Order</p>
         </div>
         <div class="d-flex gap-2 no-print">
+            <a href="{{ route('invoices.pdf', $invoice) }}" class="btn btn-outline-success btn-sm" data-no-disable="true"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
             <button onclick="window.print()" class="btn btn-outline-info btn-sm" data-no-disable="true"><i class="bi bi-printer me-1"></i>Print</button>
             <a href="{{ route('pharmacy.invoices.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Orders</a>
         </div>
@@ -137,22 +138,29 @@
                 </div>
             @endif
 
+            {{-- Barcode Scanner --}}
+            <div class="glass-card p-3 mb-3" style="border-left:3px solid var(--accent-info);">
+                <h6 class="fw-bold mb-2"><i class="bi bi-upc-scan me-1" style="color:var(--accent-info);"></i>Scan to Add Items</h6>
+                <x-barcode-scanner id="dispense-scanner" modes="usb,camera" placeholder="Scan medication barcode..." />
+                <div id="scanFeedback" class="mt-2" style="display:none;"></div>
+            </div>
+
             <form action="{{ route('pharmacy.invoices.mark-complete', $invoice) }}" method="POST" id="dispense-form">
                 @csrf
                 <div id="dispense-items">
                     <div class="row mb-2 dispense-row">
                         <div class="col-md-7">
-                            <select name="items[0][inventory_item_id]" class="form-select" required>
+                            <select name="items[0][inventory_item_id]" class="form-select item-select" required>
                                 <option value="">-- Select Item --</option>
                                 @foreach($pharmacyItems as $pharmacyItem)
-                                    <option value="{{ $pharmacyItem->id }}">
-                                        {{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }})
+                                    <option value="{{ $pharmacyItem->id }}" data-barcode="{{ $pharmacyItem->barcode ?? '' }}" data-price="{{ $pharmacyItem->selling_price }}">
+                                        {{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }}) {{ $pharmacyItem->barcode ? '['.$pharmacyItem->barcode.']' : '' }}
                                     </option>
                                 @endforeach
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <input type="number" name="items[0][quantity]" class="form-control" placeholder="Qty" min="1" value="1" required>
+                            <input type="number" name="items[0][quantity]" class="form-control item-qty" placeholder="Qty" min="1" value="1" required>
                         </div>
                         <div class="col-md-2">
                             <button type="button" class="btn btn-outline-danger btn-sm remove-row" style="display:none;">&times;</button>
@@ -160,9 +168,14 @@
                     </div>
                 </div>
 
-                <button type="button" class="btn btn-outline-primary btn-sm mb-3" id="add-item-row">
-                    <i class="bi bi-plus-circle me-1"></i>Add Another Item
-                </button>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="add-item-row">
+                        <i class="bi bi-plus-circle me-1"></i>Add Another Item
+                    </button>
+                    <div id="dispenseTotal" class="fw-bold" style="color:var(--accent-success);display:none;">
+                        Est. Total: <span id="dispenseTotalValue">{{ currency_symbol() }}0.00</span>
+                    </div>
+                </div>
 
                 <div class="glass-divider mb-3"></div>
 
@@ -181,21 +194,67 @@
             let rowIndex = 1;
             const container = document.getElementById('dispense-items');
             const addBtn = document.getElementById('add-item-row');
+            const feedback = document.getElementById('scanFeedback');
+
+            // Build barcode → item lookup from pharmacy items
+            const barcodeMap = {};
+            document.querySelectorAll('.item-select option[data-barcode]').forEach(function(opt) {
+                const bc = opt.dataset.barcode;
+                if (bc) barcodeMap[bc] = { id: opt.value, name: opt.textContent.trim(), price: parseFloat(opt.dataset.price) || 0 };
+            });
+
+            // Scanner integration
+            document.addEventListener('barcode-scanned', function(e) {
+                if (e.detail.scannerId !== 'dispense-scanner') return;
+                const code = e.detail.code;
+                feedback.style.display = 'block';
+
+                const match = barcodeMap[code];
+                if (!match) {
+                    feedback.innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Barcode <strong>' + code + '</strong> not found in pharmacy items.</span>';
+                    return;
+                }
+
+                // Check if item already in a row → increment qty
+                let found = false;
+                container.querySelectorAll('.item-select').forEach(function(sel) {
+                    if (sel.value === match.id) {
+                        const qtyInput = sel.closest('.dispense-row').querySelector('.item-qty');
+                        qtyInput.value = parseInt(qtyInput.value || 0) + 1;
+                        found = true;
+                    }
+                });
+
+                if (!found) {
+                    // Find first empty row or add new
+                    const emptyRow = container.querySelector('.item-select[value=""], .item-select:not([value])');
+                    if (emptyRow && !emptyRow.closest('.dispense-row').querySelector('.item-qty').value) {
+                        emptyRow.value = match.id;
+                    } else {
+                        addBtn.click();
+                        const newSelect = container.querySelector('.dispense-row:last-child .item-select');
+                        if (newSelect) newSelect.value = match.id;
+                    }
+                }
+
+                feedback.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Added: <strong>' + match.name + '</strong></span>';
+                calculateDispenseTotal();
+            });
 
             addBtn.addEventListener('click', function() {
                 const row = document.createElement('div');
                 row.className = 'row mb-2 dispense-row';
                 row.innerHTML = `
                     <div class="col-md-7">
-                        <select name="items[${rowIndex}][inventory_item_id]" class="form-select" required>
+                        <select name="items[${rowIndex}][inventory_item_id]" class="form-select item-select" required>
                             <option value="">-- Select Item --</option>
                             @foreach($pharmacyItems as $pharmacyItem)
-                                <option value="{{ $pharmacyItem->id }}">{{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }})</option>
+                                <option value="{{ $pharmacyItem->id }}" data-barcode="{{ $pharmacyItem->barcode ?? '' }}" data-price="{{ $pharmacyItem->selling_price }}">{{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }}) {{ $pharmacyItem->barcode ? '['.$pharmacyItem->barcode.']' : '' }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <input type="number" name="items[${rowIndex}][quantity]" class="form-control" placeholder="Qty" min="1" value="1" required>
+                        <input type="number" name="items[${rowIndex}][quantity]" class="form-control item-qty" placeholder="Qty" min="1" value="1" required>
                     </div>
                     <div class="col-md-2">
                         <button type="button" class="btn btn-outline-danger btn-sm remove-row">&times;</button>
@@ -203,14 +262,19 @@
                 container.appendChild(row);
                 rowIndex++;
                 updateRemoveButtons();
+                calculateDispenseTotal();
             });
 
             container.addEventListener('click', function(e) {
                 if (e.target.classList.contains('remove-row')) {
                     e.target.closest('.dispense-row').remove();
                     updateRemoveButtons();
+                    calculateDispenseTotal();
                 }
             });
+
+            container.addEventListener('change', calculateDispenseTotal);
+            container.addEventListener('input', calculateDispenseTotal);
 
             function updateRemoveButtons() {
                 const rows = container.querySelectorAll('.dispense-row');
@@ -218,6 +282,20 @@
                     const btn = row.querySelector('.remove-row');
                     if (btn) btn.style.display = rows.length > 1 ? 'inline-block' : 'none';
                 });
+            }
+
+            function calculateDispenseTotal() {
+                let total = 0;
+                container.querySelectorAll('.dispense-row').forEach(function(row) {
+                    const sel = row.querySelector('.item-select');
+                    const qty = parseInt(row.querySelector('.item-qty')?.value) || 0;
+                    const opt = sel?.selectedOptions[0];
+                    const price = parseFloat(opt?.dataset?.price) || 0;
+                    total += price * qty;
+                });
+                const totalDiv = document.getElementById('dispenseTotal');
+                document.getElementById('dispenseTotalValue').textContent = '{{ currency_symbol() }}' + total.toFixed(2);
+                totalDiv.style.display = total > 0 ? 'block' : 'none';
             }
         });
     </script>
@@ -372,4 +450,22 @@
     </div>
     @endif
 </div>
+
+    @include('components.invoice-print-layout', ['invoice' => $invoice])
 @endsection
+
+@push('styles')
+@include('components.invoice-print-styles')
+@endpush
+
+@push('scripts')
+@if($invoice->isPaid() && $invoice->fbr_qr_code)
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSe2s9qnDN7oD6eblnBHyH3P1pAzrBDxhxNSw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+    var c = document.getElementById('pi-qr-container');
+    if (c) new QRCode(c, { text: {{ json_encode($invoice->fbr_qr_code) }}, width: 80, height: 80, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M });
+})();
+</script>
+@endif
+@endpush

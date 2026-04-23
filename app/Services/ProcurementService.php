@@ -27,11 +27,23 @@ class ProcurementService
      * @param ProcurementRequest $request
      * @param array $unitPrices Map of ProcurementRequestItem::id => unit_price
      * @return void
+    /**
+     * Receive a procurement request with three-way reconciliation data.
+     *
+     * @param ProcurementRequest $request
+     * @param array $unitPrices       ProcurementRequestItem ID => actual unit price
+     * @param array $quantitiesReceived ProcurementRequestItem ID => actual received qty
+     * @param array $invoiceData      ProcurementRequestItem ID => ['quantity_invoiced' => int, 'unit_price_invoiced' => float]
      * @throws \Exception if validation fails or already received
      */
-    public function receiveProcurement(ProcurementRequest $request, array $unitPrices): void
+    public function receiveProcurement(
+        ProcurementRequest $request,
+        array $unitPrices,
+        array $quantitiesReceived = [],
+        array $invoiceData = [],
+    ): void
     {
-        DB::transaction(function () use ($request, $unitPrices) {
+        DB::transaction(function () use ($request, $unitPrices, $quantitiesReceived, $invoiceData) {
             // Validate request status allows receipt
             if (!in_array($request->status, ['approved', 'ordered'])) {
                 throw new \Exception(
@@ -84,32 +96,45 @@ class ProcurementService
             // Process receipt: update quantities, create expenses, record stock
             foreach ($items as $item) {
                 $unitPrice    = $unitPrices[$item->id];
-                $totalCost    = $item->quantity_requested * $unitPrice;
+                $qtyReceived  = $quantitiesReceived[$item->id] ?? $item->quantity_requested;
+                $totalCost    = $qtyReceived * $unitPrice;
                 $inventoryItem = $item->inventoryItem;
                 $itemName     = $inventoryItem?->name ?? "Item #{$item->inventory_item_id}";
                 $itemUnit     = $inventoryItem?->unit ?? 'unit';
 
-                // Atomically set quantity_received and unit_price together
-                $item->update([
-                    'quantity_received' => $item->quantity_requested,
+                // Build update data
+                $updateData = [
+                    'quantity_received' => $qtyReceived,
                     'unit_price' => $unitPrice,
-                ]);
+                ];
+
+                // Store invoice data if provided
+                if (isset($invoiceData[$item->id])) {
+                    if (isset($invoiceData[$item->id]['quantity_invoiced'])) {
+                        $updateData['quantity_invoiced'] = $invoiceData[$item->id]['quantity_invoiced'];
+                    }
+                    if (isset($invoiceData[$item->id]['unit_price_invoiced'])) {
+                        $updateData['unit_price_invoiced'] = $invoiceData[$item->id]['unit_price_invoiced'];
+                    }
+                }
+
+                $item->update($updateData);
 
                 // Create Expense record for cost tracking
                 Expense::create([
                     'department' => $request->department,
                     'patient_id' => null,
                     'invoice_id' => null,
-                    'description' => "Procurement: {$itemName} ({$item->quantity_requested} {$itemUnit})",
+                    'description' => "Procurement: {$itemName} ({$qtyReceived} {$itemUnit})",
                     'cost' => $totalCost,
                     'created_by' => $authUser?->id,
                 ]);
 
                 // Record stock movement (inbound) with unit cost for WAC
-                if ($inventoryItem) {
+                if ($inventoryItem && $qtyReceived > 0) {
                     $this->inventoryService->recordInbound(
                         item: $inventoryItem,
-                        quantity: $item->quantity_requested,
+                        quantity: $qtyReceived,
                         unitCost: (float) $unitPrice,
                         referenceType: 'procurement_request',
                         referenceId: $request->id,

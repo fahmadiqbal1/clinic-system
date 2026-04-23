@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\InventoryItem;
 use App\Models\ProcurementRequest;
-use App\Models\Prescription;
 use Illuminate\View\View;
 
 class PharmacyDashboardController extends Controller
@@ -32,8 +31,6 @@ class PharmacyDashboardController extends Controller
         $pendingProcurements = ProcurementRequest::where('department', 'pharmacy')
             ->where('status', 'pending')->count();
 
-        $pendingPrescriptions = Prescription::where('status', 'active')->count();
-
         $workQueue = Invoice::where('department', 'pharmacy')
             ->whereIn('status', [Invoice::STATUS_PENDING, Invoice::STATUS_IN_PROGRESS])
             ->with(['patient', 'prescribingDoctor'])
@@ -55,7 +52,6 @@ class PharmacyDashboardController extends Controller
             'paidToday',
             'lowStockItems',
             'pendingProcurements',
-            'pendingPrescriptions',
             'workQueue',
             'readyForPayment'
         ));

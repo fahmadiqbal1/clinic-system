@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 
 class AuditLog extends Model
 {
@@ -21,6 +22,10 @@ class AuditLog extends Model
         'before_state',
         'after_state',
         'ip_address',
+        'prev_hash',
+        'row_hash',
+        'user_agent',
+        'session_id',
         'created_at',
     ];
 
@@ -124,6 +129,8 @@ class AuditLog extends Model
 
     /**
      * Log an action to audit trail.
+     * Public signature is unchanged — existing callers continue to work.
+     * Internally computes a SHA-256 hash chain for SOC 2 tamper evidence.
      */
     public static function log(
         string $action,
@@ -135,15 +142,54 @@ class AuditLog extends Model
         ?string $ipAddress = null
     ): self {
         $finalUserId = $userId ?? \Illuminate\Support\Facades\Auth::id();
-        return AuditLog::create([
-            'user_id' => $finalUserId,
-            'action' => $action,
-            'auditable_type' => $auditableType,
-            'auditable_id' => $auditableId,
-            'before_state' => $beforeState,
-            'after_state' => $afterState,
-            'ip_address' => $ipAddress ?? request()->ip(),
-            'created_at' => now(),
-        ]);
+        $createdAt   = now()->format('Y-m-d H:i:s');
+        $inHttp      = !app()->runningInConsole();
+
+        return DB::transaction(function () use (
+            $action, $auditableType, $auditableId, $beforeState, $afterState,
+            $finalUserId, $ipAddress, $createdAt, $inHttp
+        ) {
+            // Lock last row to prevent concurrent inserts from racing on prev_hash.
+            $prevHash = (string) (static::lockForUpdate()->latest('id')->value('row_hash') ?? '');
+
+            $data = [
+                'user_id'        => $finalUserId,
+                'action'         => $action,
+                'auditable_type' => $auditableType,
+                'auditable_id'   => $auditableId,
+                'before_state'   => $beforeState,
+                'after_state'    => $afterState,
+                'ip_address'     => $ipAddress ?? ($inHttp ? request()->ip() : null),
+                'user_agent'     => $inHttp ? request()->userAgent() : null,
+                'session_id'     => $inHttp ? session()->getId() : null,
+                'prev_hash'      => $prevHash,
+                'created_at'     => $createdAt,
+            ];
+
+            $rowHash   = hash('sha256', $prevHash . '|' . static::canonicalJson($data));
+            $data['row_hash'] = $rowHash;
+
+            return static::create($data);
+        });
+    }
+
+    /**
+     * Deterministic JSON representation used for hash-chain computation.
+     * Field order is fixed — changing it would invalidate the chain.
+     */
+    public static function canonicalJson(array $data): string
+    {
+        return json_encode([
+            'user_id'        => $data['user_id'],
+            'action'         => $data['action'],
+            'auditable_type' => $data['auditable_type'],
+            'auditable_id'   => $data['auditable_id'],
+            'before_state'   => $data['before_state'],
+            'after_state'    => $data['after_state'],
+            'ip_address'     => $data['ip_address'],
+            'user_agent'     => $data['user_agent'],
+            'session_id'     => $data['session_id'],
+            'created_at'     => $data['created_at'],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 }

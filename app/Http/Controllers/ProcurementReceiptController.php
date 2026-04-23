@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ProcurementRequest;
 use App\Notifications\ProcurementStatusUpdated;
 use App\Services\ProcurementService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Storage;
@@ -47,7 +48,7 @@ class ProcurementReceiptController extends Controller
     }
 
     /**
-     * Record receipt of inventory procurement
+     * Record receipt of inventory procurement with three-way reconciliation.
      */
     public function store(Request $request, ProcurementRequest $procurementRequest)
     {
@@ -64,15 +65,22 @@ class ProcurementReceiptController extends Controller
         $validated = $request->validate([
             'unit_prices' => 'required|array',
             'unit_prices.*' => 'required|numeric|min:0.01',
-            'receipt_invoice' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
+            'quantities_received' => 'required|array',
+            'quantities_received.*' => 'required|integer|min:0',
+            'quantities_invoiced' => 'nullable|array',
+            'quantities_invoiced.*' => 'nullable|integer|min:0',
+            'unit_prices_invoiced' => 'nullable|array',
+            'unit_prices_invoiced.*' => 'nullable|numeric|min:0',
         ]);
 
-        // Build unit_prices map: ProcurementRequestItem ID => price
-        $unitPrices = [];
         $procurementRequest->load('items');
 
+        // Build data maps
+        $unitPrices = [];
+        $quantitiesReceived = [];
+        $invoiceData = [];
+
         foreach ($procurementRequest->items as $item) {
-            // Validate inventory invariant
             if ($item->inventory_item_id === null) {
                 return back()->withErrors([
                     'error' => "Inventory procurement item has null inventory_item_id. Data integrity error.",
@@ -80,33 +88,37 @@ class ProcurementReceiptController extends Controller
             }
 
             if (!isset($validated['unit_prices'][$item->id])) {
-                return back()->withErrors([
-                    'error' => "Unit price missing for item {$item->id}",
-                ]);
+                return back()->withErrors(['error' => "Unit price missing for item {$item->id}"]);
             }
 
             $unitPrices[$item->id] = (float) $validated['unit_prices'][$item->id];
+            $quantitiesReceived[$item->id] = (int) ($validated['quantities_received'][$item->id] ?? $item->quantity_requested);
+
+            // Invoice data (from OCR + user verification)
+            $inv = [];
+            if (isset($validated['quantities_invoiced'][$item->id]) && $validated['quantities_invoiced'][$item->id] !== null) {
+                $inv['quantity_invoiced'] = (int) $validated['quantities_invoiced'][$item->id];
+            }
+            if (isset($validated['unit_prices_invoiced'][$item->id]) && $validated['unit_prices_invoiced'][$item->id] !== null) {
+                $inv['unit_price_invoiced'] = (float) $validated['unit_prices_invoiced'][$item->id];
+            }
+            if (!empty($inv)) {
+                $invoiceData[$item->id] = $inv;
+            }
         }
 
-        // Call service to perform atomic receipt
         try {
-            $this->procurementService->receiveProcurement($procurementRequest, $unitPrices);
+            $this->procurementService->receiveProcurement(
+                $procurementRequest,
+                $unitPrices,
+                $quantitiesReceived,
+                $invoiceData,
+            );
 
-            // Handle invoice file upload after successful receipt
-            if ($request->hasFile('receipt_invoice')) {
-                $path = $request->file('receipt_invoice')->store(
-                    'procurement-invoices/' . $procurementRequest->id,
-                    'public'
-                );
-                $procurementRequest->update([
-                    'receipt_invoice_path' => $path,
-                    'received_at' => now(),
-                ]);
-            } else {
-                $procurementRequest->update(['received_at' => now()]);
-            }
+            // Update received_at timestamp
+            $procurementRequest->update(['received_at' => now()]);
 
-            // Notify the requester that goods have been received
+            // Notify the requester
             $procurementRequest->requester?->notify(
                 new ProcurementStatusUpdated($procurementRequest, ProcurementStatusUpdated::EVENT_RECEIVED)
             );
@@ -116,5 +128,30 @@ class ProcurementReceiptController extends Controller
         } catch (\Exception $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Upload supplier invoice file via AJAX (Step 1 of wizard).
+     */
+    public function uploadInvoice(Request $request, ProcurementRequest $procurementRequest): JsonResponse
+    {
+        $this->authorize('receive', $procurementRequest);
+
+        $validated = $request->validate([
+            'receipt_invoice' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        $path = $request->file('receipt_invoice')->store(
+            'procurement-invoices/' . $procurementRequest->id,
+            'public'
+        );
+
+        $procurementRequest->update(['receipt_invoice_path' => $path]);
+
+        return response()->json([
+            'success' => true,
+            'path' => $path,
+            'url' => asset('storage/' . $path),
+        ]);
     }
 }

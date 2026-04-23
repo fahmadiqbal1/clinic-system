@@ -15,6 +15,8 @@ class ProcurementRequestItem extends Model
         'inventory_item_id',
         'quantity_requested',
         'quoted_unit_price',
+        'quantity_invoiced',
+        'unit_price_invoiced',
         'quantity_received',
         'unit_price',
     ];
@@ -22,8 +24,10 @@ class ProcurementRequestItem extends Model
     protected $casts = [
         'quantity_requested' => 'integer',
         'quantity_received' => 'integer',
+        'quantity_invoiced' => 'integer',
         'unit_price' => 'decimal:2',
         'quoted_unit_price' => 'decimal:2',
+        'unit_price_invoiced' => 'decimal:2',
     ];
 
     public function procurementRequest(): BelongsTo

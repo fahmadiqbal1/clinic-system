@@ -191,7 +191,7 @@ class InvoiceController extends Controller
 
         $paymentMethod = request()->validate([
             'payment_method' => 'required|string|in:cash,card,transfer',
-        ])['payment_method'] ?? 'cash';
+        ])['payment_method'];
 
         try {
             $invoice->markPaid($paymentMethod, Auth::id());
@@ -200,6 +200,9 @@ class InvoiceController extends Controller
         }
 
         AuditableService::logInvoiceStatusChange($invoice->fresh(), 'pending', Invoice::STATUS_PAID);
+
+        // Async FBR submission (queued to avoid 30s blocking call)
+        \App\Jobs\SubmitInvoiceToFbrJob::dispatch($invoice->id);
 
         return redirect()->route('pharmacy.invoices.show', $invoice)
             ->with('success', 'Payment collected successfully.');

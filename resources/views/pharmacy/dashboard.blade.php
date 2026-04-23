@@ -182,6 +182,15 @@
 
         {{-- Quick Actions Sidebar --}}
         <div class="col-lg-4">
+            {{-- Barcode Quick Lookup --}}
+            <div class="card mb-4 fade-in delay-4">
+                <div class="card-header"><i class="bi bi-upc-scan me-2" style="color:var(--accent-info);"></i>Quick Barcode Lookup</div>
+                <div class="card-body">
+                    <x-barcode-scanner id="dash-scanner" modes="usb" placeholder="Scan barcode to check stock..." />
+                    <div id="dashScanResult" class="mt-2" style="display:none;"></div>
+                </div>
+            </div>
+
             <div class="card mb-4 fade-in delay-4">
                 <div class="card-header"><i class="bi bi-lightning-charge me-2" style="color:var(--accent-warning);"></i>Quick Actions</div>
                 <div class="card-body">
@@ -241,5 +250,29 @@
             .catch(function() {});
     }, refreshInterval);
 })();
+
+// Dashboard barcode quick lookup
+document.addEventListener('barcode-scanned', function(e) {
+    if (e.detail.scannerId !== 'dash-scanner') return;
+    var result = document.getElementById('dashScanResult');
+    result.style.display = 'block';
+    result.innerHTML = '<div class="spinner-border spinner-border-sm me-1"></div> Looking up...';
+
+    axios.get('{{ route("inventory.barcode-lookup") }}', { params: { code: e.detail.code } })
+        .then(function(r) {
+            if (r.data.found) {
+                var d = r.data.item;
+                result.innerHTML = '<div class="glass-card p-2 mt-1" style="border-left:3px solid var(--accent-success);">' +
+                    '<strong>' + d.name + '</strong><br>' +
+                    '<small style="color:var(--text-muted);">Stock: <strong>' + d.current_stock + '</strong> ' + d.unit +
+                    ' &middot; Price: ' + d.selling_price + '</small></div>';
+            } else {
+                result.innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>Not found: ' + e.detail.code + '</span>';
+            }
+        })
+        .catch(function() {
+            result.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Lookup failed.</span>';
+        });
+});
 </script>
 @endpush

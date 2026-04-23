@@ -10,9 +10,12 @@
                 <i class="bi bi-file-earmark-richtext me-2"></i>
                 Contract &mdash; Version {{ $contract->version }}
             </h1>
-            <p class="page-subtitle mb-0">Full document view</p>
+            <p class="page-subtitle mb-0">{{ $contract->user?->name ?? 'Unknown Staff' }} — Full document view</p>
         </div>
         <div class="d-flex gap-2">
+            <a href="{{ route('contracts.pdf', $contract) }}" class="btn btn-primary fw-semibold">
+                <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
+            </a>
             <button onclick="window.print()" class="btn btn-outline-light fw-semibold">
                 <i class="bi bi-printer me-1"></i> Print
             </button>
@@ -26,35 +29,47 @@
 {{-- Metadata Bar --}}
 <div class="fade-in delay-2 mb-4">
     <div class="glass-card">
-        <div class="info-grid">
-            <div class="info-grid-item">
-                <span class="info-label"><i class="bi bi-person-badge me-1"></i> Staff Member</span>
-                <span class="info-value">{{ $contract->user?->name ?? 'Unknown Staff' }}</span>
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="stat-icon stat-icon-primary" style="width:36px;height:36px;font-size:.85rem;">
+                        {{ strtoupper(substr($contract->user?->name ?? '?', 0, 1)) }}
+                    </div>
+                    <div>
+                        <small class="text-white-50 d-block">Staff Member</small>
+                        <span class="fw-semibold text-white">{{ $contract->user?->name ?? 'Unknown' }}</span>
+                    </div>
+                </div>
             </div>
-            <div class="info-grid-item">
-                <span class="info-label"><i class="bi bi-activity me-1"></i> Status</span>
-                <span class="info-value">
-                    <span class="badge-glass
-                        @if ($contract->status === 'active') glow-success
-                        @elseif ($contract->status === 'draft') glow-warning
-                        @else glow-info @endif
-                    ">
-                        <i class="bi
-                            @if ($contract->status === 'active') bi-check-circle-fill
-                            @elseif ($contract->status === 'draft') bi-pencil-square
-                            @else bi-archive @endif
-                            me-1"></i>
-                        {{ ucfirst($contract->status) }}
-                    </span>
-                </span>
+            <div class="col-md-2">
+                <small class="text-white-50 d-block">Status</small>
+                @if($contract->early_exit_flag)
+                    <span class="badge bg-danger"><i class="bi bi-flag-fill me-1"></i>Early Exit</span>
+                @elseif($contract->resignation_notice_submitted_at)
+                    <span class="badge bg-warning text-dark"><i class="bi bi-box-arrow-right me-1"></i>Resigned</span>
+                @elseif($contract->status === 'active')
+                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Active</span>
+                @elseif($contract->status === 'draft')
+                    <span class="badge bg-warning text-dark"><i class="bi bi-pen me-1"></i>Awaiting Signature</span>
+                @else
+                    <span class="badge bg-secondary"><i class="bi bi-archive me-1"></i>Superseded</span>
+                @endif
             </div>
-            <div class="info-grid-item">
-                <span class="info-label"><i class="bi bi-calendar-check me-1"></i> Effective From</span>
-                <span class="info-value">{{ $contract->effective_from?->format('M d, Y') ?? 'N/A' }}</span>
+            <div class="col-md-2">
+                <small class="text-white-50 d-block">Effective From</small>
+                <span class="text-white">{{ $contract->effective_from?->format('M d, Y') ?? '—' }}</span>
             </div>
-            <div class="info-grid-item">
-                <span class="info-label"><i class="bi bi-clock-history me-1"></i> Minimum Term</span>
-                <span class="info-value">{{ $contract->minimum_term_months }} months</span>
+            <div class="col-md-2">
+                <small class="text-white-50 d-block">Minimum Term</small>
+                <span class="text-white">{{ $contract->minimum_term_months }} months</span>
+            </div>
+            <div class="col-md-3">
+                <small class="text-white-50 d-block">Signed</small>
+                @if($contract->isSigned())
+                    <span class="text-success"><i class="bi bi-check2 me-1"></i>{{ $contract->signed_at->format('M d, Y') }}</span>
+                @else
+                    <span class="text-white-50">Not yet signed</span>
+                @endif
             </div>
         </div>
     </div>
@@ -75,9 +90,11 @@
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
             <div class="small text-white-50">
                 <i class="bi bi-file-earmark me-1"></i>
-                Document Version {{ $contract->version }}
+                Version {{ $contract->version }}
                 <span class="mx-2">&middot;</span>
                 Created {{ $contract->created_at?->format('M d, Y H:i A') ?? 'N/A' }}
+                <span class="mx-2">&middot;</span>
+                By {{ $contract->creator?->name ?? 'Unknown' }}
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 @if ($contract->status === 'draft' && !auth()->user()->hasRole('Owner') && $contract->user_id === auth()->id())
@@ -93,14 +110,14 @@
                     <form action="{{ route('contracts.resign', $contract) }}" method="POST" class="d-inline">
                         @csrf
                         <button type="submit" class="btn btn-outline-danger fw-semibold"
-                            onclick="return confirm('Are you sure you want to submit a resignation notice? This action cannot be undone.')">
+                            onclick="return confirm('Are you sure you want to submit a resignation notice?')">
                             <i class="bi bi-box-arrow-right me-1"></i> Submit Resignation
                         </button>
                     </form>
                 @endif
 
                 @if ($contract->resignation_notice_submitted_at)
-                    <span class="badge-glass glow-warning align-self-center">
+                    <span class="badge bg-warning text-dark align-self-center">
                         <i class="bi bi-envelope-exclamation me-1"></i>
                         Resignation submitted {{ $contract->resignation_notice_submitted_at->format('M d, Y') }}
                     </span>
@@ -116,9 +133,9 @@
                     </form>
                 @endif
 
-                <button onclick="window.print()" class="btn btn-primary fw-semibold">
-                    <i class="bi bi-printer me-1"></i> Print
-                </button>
+                <a href="{{ route('contracts.pdf', $contract) }}" class="btn btn-primary fw-semibold">
+                    <i class="bi bi-file-earmark-pdf me-1"></i> Download PDF
+                </a>
             </div>
         </div>
     </div>
@@ -126,14 +143,41 @@
 
 @push('styles')
 <style>
-    @media print {
-        .page-header, .sidebar, nav, .fade-in.delay-2 .glass-card .info-grid,
-        .fade-in.delay-4 .glass-card .d-flex button,
-        .fade-in.delay-4 .glass-card .d-flex form { display: none !important; }
-        .glass-card { background: white !important; color: black !important; box-shadow: none !important; border: 1px solid #ddd !important; }
-        .contract-content { color: black !important; }
-        .text-white, .text-white-50 { color: black !important; }
-    }
+@media print {
+    @page { size: A4 portrait; margin: 8mm 10mm; }
+    body, html { background:#fff!important; color:#000!important; font-size:10px!important; line-height:1.3!important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .navbar,.skip-link,.glass-toast-container,.no-print,.quick-actions,#glassConfirmModal,.introjs-overlay,.breadcrumb,.sidebar,footer,.dropdown-menu,.offcanvas,.modal,[data-no-disable],script,noscript { display:none!important; }
+    .btn, form, .alert, details { display:none!important; }
+    /* Hide page header and action footer */
+    .page-header,.page-subtitle,.fade-in.delay-4 { display:none!important; }
+    main { padding:0!important; margin:0!important; min-height:auto!important; }
+    .container,.container-fluid,.container-lg { max-width:100%!important; padding:0!important; margin:0!important; }
+    .glass-card { background:#fff!important; color:#000!important; border:none!important; box-shadow:none!important; backdrop-filter:none!important; -webkit-backdrop-filter:none!important; padding:0!important; margin:0 0 3px!important; border-radius:0!important; }
+    /* Metadata bar compaction */
+    .fade-in.delay-2 .glass-card { padding:4px 8px!important; margin-bottom:4px!important; }
+    .fade-in.delay-2 .row { margin:0!important; }
+    .fade-in.delay-2 .col-md-2,.fade-in.delay-2 .col-md-3 { padding:2px 6px!important; }
+    .fade-in.delay-2 small { font-size:8px!important; color:#555!important; }
+    .row { margin-left:0!important; margin-right:0!important; } [class*="col-md-"] { padding:1px 4px!important; }
+    /* Typography */
+    .text-white,.text-white-50,.text-muted,[style*="color:var(--"] { color:#000!important; text-shadow:none!important; }
+    .fw-semibold,.fw-bold { color:#000!important; }
+    .small,small { font-size:8px!important; }
+    .badge,[class*="badge-glass"] { border:1px solid #888!important; color:#000!important; background:#eee!important; font-size:8px!important; padding:0 3px!important; border-radius:2px!important; }
+    .stat-icon { width:24px!important; height:24px!important; font-size:.7rem!important; background:#eee!important; color:#000!important; }
+    .fade-in { opacity:1!important; animation:none!important; }
+    /* Contract body — the main content */
+    .contract-content { color:#000!important; font-size:10px!important; line-height:1.3!important; }
+    .contract-content h1 { font-size:13px!important; margin:6px 0 3px!important; color:#000!important; }
+    .contract-content h2 { font-size:11px!important; margin:4px 0 2px!important; color:#000!important; }
+    .contract-content h3 { font-size:10px!important; margin:3px 0 2px!important; color:#000!important; }
+    .contract-content p { margin:0 0 3px!important; font-size:10px!important; }
+    .contract-content li { font-size:10px!important; margin-bottom:1px!important; }
+    .contract-content ul,.contract-content ol { margin:0 0 4px!important; padding-left:14px!important; }
+    .contract-content table { font-size:9px!important; }
+    .contract-content th,.contract-content td { padding:2px 4px!important; border-color:#bbb!important; }
+    #contract-document { break-inside:auto; }
+}
 </style>
 @endpush
 @endsection

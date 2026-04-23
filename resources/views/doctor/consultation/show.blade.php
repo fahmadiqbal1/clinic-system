@@ -742,7 +742,7 @@
                                         @foreach($visit->prescriptions as $rx)
                                             <div class="mb-1 p-2 rounded" style="background:var(--glass-bg); border:1px solid var(--glass-border);">
                                                 @foreach($rx->items as $rxItem)
-                                                    <span class="badge-glass me-1" style="font-size:0.8rem;">{{ $rxItem->medicine_name }} {{ $rxItem->dosage }}</span>
+                                                    <span class="badge-glass me-1" style="font-size:0.8rem;">{{ $rxItem->medication_name }} {{ $rxItem->dosage }}</span>
                                                 @endforeach
                                             </div>
                                         @endforeach

@@ -20,9 +20,11 @@ class MedGemmaService
     protected string $apiUrl;
     protected string $provider;
     protected ?PlatformSetting $dbSetting;
+    protected CaseTokenService $caseTokenService;
 
-    public function __construct()
+    public function __construct(CaseTokenService $caseTokenService)
     {
+        $this->caseTokenService = $caseTokenService;
         // Prefer database-stored settings over .env so the Owner can manage
         // credentials through the Platform Settings UI without touching the server.
         try {
@@ -58,6 +60,12 @@ class MedGemmaService
     public function isReachable(): bool
     {
         try {
+            if ($this->provider === 'local') {
+                $pingUrl = rtrim($this->apiUrl, '/') . '/docs';
+                $response = Http::timeout(3)->get($pingUrl);
+                return $response->successful();
+            }
+
             $pingUrl = $this->provider === 'ollama'
                 ? rtrim($this->apiUrl, '/') . '/api/version'
                 : rtrim($this->apiUrl, '/');
@@ -82,14 +90,15 @@ class MedGemmaService
      */
     public function analyseConsultation(Patient $patient, int $requestedBy, ?string $customQuestion = null): AiAnalysis
     {
-        $analysis = AiAnalysis::create([
+        $caseToken = $this->caseTokenService->tokenize($patient);
+        $analysis  = AiAnalysis::create([
             'patient_id'     => $patient->id,
             'invoice_id'     => null,
             'requested_by'   => $requestedBy,
             'context_type'   => 'consultation',
             'prompt_summary' => $customQuestion
                 ? "Quick question: {$customQuestion}"
-                : "Consultation analysis for patient: {$patient->full_name}",
+                : "Consultation analysis [case:{$caseToken}]",
             'status'         => 'pending',
         ]);
 
@@ -242,17 +251,16 @@ class MedGemmaService
     /**
      * Build prompt for consultation context.
      *
-     * Includes: vitals, triage notes, doctor notes, prescriptions,
-     * completed lab results, and radiology reports for a comprehensive review.
+     * PHI-free: uses case token + age band + gender. No name, DOB, CNIC, or contact details.
      */
     private function buildConsultationPrompt(Patient $patient, $vitals): string
     {
         $parts = ["You are MedGemma, an AI medical assistant providing a second opinion. Analyse ALL the following patient data comprehensively and provide your clinical assessment, possible differential diagnoses, and recommendations.\n"];
 
-        $parts[] = "Patient: {$patient->first_name} {$patient->last_name}, Gender: {$patient->gender}";
-        if ($patient->date_of_birth) {
-            $parts[] = "Age: " . $patient->date_of_birth->age . " years";
-        }
+        $caseToken = $this->caseTokenService->tokenize($patient);
+        $ageBand   = $this->caseTokenService->ageBand($patient->date_of_birth);
+
+        $parts[] = "Case Token: {$caseToken}, Gender: {$patient->gender}, Age Band: {$ageBand}";
 
         if ($vitals) {
             $parts[] = "\n--- Vital Signs (Triage) ---";
@@ -330,6 +338,8 @@ class MedGemmaService
 
     /**
      * Build prompt for lab context.
+     *
+     * PHI-free: uses case token + age band + gender.
      */
     private function buildLabPrompt(Invoice $invoice): string
     {
@@ -337,10 +347,9 @@ class MedGemmaService
 
         $patient = $invoice->patient;
         if ($patient) {
-            $parts[] = "Patient: {$patient->first_name} {$patient->last_name}, Gender: {$patient->gender}";
-            if ($patient->date_of_birth) {
-                $parts[] = "Age: " . $patient->date_of_birth->age . " years";
-            }
+            $caseToken = $this->caseTokenService->tokenize($patient);
+            $ageBand   = $this->caseTokenService->ageBand($patient->date_of_birth);
+            $parts[]   = "Case Token: {$caseToken}, Gender: {$patient->gender}, Age Band: {$ageBand}";
         }
 
         $parts[] = "\nTest: {$invoice->service_name}";
@@ -368,6 +377,8 @@ class MedGemmaService
 
     /**
      * Build prompt for radiology context.
+     *
+     * PHI-free: uses case token + age band + gender.
      */
     private function buildRadiologyPrompt(Invoice $invoice): string
     {
@@ -375,10 +386,9 @@ class MedGemmaService
 
         $patient = $invoice->patient;
         if ($patient) {
-            $parts[] = "Patient: {$patient->first_name} {$patient->last_name}, Gender: {$patient->gender}";
-            if ($patient->date_of_birth) {
-                $parts[] = "Age: " . $patient->date_of_birth->age . " years";
-            }
+            $caseToken = $this->caseTokenService->tokenize($patient);
+            $ageBand   = $this->caseTokenService->ageBand($patient->date_of_birth);
+            $parts[]   = "Case Token: {$caseToken}, Gender: {$patient->gender}, Age Band: {$ageBand}";
         }
 
         $parts[] = "\nImaging Type: {$invoice->service_name}";
@@ -462,6 +472,21 @@ class MedGemmaService
      */
     private function callApi(string $prompt, array $imageContents = []): string
     {
+        // Local FastAPI bridge — MedGemma inference can take several minutes on CPU
+        if ($this->provider === 'local') {
+            $url = rtrim($this->apiUrl, '/') . '/second-opinion';
+            $response = Http::timeout(180)->post($url, [
+                'summary'   => mb_substr($prompt, 0, 2000),
+                'diagnosis' => 'See summary',
+            ]);
+
+            if (!$response->successful()) {
+                throw new \RuntimeException('Local AI service returned status ' . $response->status() . ': ' . $response->body());
+            }
+
+            return $response->json('opinion', 'No response generated.');
+        }
+
         $isOllama = $this->provider === 'ollama';
 
         if (!$isOllama && empty($this->apiKey)) {

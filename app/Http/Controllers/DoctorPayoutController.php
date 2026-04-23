@@ -111,6 +111,16 @@ class DoctorPayoutController extends Controller
     }
 
     /**
+     * Download payout PDF.
+     */
+    public function downloadPdf(DoctorPayout $payout, \App\Services\PdfService $pdfService)
+    {
+        $this->authorize('view', $payout);
+
+        return $pdfService->downloadPayoutPdf($payout);
+    }
+
+    /**
      * List payouts (filtered by role)
      */
     public function index(Request $request): View

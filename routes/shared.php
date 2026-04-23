@@ -18,6 +18,8 @@ use App\Http\Controllers\Dashboard\LowStockAlertController;
 use App\Http\Controllers\AiAnalysisController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Owner\InvoiceDiscountController;
+use App\Http\Controllers\InvoicePdfController;
 use Illuminate\Support\Facades\Route;
 
 // ── Contracts (all authenticated staff) ──
@@ -25,6 +27,7 @@ Route::middleware('role:Owner|Doctor|Receptionist|Triage|Laboratory|Radiology|Ph
     Route::get('/contracts', [StaffContractController::class, 'index'])->name('contracts.index');
     Route::get('/contracts/show/{staff?}', [StaffContractController::class, 'show'])->name('contracts.show');
     Route::get('/contracts/view/{contract}', [StaffContractController::class, 'view'])->name('contracts.view');
+    Route::get('/contracts/{contract}/pdf', [StaffContractController::class, 'downloadPdf'])->name('contracts.pdf');
 });
 
 Route::middleware('role:Owner')->group(function () {
@@ -47,6 +50,7 @@ Route::middleware('role:Owner|Receptionist')->group(function () {
 Route::middleware('role:Owner|Receptionist|Doctor|Laboratory|Radiology|Pharmacy')->group(function () {
     Route::get('/payouts', [DoctorPayoutController::class, 'index'])->name('reception.payouts.index');
     Route::get('/payouts/{payout}', [DoctorPayoutController::class, 'show'])->name('reception.payouts.show');
+    Route::get('/payouts/{payout}/pdf', [DoctorPayoutController::class, 'downloadPdf'])->name('payouts.pdf');
 });
 
 Route::middleware('role:Doctor|Laboratory|Radiology|Pharmacy')->group(function () {
@@ -63,10 +67,14 @@ Route::middleware('role:Owner')->group(function () {
 // ── Inventory (Owner + Pharmacy + Laboratory + Radiology) ──
 Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology')->group(function () {
     Route::get('/inventory', [InventoryItemController::class, 'index'])->name('inventory.index');
+    Route::get('/inventory/barcode-lookup', [InventoryItemController::class, 'barcodeLookup'])->name('inventory.barcode-lookup');
     Route::get('/inventory/create', [InventoryItemController::class, 'create'])->name('inventory.create');
     Route::post('/inventory', [InventoryItemController::class, 'store'])->name('inventory.store');
     Route::get('/inventory/{inventoryItem}/edit', [InventoryItemController::class, 'edit'])->name('inventory.edit');
     Route::patch('/inventory/{inventoryItem}', [InventoryItemController::class, 'update'])->name('inventory.update');
+    Route::patch('/inventory/{inventoryItem}/quick-update', [InventoryItemController::class, 'quickUpdate'])->name('inventory.quick-update');
+    Route::get('/inventory/{inventoryItem}/adjust', [InventoryItemController::class, 'showAdjust'])->name('inventory.adjust');
+    Route::post('/inventory/{inventoryItem}/adjust', [InventoryItemController::class, 'storeAdjust'])->name('inventory.adjust.store');
 });
 
 // ── Stock Movements (Owner + Pharmacy + Laboratory + Radiology) ──
@@ -91,6 +99,12 @@ Route::middleware('role:Owner')->group(function () {
 Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology')->group(function () {
     Route::get('/procurement/{procurementRequest}/receive', [ProcurementReceiptController::class, 'create'])->name('procurement.receive');
     Route::post('/procurement/{procurementRequest}/receive', [ProcurementReceiptController::class, 'store'])->name('procurement.receive.store');
+    Route::post('/procurement/{procurementRequest}/upload-invoice', [ProcurementReceiptController::class, 'uploadInvoice'])->name('procurement.upload-invoice');
+});
+
+// ── Discount Requests (Receptionist + Pharmacy can request, Owner approves) ──
+Route::middleware('role:Owner|Receptionist|Pharmacy')->group(function () {
+    Route::post('/invoices/{invoice}/discount/request', [InvoiceDiscountController::class, 'requestDiscount'])->name('invoices.discount.request');
 });
 
 // ── Low Stock Alerts (Owner + Pharmacy + Laboratory + Radiology) ──
@@ -100,6 +114,11 @@ Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology')->group(function ()
 
 // ── Notifications (all authenticated users) ──
 Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+
+// ── Invoice PDF Download (all staff roles) ──
+Route::middleware('role:Owner|Receptionist|Doctor|Pharmacy|Laboratory|Radiology|Triage')
+    ->get('/invoices/{invoice}/pdf', [InvoicePdfController::class, 'download'])
+    ->name('invoices.pdf');
 Route::get('/notifications/unread', [NotificationController::class, 'unread'])->middleware('throttle:notifications-poll')->name('notifications.unread');
 Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead'])->name('notifications.mark-all-read');

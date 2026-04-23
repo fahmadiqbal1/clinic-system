@@ -3,8 +3,14 @@
 namespace App\Services;
 
 use App\Models\Invoice;
+use App\Models\DoctorPayout;
+use App\Models\PlatformSetting;
 use App\Models\Prescription;
+use App\Models\StaffContract;
 use Barryvdh\DomPDF\Facade\Pdf;
+use chillerlan\QRCode\QRCode;
+use chillerlan\QRCode\QROptions;
+use chillerlan\QRCode\Output\QRMarkupSVG;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -17,14 +23,16 @@ class PdfService
      */
     public function generateInvoicePdf(Invoice $invoice): string
     {
-        $invoice->load(['patient', 'items.serviceCatalog', 'prescribingDoctor', 'performer']);
+        $invoice->load(['patient', 'items.serviceCatalog', 'prescribingDoctor', 'performer', 'serviceCatalog']);
 
         $pdf = Pdf::loadView('pdf.invoice', [
             'invoice' => $invoice,
-            'qrCode' => $this->generateFbrQrCode($invoice),
+            'qrCode'  => $this->generateFbrQrCode($invoice),
+            'fbr'     => PlatformSetting::fbr(),
         ]);
 
         $pdf->setPaper('A4', 'portrait');
+        $pdf->setOption(['isPhpEnabled' => true, 'isHtml5ParserEnabled' => true, 'defaultFont' => 'DejaVu Sans']);
 
         $filename = "invoice-{$invoice->id}-" . now()->format('YmdHis') . '.pdf';
         $path = "invoices/{$filename}";
@@ -56,26 +64,29 @@ class PdfService
     }
 
     /**
-     * Generate FBR QR code data for invoice.
-     * 
-     * In production, this would generate a proper FBR IRIS-compliant QR code.
+     * Generate a real SVG QR code image from the invoice's FBR QR data string.
+     * Returns an inline SVG string ready for DomPDF embedding, or null if unavailable.
      */
     private function generateFbrQrCode(Invoice $invoice): ?string
     {
-        // Only generate QR for paid invoices
-        if ($invoice->status !== Invoice::STATUS_PAID) {
+        $content = $invoice->fbr_qr_code ?? null;
+
+        if (empty($content) || $invoice->status !== Invoice::STATUS_PAID) {
             return null;
         }
 
-        // FBR QR code would contain invoice verification data
-        $data = [
-            'invoice_number' => $invoice->id,
-            'amount' => $invoice->net_amount,
-            'date' => $invoice->paid_at?->format('Y-m-d H:i:s'),
-            'clinic_ntn' => config('app.clinic_ntn'),
-        ];
+        try {
+            $options = new QROptions([
+                'outputInterface'       => QRMarkupSVG::class,
+                'svgAddXmlHeader'       => false,
+                'imageTransparent'      => false,
+                'outputBase64'          => false,
+            ]);
 
-        return base64_encode(json_encode($data));
+            return (new QRCode($options))->render($content);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -83,14 +94,16 @@ class PdfService
      */
     public function downloadInvoicePdf(Invoice $invoice)
     {
-        $invoice->load(['patient', 'items.serviceCatalog', 'prescribingDoctor', 'performer']);
+        $invoice->load(['patient', 'items.serviceCatalog', 'prescribingDoctor', 'performer', 'serviceCatalog']);
 
         $pdf = Pdf::loadView('pdf.invoice', [
             'invoice' => $invoice,
-            'qrCode' => $this->generateFbrQrCode($invoice),
+            'qrCode'  => $this->generateFbrQrCode($invoice),
+            'fbr'     => PlatformSetting::fbr(),
         ]);
 
         $pdf->setPaper('A4', 'portrait');
+        $pdf->setOption(['isPhpEnabled' => true, 'isHtml5ParserEnabled' => true, 'defaultFont' => 'DejaVu Sans']);
 
         return $pdf->download("invoice-{$invoice->id}.pdf");
     }
@@ -109,5 +122,41 @@ class PdfService
         $pdf->setPaper('A4', 'portrait');
 
         return $pdf->download("prescription-{$prescription->id}.pdf");
+    }
+
+    /**
+     * Download staff contract PDF directly.
+     */
+    public function downloadContractPdf(StaffContract $contract)
+    {
+        $contract->load(['user.roles', 'creator']);
+
+        $pdf = Pdf::loadView('pdf.contract', [
+            'contract' => $contract,
+        ]);
+
+        $pdf->setPaper('A4', 'portrait');
+        $pdf->setOption(['isPhpEnabled' => true, 'isHtml5ParserEnabled' => true, 'defaultFont' => 'DejaVu Sans']);
+
+        $staffName = str_replace(' ', '-', strtolower($contract->user?->name ?? 'staff'));
+        return $pdf->download("contract-{$staffName}-v{$contract->version}.pdf");
+    }
+
+    /**
+     * Download payout PDF directly.
+     */
+    public function downloadPayoutPdf(DoctorPayout $payout)
+    {
+        $payout->load(['doctor.roles', 'revenueLedgers', 'creator', 'approver', 'confirmer']);
+
+        $pdf = Pdf::loadView('pdf.payout', [
+            'payout' => $payout,
+        ]);
+
+        $pdf->setPaper('A4', 'portrait');
+        $pdf->setOption(['isPhpEnabled' => true, 'isHtml5ParserEnabled' => true, 'defaultFont' => 'DejaVu Sans']);
+
+        $staffName = str_replace(' ', '-', strtolower($payout->doctor?->name ?? 'staff'));
+        return $pdf->download("payout-{$payout->id}-{$staffName}.pdf");
     }
 }

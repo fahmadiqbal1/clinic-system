@@ -81,6 +81,12 @@
                                         @else badge-glass-secondary
                                         @endif
                                     ">{{ ucfirst($request->status) }}</span>
+                                    @if($request->status === 'received' && $request->items->contains(fn($i) =>
+                                        ($i->quantity_invoiced !== null && $i->quantity_invoiced != $i->quantity_requested) ||
+                                        ($i->quantity_received !== null && $i->quantity_received != $i->quantity_requested)
+                                    ))
+                                        <span class="badge badge-glass-danger ms-1" title="Quantity discrepancy"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                                    @endif
                                 </td>
                                 <td>{{ $request->items->count() }} item(s)</td>
                                 <td style="color:var(--text-muted);">{{ $request->created_at?->format('M d, Y') ?? 'N/A' }}</td>

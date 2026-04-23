@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\StaffContract;
 use App\Models\User;
+use App\Services\PdfService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,7 +29,7 @@ class StaffContractController extends Controller
     /**
      * Show active contract for a staff member (their own view, or Owner viewing someone's).
      */
-    public function show(User $staff = null): View
+    public function show(?User $staff = null): View
     {
         if (!$staff) {
             $staff = Auth::user();
@@ -52,7 +53,7 @@ class StaffContractController extends Controller
      * List contracts. Owner/Receptionist without a staff param: show ALL contracts.
      * Staff members see their own contract history.
      */
-    public function index(User $staff = null): View
+    public function index(?User $staff = null): View
     {
         $user = Auth::user();
 
@@ -60,8 +61,13 @@ class StaffContractController extends Controller
         if (!$staff) {
             if ($user->roles->pluck('name')->contains('Owner') || $user->roles->pluck('name')->contains('Receptionist')) {
                 // Show all contracts for all staff
-                $contracts = StaffContract::with('user', 'creator')
-                    ->orderBy('created_at', 'desc')
+                $query = StaffContract::with('user', 'creator');
+
+                if ($status = request('status')) {
+                    $query->where('status', $status);
+                }
+
+                $contracts = $query->orderBy('created_at', 'desc')
                     ->paginate(20);
 
                 return view('contracts.index', ['contracts' => $contracts, 'staff' => null]);
@@ -84,7 +90,7 @@ class StaffContractController extends Controller
     /**
      * Create new contract form (Owner only).
      */
-    public function create(User $staff = null): View
+    public function create(?User $staff = null): View
     {
         $this->authorize('createContract', StaffContract::class);
 
@@ -217,5 +223,13 @@ class StaffContractController extends Controller
 
         return redirect()->route('contracts.show', ['staff' => $contract->user])
             ->with('success', 'Contract marked for early exit.');
+    }
+
+    /**
+     * Download contract as a formatted PDF.
+     */
+    public function downloadPdf(StaffContract $contract, PdfService $pdfService)
+    {
+        return $pdfService->downloadContractPdf($contract);
     }
 }

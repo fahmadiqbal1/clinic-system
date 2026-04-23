@@ -41,40 +41,54 @@ class PlatformSetting extends Model
     }
 
     /**
-     * Get the platform setting for FBR IRIS digital invoicing.
+     * Get the platform setting for FBR PRAL Digital Invoicing (DI) API v1.12.
      */
     public static function fbr(): self
     {
         return static::firstOrCreate(
             ['platform_name' => 'fbr'],
             [
-                'provider' => 'fbr_iris',
-                'api_url' => 'https://sdnfbr.fbr.gov.pk/invoices/v1',
-                'status' => 'disconnected',
-                'meta' => [
-                    'strn' => null,
-                    'ntn' => null,
-                    'business_name' => null,
-                    'business_address' => null,
-                    'city' => null,
-                    'posid' => null,
-                    'tax_rate' => 0,
-                    'is_sandbox' => true,
-                    'signing_secret' => null,
+                'provider'  => 'fbr_di',
+                'api_url'   => 'https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb',
+                'status'    => 'disconnected',
+                'meta'      => [
+                    'ntn'               => null,
+                    'strn'              => null,
+                    'business_name'     => null,
+                    'business_address'  => null,
+                    'seller_province'   => 'Punjab',
+                    'sale_type'         => 'Services',
+                    'uom'               => 'Numbers, pieces, units',
+                    'tax_rate'          => 0,
+                    'is_sandbox'        => true,
+                    'sandbox_api_key'   => null,
+                    'production_api_key'=> null,
+                    'signing_secret'    => null,
+                    'scenario_id'       => 'SN019',
                 ],
             ]
         );
     }
 
     /**
-     * Whether FBR integration is fully configured and ready to submit invoices.
+     * Whether FBR DI integration is fully configured and ready to submit invoices.
+     * Requires: NTN, business name, province, and the relevant environment token.
      */
     public function isFbrReady(): bool
     {
-        return $this->platform_name === 'fbr'
-            && $this->hasApiKey()
-            && !empty($this->getMeta('posid'))
-            && !empty($this->getMeta('strn'));
+        if ($this->platform_name !== 'fbr') {
+            return false;
+        }
+
+        $isSandbox = $this->getMeta('is_sandbox', true);
+        $token     = $isSandbox
+            ? $this->getMeta('sandbox_api_key')
+            : $this->getMeta('production_api_key');
+
+        return !empty($this->getMeta('ntn'))
+            && !empty($this->getMeta('business_name'))
+            && !empty($this->getMeta('seller_province'))
+            && !empty($token);
     }
 
     /**
@@ -181,6 +195,19 @@ class PlatformSetting extends Model
             'failed'       => 'bi-x-circle-fill',
             default        => 'bi-dash-circle',
         };
+    }
+
+    /**
+     * Check whether a feature flag is enabled.
+     * All flags default to false when the row does not exist.
+     */
+    public static function isEnabled(string $flag): bool
+    {
+        $setting = static::where('platform_name', $flag)
+            ->where('provider', 'feature_flag')
+            ->first();
+
+        return (bool) ($setting?->getMeta('value') ?? false);
     }
 
     /**

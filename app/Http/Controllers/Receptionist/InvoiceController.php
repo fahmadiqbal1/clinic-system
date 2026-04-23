@@ -173,8 +173,8 @@ class InvoiceController extends Controller
 
         AuditableService::logInvoicePayment($invoice->fresh(), $paymentMethod);
 
-        // Auto-submit to FBR IRIS in real-time
-        FbrService::make()->submitInvoice($invoice->fresh());
+        // Async FBR submission (queued to avoid 30s blocking call)
+        \App\Jobs\SubmitInvoiceToFbrJob::dispatch($invoice->id);
 
         return redirect()->route('receptionist.invoices.show', $invoice)
             ->with('success', 'Invoice marked as paid.');

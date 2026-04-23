@@ -86,7 +86,7 @@ class PatientPortalController extends Controller
 
         $path = $pdfService->generateInvoicePdf($invoice);
 
-        return response()->download(storage_path('app/' . $path), "invoice-{$invoice->id}.pdf")
+        return response()->download(storage_path('app/public/' . $path), "invoice-{$invoice->id}.pdf")
             ->deleteFileAfterSend();
     }
 

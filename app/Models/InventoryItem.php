@@ -16,6 +16,7 @@ class InventoryItem extends Model
         'name',
         'chemical_formula',
         'sku',
+        'barcode',
         'unit',
         'minimum_stock_level',
         'purchase_price',

@@ -10,75 +10,72 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 /**
- * Owner controller for managing FBR IRIS digital invoicing settings.
+ * Owner controller for managing FBR PRAL Digital Invoicing (DI) settings.
  * Handles credential storage, connection testing, and configuration.
  */
 class FbrSettingsController extends Controller
 {
     /**
-     * Save FBR IRIS settings submitted from the owner profile page.
+     * Save FBR DI settings submitted from the owner profile page.
      */
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'fbr_api_url'          => ['nullable', 'string', 'url', 'max:500'],
-            'fbr_bearer_token'     => ['nullable', 'string', 'max:512'],
-            'fbr_posid'            => ['nullable', 'string', 'max:50'],
-            'fbr_strn'             => ['nullable', 'string', 'max:50'],
-            'fbr_ntn'              => ['nullable', 'string', 'max:50'],
-            'fbr_business_name'    => ['nullable', 'string', 'max:255'],
-            'fbr_business_address' => ['nullable', 'string', 'max:500'],
-            'fbr_city'             => ['nullable', 'string', 'max:100'],
-            'fbr_tax_rate'         => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'fbr_is_sandbox'       => ['nullable', 'in:1,0'],
-            'fbr_signing_secret'   => ['nullable', 'string', 'max:255'],
+            'fbr_ntn'                => ['nullable', 'string', 'max:50'],
+            'fbr_strn'               => ['nullable', 'string', 'max:50'],
+            'fbr_business_name'      => ['nullable', 'string', 'max:255'],
+            'fbr_business_address'   => ['nullable', 'string', 'max:500'],
+            'fbr_seller_province'    => ['nullable', 'string', 'max:100'],
+            'fbr_sale_type'          => ['nullable', 'string', 'max:100'],
+            'fbr_uom'                => ['nullable', 'string', 'max:100'],
+            'fbr_tax_rate'           => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'fbr_is_sandbox'         => ['nullable', 'in:1,0'],
+            'fbr_sandbox_api_key'    => ['nullable', 'string', 'max:512'],
+            'fbr_production_api_key' => ['nullable', 'string', 'max:512'],
+            'fbr_signing_secret'     => ['nullable', 'string', 'max:255'],
         ]);
 
-        $fbr = PlatformSetting::fbr();
-
+        $fbr       = PlatformSetting::fbr();
         $isSandbox = ($validated['fbr_is_sandbox'] ?? '1') === '1';
 
-        // Update API endpoint based on sandbox toggle
-        $defaultUrl = $isSandbox
-            ? 'https://sdnfbr.fbr.gov.pk/invoices/v1'
-            : 'https://gst.fbr.gov.pk/invoices/v1';
-
         $newMeta = array_merge($fbr->meta ?? [], [
-            'posid'            => $validated['fbr_posid'] ?? $fbr->getMeta('posid'),
-            'strn'             => $validated['fbr_strn'] ?? $fbr->getMeta('strn'),
-            'ntn'              => $validated['fbr_ntn'] ?? $fbr->getMeta('ntn'),
-            'business_name'    => $validated['fbr_business_name'] ?? $fbr->getMeta('business_name'),
-            'business_address' => $validated['fbr_business_address'] ?? $fbr->getMeta('business_address'),
-            'city'             => $validated['fbr_city'] ?? $fbr->getMeta('city'),
-            'tax_rate'         => $validated['fbr_tax_rate'] ?? $fbr->getMeta('tax_rate', 0),
-            'is_sandbox'       => $isSandbox,
+            'ntn'               => $validated['fbr_ntn']              ?? $fbr->getMeta('ntn'),
+            'strn'              => $validated['fbr_strn']             ?? $fbr->getMeta('strn'),
+            'business_name'     => $validated['fbr_business_name']    ?? $fbr->getMeta('business_name'),
+            'business_address'  => $validated['fbr_business_address'] ?? $fbr->getMeta('business_address'),
+            'seller_province'   => $validated['fbr_seller_province']  ?? $fbr->getMeta('seller_province', 'Punjab'),
+            'sale_type'         => $validated['fbr_sale_type']        ?? $fbr->getMeta('sale_type', 'Services'),
+            'uom'               => $validated['fbr_uom']              ?? $fbr->getMeta('uom', 'Numbers, pieces, units'),
+            'tax_rate'          => $validated['fbr_tax_rate']         ?? $fbr->getMeta('tax_rate', 0),
+            'is_sandbox'        => $isSandbox,
         ]);
 
-        // Only update signing secret if provided
+        // Only update tokens when non-empty values are submitted (avoid clearing on partial save)
+        if (!empty($validated['fbr_sandbox_api_key'])) {
+            $newMeta['sandbox_api_key'] = $validated['fbr_sandbox_api_key'];
+        }
+        if (!empty($validated['fbr_production_api_key'])) {
+            $newMeta['production_api_key'] = $validated['fbr_production_api_key'];
+        }
         if (!empty($validated['fbr_signing_secret'])) {
             $newMeta['signing_secret'] = $validated['fbr_signing_secret'];
         }
 
-        $data = [
-            'api_url' => $validated['fbr_api_url'] ?? $defaultUrl,
-            'meta'    => $newMeta,
-        ];
+        $fbr->update([
+            'api_url'    => $isSandbox
+                ? 'https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb'
+                : 'https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata',
+            'meta'       => $newMeta,
+            'status'     => 'disconnected',
+            'last_error' => null,
+        ]);
 
-        // Only update the bearer token if a non-empty value was submitted
-        if (!empty($validated['fbr_bearer_token'])) {
-            $data['api_key'] = $validated['fbr_bearer_token'];
-            $data['status']  = 'disconnected';
-            $data['last_error'] = null;
-        }
-
-        $fbr->update($data);
-
-        return back()->with('success', 'FBR settings saved. Test the connection to verify your credentials.');
+        return back()->with('success', 'FBR DI settings saved. Click "Test Connection" to verify your token and IP whitelist.');
     }
 
     /**
-     * Test the FBR IRIS API connection.
-     * Returns JSON for the live status badge update in the owner profile page.
+     * Test the FBR PRAL DI API connection using the sandbox validate endpoint.
+     * Returns JSON for the live status badge in the owner profile page.
      */
     public function testConnection(): JsonResponse
     {
@@ -88,3 +85,4 @@ class FbrSettingsController extends Controller
         return response()->json($result);
     }
 }
+

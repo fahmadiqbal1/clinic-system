@@ -10,7 +10,6 @@ use App\Models\User;
 use App\Notifications\PatientAwaitingTriage;
 use App\Notifications\PatientRegistered;
 use App\Services\AuditableService;
-use App\Services\FbrService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -115,8 +114,8 @@ class PatientRegistrationController extends Controller
 
                 AuditableService::logInvoicePayment($invoice->fresh(), $validated['payment_method']);
 
-                // Auto-submit to FBR IRIS in real-time
-                FbrService::make()->submitInvoice($invoice->fresh());
+                // Async FBR submission (queued to avoid 30s blocking call)
+                \App\Jobs\SubmitInvoiceToFbrJob::dispatch($invoice->id);
 
                 return $patient;
             });

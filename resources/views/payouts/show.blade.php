@@ -3,12 +3,6 @@
 
 @section('content')
 <div class="container mt-4">
-    {{-- Print Header --}}
-    <div class="print-header">
-        <h2>{{ config('app.name') }}</h2>
-        <p>Payout #{{ $payout->id }} &mdash; {{ $payout->created_at?->format('M d, Y') }}</p>
-    </div>
-
     <div class="glass-card fade-in">
         <div class="d-flex justify-content-between align-items-center mb-4 pb-3" style="border-bottom:1px solid var(--glass-border);">
             <div>
@@ -16,6 +10,7 @@
                 <p class="page-subtitle mb-0">Staff Payout Details</p>
             </div>
             <div class="d-flex gap-2 no-print">
+                <a href="{{ route('payouts.pdf', $payout) }}" class="btn btn-outline-success btn-sm" data-no-disable="true"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
                 <button onclick="window.print()" class="btn btn-outline-info btn-sm" data-no-disable="true"><i class="bi bi-printer me-1"></i>Print</button>
                 <a href="{{ route('reception.payouts.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Payouts</a>
             </div>
@@ -197,5 +192,10 @@
                 <a href="{{ route('reception.payouts.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
             </div>
     </div>
+
+    {{-- Print-only payout layout (hidden on screen, shown in @media print) --}}
+    @include('components.payout-print-layout', ['payout' => $payout])
 </div>
 @endsection
+
+@include('components.payout-print-styles')

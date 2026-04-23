@@ -12,7 +12,6 @@ use App\Http\Controllers\Receptionist\PatientRegistrationController;
 use App\Http\Controllers\Receptionist\InvoiceController as ReceptionistInvoiceController;
 use App\Http\Controllers\Receptionist\PayoutController as ReceptionistPayoutController;
 use App\Http\Controllers\Receptionist\AppointmentController;
-use App\Http\Controllers\Owner\InvoiceDiscountController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('role:Receptionist|Owner')->group(function () {
@@ -41,8 +40,8 @@ Route::middleware('role:Receptionist|Owner')->group(function () {
     Route::post('/receptionist/invoices/{invoice}/cancel', [ReceptionistInvoiceController::class, 'cancel'])->name('receptionist.invoices.cancel');
     Route::post('/receptionist/invoices/{invoice}/fbr-resubmit', [ReceptionistInvoiceController::class, 'resubmitToFbr'])->middleware('throttle:fbr-submit')->name('receptionist.invoices.fbr-resubmit');
 
-    // Discount requests (Receptionist can request, Owner approves)
-    Route::post('/invoices/{invoice}/discount/request', [InvoiceDiscountController::class, 'requestDiscount'])->name('invoices.discount.request');
+    // Discount requests (Receptionist can request, Owner approves) — also in shared.php for Pharmacy
+    // MOVED to shared.php: Route::post('/invoices/{invoice}/discount/request', ...)->name('invoices.discount.request');
 
     // Payout Dashboard (one-click payout)
     Route::get('/receptionist/payouts/dashboard', [ReceptionistPayoutController::class, 'dashboard'])->name('receptionist.payouts.dashboard');

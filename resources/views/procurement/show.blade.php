@@ -180,6 +180,77 @@
                     </div>
                 @endif
             </div>
+
+            {{-- Three-Way Reconciliation (only for received inventory procurements) --}}
+            @if($request->status === 'received' && $request->type === 'inventory')
+                @php
+                    $hasInvoiceData = $request->items->contains(fn($i) => $i->quantity_invoiced !== null);
+                    $hasDiscrepancy = $request->items->contains(function($i) {
+                        return ($i->quantity_invoiced !== null && $i->quantity_invoiced != $i->quantity_requested)
+                            || ($i->quantity_received !== null && $i->quantity_received != $i->quantity_requested)
+                            || ($i->unit_price_invoiced !== null && $i->unit_price !== null && abs($i->unit_price_invoiced - $i->unit_price) > 0.01);
+                    });
+                @endphp
+                <div class="glass-card p-4 fade-in delay-3" style="border-left:3px solid {{ $hasDiscrepancy ? 'var(--accent-danger)' : 'var(--accent-success)' }};">
+                    <h5 class="fw-bold mb-3">
+                        @if($hasDiscrepancy)
+                            <i class="bi bi-exclamation-triangle-fill me-2" style="color:var(--accent-danger);"></i>Reconciliation — Discrepancies Found
+                        @else
+                            <i class="bi bi-check-circle-fill me-2" style="color:var(--accent-success);"></i>Reconciliation — All Matched
+                        @endif
+                    </h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th class="text-center">PO Qty</th>
+                                    @if($hasInvoiceData)<th class="text-center">Invoice Qty</th>@endif
+                                    <th class="text-center">Received Qty</th>
+                                    @if($hasInvoiceData)<th class="text-end">Invoice Price</th>@endif
+                                    <th class="text-end">Actual Price</th>
+                                    <th class="text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($request->items as $item)
+                                    @php
+                                        $qtyOk = ($item->quantity_received ?? $item->quantity_requested) == $item->quantity_requested;
+                                        $invQtyOk = $item->quantity_invoiced === null || $item->quantity_invoiced == $item->quantity_requested;
+                                        $priceOk = $item->unit_price_invoiced === null || $item->unit_price === null || abs($item->unit_price_invoiced - $item->unit_price) < 0.02;
+                                        $allOk = $qtyOk && $invQtyOk && $priceOk;
+                                    @endphp
+                                    <tr @if(!$allOk) style="background:rgba(var(--accent-danger-rgb),0.05);" @endif>
+                                        <td>{{ $item->inventoryItem?->name ?? 'Unknown' }}</td>
+                                        <td class="text-center">{{ $item->quantity_requested }}</td>
+                                        @if($hasInvoiceData)
+                                            <td class="text-center" @if(!$invQtyOk) style="color:var(--accent-danger);font-weight:700;" @endif>
+                                                {{ $item->quantity_invoiced ?? '—' }}
+                                            </td>
+                                        @endif
+                                        <td class="text-center" @if(!$qtyOk) style="color:var(--accent-danger);font-weight:700;" @endif>
+                                            {{ $item->quantity_received ?? '—' }}
+                                        </td>
+                                        @if($hasInvoiceData)
+                                            <td class="text-end" @if(!$priceOk) style="color:var(--accent-danger);font-weight:700;" @endif>
+                                                {{ $item->unit_price_invoiced !== null ? currency($item->unit_price_invoiced) : '—' }}
+                                            </td>
+                                        @endif
+                                        <td class="text-end">{{ $item->unit_price ? currency($item->unit_price) : '—' }}</td>
+                                        <td class="text-center">
+                                            @if($allOk)
+                                                <span style="color:var(--accent-success);"><i class="bi bi-check-circle-fill"></i></span>
+                                            @else
+                                                <span style="color:var(--accent-danger);"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            @endif
         </div>
 
         <div class="col-md-4">

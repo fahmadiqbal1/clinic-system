@@ -18,11 +18,11 @@
                 <div class="info-grid">
                     <div class="info-grid-item">
                         <span class="info-label">Patient</span>
-                        <span class="info-value fw-medium">{{ $prescription->patient->first_name ?? '' }} {{ $prescription->patient->last_name ?? '' }}</span>
+                        <span class="info-value fw-medium">{{ $prescription->patient?->first_name ?? '' }} {{ $prescription->patient?->last_name ?? '' }}</span>
                     </div>
                     <div class="info-grid-item">
                         <span class="info-label">Doctor</span>
-                        <span class="info-value">{{ $prescription->doctor->name ?? 'N/A' }}</span>
+                        <span class="info-value">{{ $prescription->doctor?->name ?? 'N/A' }}</span>
                     </div>
                     <div class="info-grid-item">
                         <span class="info-label">Diagnosis</span>

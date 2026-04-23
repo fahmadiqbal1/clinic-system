@@ -5,30 +5,31 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <title>Lab Report #{{ $invoice->id }}</title>
     <style>
+        @page { size: A4 portrait; margin: 10mm 12mm; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: DejaVu Sans, sans-serif; font-size: 11px; color: #1a1a1a; background: #fff; }
-        .header { border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 16px; }
-        .clinic-name { font-size: 20px; font-weight: bold; color: #2563eb; }
-        .clinic-sub { font-size: 11px; color: #555; margin-top: 2px; }
-        .report-title { font-size: 15px; font-weight: bold; text-align: right; color: #1a1a1a; }
-        .report-id { font-size: 11px; color: #555; text-align: right; }
-        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-        .info-table td { padding: 4px 8px; font-size: 11px; }
-        .info-table .label { font-weight: bold; color: #555; width: 130px; }
+        body { font-family: DejaVu Sans, sans-serif; font-size: 9px; color: #1a1a1a; background: #fff; line-height: 1.3; }
+        .header { border-bottom: 2px solid #2563eb; padding-bottom: 6px; margin-bottom: 8px; }
+        .clinic-name { font-size: 15px; font-weight: bold; color: #2563eb; }
+        .clinic-sub { font-size: 9px; color: #555; margin-top: 1px; }
+        .report-title { font-size: 12px; font-weight: bold; text-align: right; color: #1a1a1a; }
+        .report-id { font-size: 9px; color: #555; text-align: right; }
+        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        .info-table td { padding: 3px 6px; font-size: 9px; }
+        .info-table .label { font-weight: bold; color: #555; width: 110px; }
         .info-table .value { color: #1a1a1a; }
-        .section-title { font-size: 12px; font-weight: bold; background: #e8f0fe; color: #2563eb; padding: 5px 8px; margin: 12px 0 6px 0; border-left: 3px solid #2563eb; }
-        .results-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        .results-table th { background: #f1f5f9; font-size: 10px; font-weight: bold; color: #555; padding: 5px 8px; border: 1px solid #cbd5e1; text-align: left; }
-        .results-table td { padding: 5px 8px; border: 1px solid #e2e8f0; font-size: 11px; vertical-align: middle; }
+        .section-title { font-size: 10px; font-weight: bold; background: #e8f0fe; color: #2563eb; padding: 3px 6px; margin: 6px 0 4px 0; border-left: 3px solid #2563eb; }
+        .results-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .results-table th { background: #f1f5f9; font-size: 8px; font-weight: bold; color: #555; padding: 3px 5px; border: 1px solid #cbd5e1; text-align: left; }
+        .results-table td { padding: 3px 5px; border: 1px solid #e2e8f0; font-size: 9px; vertical-align: middle; }
         .results-table tr:nth-child(even) td { background: #f8fafc; }
         .flag { font-weight: bold; color: #dc2626; }
-        .report-section { margin-bottom: 14px; }
-        .report-text { background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px; font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
-        .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+        .report-section { margin-bottom: 8px; }
+        .report-text { background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px; font-size: 9px; line-height: 1.5; white-space: pre-wrap; }
+        .footer { margin-top: 12px; border-top: 1px solid #e2e8f0; padding-top: 6px; }
         .stamp-area { display: inline-block; width: 45%; vertical-align: top; }
-        .stamp-line { border-top: 1px solid #aaa; margin-top: 40px; padding-top: 4px; font-size: 10px; color: #555; text-align: center; }
-        .divider { border: none; border-top: 1px solid #e2e8f0; margin: 12px 0; }
-        .badge-completed { display: inline-block; background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .stamp-line { border-top: 1px solid #aaa; margin-top: 24px; padding-top: 3px; font-size: 8px; color: #555; text-align: center; }
+        .divider { border: none; border-top: 1px solid #e2e8f0; margin: 6px 0; }
+        .badge-completed { display: inline-block; background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 1px 6px; font-size: 8px; font-weight: bold; }
     </style>
 </head>
 <body>

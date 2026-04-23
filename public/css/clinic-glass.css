@@ -1507,25 +1507,7 @@ main {
     color: var(--text-secondary);
 }
 
-/* ── 46. Print Styles ─────────────────────────────────────── */
-@media print {
-    body {
-        background: white !important;
-        color: black !important;
-    }
-    .navbar, .btn, .no-print {
-        display: none !important;
-    }
-    .card, .glass-card {
-        background: white !important;
-        border: 1px solid #ddd !important;
-        box-shadow: none !important;
-        backdrop-filter: none !important;
-    }
-    .table {
-        color: black !important;
-    }
-}
+/* ── 46. Print Styles (see section 62 for comprehensive rules) ── */
 
 /* ── 47. Responsive Adjustments ───────────────────────────── */
 @media (max-width: 768px) {
@@ -1969,68 +1951,11 @@ hr { border-color: var(--glass-border); opacity: 0.5; }
     cursor: wait;
 }
 
-/* ── 62. Print Styles ─────────────────────────────────────── */
-@media print {
-    body {
-        background: #fff !important;
-        color: #000 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    .navbar, .skip-link, .glass-toast-container,
-    .no-print, .btn, .quick-actions,
-    #glassConfirmModal, .introjs-overlay,
-    .breadcrumb {
-        display: none !important;
-    }
-    main {
-        padding: 0 !important;
-        min-height: auto !important;
-    }
-    .glass-card, .card {
-        background: #fff !important;
-        border: 1px solid #ddd !important;
-        box-shadow: none !important;
-        backdrop-filter: none !important;
-        -webkit-backdrop-filter: none !important;
-        break-inside: avoid;
-    }
-    .container {
-        max-width: 100% !important;
-        padding: 0 !important;
-    }
-    .table th, .table td {
-        color: #000 !important;
-        border-color: #ccc !important;
-    }
-    .badge {
-        border: 1px solid #999 !important;
-        color: #000 !important;
-        background: #eee !important;
-    }
-    h1, h2, h3, h4, h5, h6 {
-        color: #000 !important;
-    }
-    .stat-value, .info-value, .data-value {
-        color: #000 !important;
-        text-shadow: none !important;
-    }
-    .text-muted, .page-subtitle,
-    .stat-label, .info-label, .data-label {
-        color: #555 !important;
-    }
-    /* Print header */
-    .print-header {
-        display: block !important;
-        text-align: center;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid #000;
-    }
-    .print-header h2 { margin: 0; font-size: 1.4rem; }
-    .print-header p { margin: 0.25rem 0 0; font-size: 0.85rem; color: #555; }
-}
+/* ── 62. Print Styles (minimal global — per-view styles in @push('styles')) ── */
 .print-header { display: none; }
+@media print {
+    .print-header { display: block !important; }
+}
 
 /* ── 63. Auto-poll Pulse Indicator ────────────────────────── */
 @keyframes pulse-dot {

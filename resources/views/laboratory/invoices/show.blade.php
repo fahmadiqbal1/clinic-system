@@ -15,6 +15,7 @@
             <p class="page-subtitle mb-0">Laboratory Service</p>
         </div>
         <div class="d-flex gap-2 no-print">
+            <a href="{{ route('invoices.pdf', $invoice) }}" class="btn btn-outline-success btn-sm" data-no-disable="true"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
             <button onclick="window.print()" class="btn btn-outline-info btn-sm" data-no-disable="true"><i class="bi bi-printer me-1"></i>Print</button>
             @if($invoice->isWorkCompleted() || $invoice->status === 'completed')
                 <a href="{{ route('laboratory.invoices.report-pdf', $invoice) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF Report</a>
@@ -413,5 +414,23 @@
         @endif
         <a href="{{ route('laboratory.invoices.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
     </div>
+
+    @include('components.invoice-print-layout', ['invoice' => $invoice])
 </div>
 @endsection
+
+@push('styles')
+@include('components.invoice-print-styles')
+@endpush
+
+@push('scripts')
+@if($invoice->isPaid() && $invoice->fbr_qr_code)
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSe2s9qnDN7oD6eblnBHyH3P1pAzrBDxhxNSw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function() {
+    var c = document.getElementById('pi-qr-container');
+    if (c) new QRCode(c, { text: {{ json_encode($invoice->fbr_qr_code) }}, width: 80, height: 80, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.M });
+})();
+</script>
+@endif
+@endpush

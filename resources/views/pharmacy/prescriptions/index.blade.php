@@ -34,8 +34,8 @@
                         <tbody>
                             @foreach($pending as $rx)
                                 <tr>
-                                    <td class="fw-medium">{{ $rx->patient->first_name ?? '' }} {{ $rx->patient->last_name ?? '' }}</td>
-                                    <td style="color:var(--text-secondary);">{{ $rx->doctor->name ?? 'N/A' }}</td>
+                                    <td class="fw-medium">{{ $rx->patient?->first_name ?? '' }} {{ $rx->patient?->last_name ?? '' }}</td>
+                                    <td style="color:var(--text-secondary);">{{ $rx->doctor?->name ?? 'N/A' }}</td>
                                     <td style="color:var(--text-secondary);">{{ Str::limit($rx->diagnosis, 40) }}</td>
                                     <td>
                                         @foreach($rx->items as $item)
@@ -85,8 +85,8 @@
                         <tbody>
                             @foreach($dispensed as $rx)
                                 <tr>
-                                    <td class="fw-medium">{{ $rx->patient->first_name ?? '' }} {{ $rx->patient->last_name ?? '' }}</td>
-                                    <td style="color:var(--text-secondary);">{{ $rx->doctor->name ?? 'N/A' }}</td>
+                                    <td class="fw-medium">{{ $rx->patient?->first_name ?? '' }} {{ $rx->patient?->last_name ?? '' }}</td>
+                                    <td style="color:var(--text-secondary);">{{ $rx->doctor?->name ?? 'N/A' }}</td>
                                     <td style="color:var(--text-secondary);">{{ Str::limit($rx->diagnosis, 40) }}</td>
                                     <td>
                                         @foreach($rx->items as $item)

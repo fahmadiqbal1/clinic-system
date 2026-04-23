@@ -4,31 +4,55 @@ namespace App\Services;
 
 use App\Models\Invoice;
 use App\Models\PlatformSetting;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * FBR IRIS Digital Invoicing Service
+ * FBR PRAL Digital Invoicing (DI) Service â€” API v1.12
  *
- * Handles submission of paid invoices to Pakistan's Federal Board of Revenue (FBR)
- * IRIS (Integrated Revenue Information System) in real-time.
+ * Implements the PRAL Digital Invoicing API for real-time invoice reporting
+ * to Pakistan's Federal Board of Revenue (FBR).
  *
- * Compliance with Pakistan's mandatory digital invoicing rules:
- *  - Invoices submitted within 24 hours of generation.
- *  - Every invoice carries a digital HMAC-SHA256 signature.
- *  - Full FBR API response archived for the mandatory 5-year retention period.
- *  - Sequential FBR invoice numbers (POSID-YYYY-NNNNNN) for traceability.
- *  - QR code verification URL included on every paid invoice.
+ * API endpoints (same URL, token determines sandbox vs production routing):
+ *   Post:     https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata
+ *   Sandbox:  https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb
+ *   Validate: https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb
  *
- * FBR IRIS API:
- *   Live:    https://gst.fbr.gov.pk/invoices/v1
- *   Sandbox: https://sdnfbr.fbr.gov.pk/invoices/v1
+ * Registration process (done once in IRIS portal):
+ *   1. Login iris.fbr.gov.pk â†’ Digital Invoicing â†’ API Integration â†’ Choose PRAL
+ *   2. Submit technical details + IP whitelist (approved within 2 working hours)
+ *   3. Receive Sandbox Token â†’ test scenario SN019 (Services)
+ *   4. IRIS auto-generates Production Token after all scenarios pass
+ *
+ * Compliance:
+ *   - Invoices submitted in real-time on payment (within 24 hours)
+ *   - FBR assigns unique invoiceNumber (IRN) in response
+ *   - QR code encodes NTN|FBR_INVOICE_NO|AMOUNT|TAX|DATETIME|BUSINESS_NAME
+ *   - HMAC-SHA256 signature of payload stored for tamper detection (our system)
+ *   - Full FBR API response archived for 5-year retention
  */
 class FbrService
 {
-    /** Default HS code for healthcare/medical services (WTO CPC 931). */
-    private const DEFAULT_HS_CODE = '9018.90.10';
+    /**
+     * Default HS code for medical/healthcare services.
+     * 9813.0000 = Health services (Pakistan PCT heading for healthcare).
+     */
+    private const DEFAULT_HS_CODE = '9813.0000';
+
+    /**
+     * Default sale type for a healthcare clinic.
+     * SN019 scenario = "Services rendered or provided"
+     */
+    private const DEFAULT_SALE_TYPE = 'Services';
+
+    /**
+     * PRAL DI API endpoints.
+     * Note: The same base URL is used; sandbox vs production is determined by which
+     * Bearer Token is used (tokens are environment-specific, issued by PRAL through IRIS).
+     */
+    private const URL_POST_SANDBOX    = 'https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb';
+    private const URL_POST_PRODUCTION = 'https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata';
+    private const URL_VALIDATE        = 'https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb';
 
     private PlatformSetting $settings;
 
@@ -46,10 +70,30 @@ class FbrService
     }
 
     /**
-     * Submit a paid invoice to FBR IRIS.
+     * Resolve the correct API URL and Bearer Token for the current environment.
+     * Sandbox uses sandbox_api_key + postinvoicedata_sb endpoint.
+     * Production uses production_api_key + postinvoicedata endpoint.
+     */
+    private function apiUrl(): string
+    {
+        return $this->settings->getMeta('is_sandbox', true)
+            ? self::URL_POST_SANDBOX
+            : self::URL_POST_PRODUCTION;
+    }
+
+    private function bearerToken(): ?string
+    {
+        return $this->settings->getMeta('is_sandbox', true)
+            ? $this->settings->getMeta('sandbox_api_key')
+            : $this->settings->getMeta('production_api_key');
+    }
+
+    /**
+     * Submit a paid invoice to the PRAL FBR Digital Invoicing API.
      *
-     * Assigns a sequential FBR invoice number, signs the payload, sends to
-     * FBR IRIS, archives the full response, and stores the IRN and QR code.
+     * On success FBR returns a unique invoiceNumber (IRN).
+     * We store that IRN, build a spec-compliant QR string, sign the payload,
+     * and archive the full API response for the mandatory 5-year retention period.
      *
      * @return array{success: bool, irn: ?string, error: ?string}
      */
@@ -57,14 +101,13 @@ class FbrService
     {
         if (!$this->settings->isFbrReady()) {
             $invoice->update(['fbr_status' => 'not_configured']);
-            return ['success' => false, 'irn' => null, 'error' => 'FBR integration is not configured.'];
+            return ['success' => false, 'irn' => null, 'error' => 'FBR not configured. Set up credentials in Owner Profile â†’ FBR Settings.'];
         }
 
-        // Warn (but don't block) if submission is overdue (> 24 hours after payment)
         $overdueWarning = null;
         if ($invoice->paid_at && $invoice->paid_at->diffInHours(now()) > 24) {
             $overdueWarning = 'Warning: invoice was paid more than 24 hours ago. FBR requires submission within 24 hours.';
-            Log::warning('FBR submission overdue', [
+            Log::warning('FBR DI: submission overdue', [
                 'invoice_id' => $invoice->id,
                 'paid_at'    => $invoice->paid_at,
                 'hours_late' => $invoice->paid_at->diffInHours(now()),
@@ -74,53 +117,52 @@ class FbrService
         $invoice->update(['fbr_status' => 'pending']);
 
         try {
-            // Atomically allocate a sequential FBR invoice number
-            $seq     = $this->nextSequenceNumber();
-            $fbrNum  = $this->formatInvoiceNumber($seq);
-
-            $invoice->update([
-                'fbr_invoice_number' => $fbrNum,
-                'fbr_invoice_seq'    => $seq,
-            ]);
-
             $payload   = $this->buildPayload($invoice);
             $signature = $this->sign($payload);
+            $token     = $this->bearerToken();
+            $url       = $this->apiUrl();
 
-            $response = Http::withToken($this->settings->api_key)
+            $response = Http::withToken($token)
                 ->timeout(30)
-                ->post($this->settings->api_url, $payload);
+                ->post($url, $payload);
 
             // Archive the full response regardless of outcome (5-year record keeping)
             $responseData = [
-                'http_status' => $response->status(),
-                'body'        => $response->json() ?? $response->body(),
+                'http_status'  => $response->status(),
+                'body'         => $response->json() ?? $response->body(),
                 'submitted_at' => now()->toIso8601String(),
                 'payload_hash' => hash('sha256', json_encode($payload)),
+                'environment'  => $this->settings->getMeta('is_sandbox', true) ? 'sandbox' : 'production',
             ];
 
             if ($response->successful()) {
-                $data = $response->json() ?? [];
-                $irn  = $this->extractIrn($data, $fbrNum);
-                $qrCode = $this->buildQrCodeData($invoice, $irn, $fbrNum);
+                $data       = $response->json() ?? [];
+                $irn        = $this->extractIrn($data);
+                $fbrNum     = $irn; // FBR-issued invoice number IS the IRN
+                $qrContent  = $this->buildQrCodeData($invoice, $irn);
 
                 $invoice->update([
-                    'fbr_status'       => 'submitted',
-                    'fbr_submitted_at' => now(),
-                    'fbr_irn'          => $irn,
-                    'fbr_qr_code'      => $qrCode,
-                    'fbr_signature'    => $signature,
-                    'fbr_response'     => array_merge($responseData, ['irn' => $irn]),
+                    'fbr_status'         => 'submitted',
+                    'fbr_submitted_at'   => now(),
+                    'fbr_irn'            => $irn,
+                    'fbr_invoice_number' => $fbrNum,
+                    'fbr_qr_code'        => $qrContent,
+                    'fbr_signature'      => $signature,
+                    'fbr_response'       => array_merge($responseData, ['irn' => $irn]),
                 ]);
 
                 return [
-                    'success'  => true,
-                    'irn'      => $irn,
-                    'error'    => $overdueWarning,
-                    'fbrNum'   => $fbrNum,
+                    'success' => true,
+                    'irn'     => $irn,
+                    'error'   => $overdueWarning,
                 ];
             }
 
-            $error = $this->describeHttpError($response->status(), $response->body());
+            // Check for application-level validation error (HTTP 200 with status "Invalid")
+            $body = $response->json() ?? [];
+            $appError = $this->extractAppError($body);
+            $httpError = $this->describeHttpError($response->status(), $response->body());
+            $error = $appError ?? $httpError;
 
             $invoice->update([
                 'fbr_status'       => 'failed',
@@ -129,10 +171,10 @@ class FbrService
                 'fbr_response'     => array_merge($responseData, ['error' => $error]),
             ]);
 
-            Log::warning('FBR IRIS submission failed', [
+            Log::warning('FBR DI: submission failed', [
                 'invoice_id'  => $invoice->id,
                 'http_status' => $response->status(),
-                'body'        => substr($response->body(), 0, 500),
+                'error'       => $error,
             ]);
 
             return ['success' => false, 'irn' => null, 'error' => $error];
@@ -147,7 +189,7 @@ class FbrService
                 ],
             ]);
 
-            Log::error('FBR IRIS connection error', [
+            Log::error('FBR DI: connection error', [
                 'invoice_id' => $invoice->id,
                 'error'      => $e->getMessage(),
             ]);
@@ -157,7 +199,9 @@ class FbrService
     }
 
     /**
-     * Test the connection to FBR IRIS.
+     * Test the connection to the PRAL DI API sandbox endpoint.
+     * Uses the validateinvoicedata_sb endpoint with a minimal Services payload.
+     * A 200 response (even with "Invalid" status) confirms token + IP whitelist is working.
      *
      * @return array{status: string, error: ?string}
      */
@@ -166,25 +210,24 @@ class FbrService
         if (!$this->settings->isFbrReady()) {
             return [
                 'status' => 'failed',
-                'error'  => 'FBR settings are incomplete. Please fill in STRN, POSID, and Bearer Token.',
+                'error'  => 'FBR settings are incomplete. STRN, NTN, Business Name and Bearer Token are required.',
             ];
         }
 
         $this->settings->update(['status' => 'connecting', 'last_error' => null]);
 
         try {
-            // FBR IRIS ping — InvoiceType=3 is the test/validation type
-            $testPayload = $this->buildTestPayload();
-            $signature   = $this->sign($testPayload);
+            $payload  = $this->buildTestPayload();
+            $token    = $this->settings->getMeta('sandbox_api_key')
+                        ?? $this->settings->getMeta('production_api_key');
 
-            $response = Http::withToken($this->settings->api_key)
+            $response = Http::withToken($token)
                 ->timeout(15)
-                ->post($this->settings->api_url, $testPayload);
+                ->post(self::URL_VALIDATE, $payload);
 
-            // FBR may return 400 (bad request) or 422 (validation error) for the minimal
-            // test payload. These HTTP error codes still prove the endpoint is reachable
-            // and the bearer token is valid (a wrong token would return 401/403).
-            if ($response->successful() || in_array($response->status(), [400, 422], true)) {
+            // 200 with valid/invalid status = endpoint reachable + token accepted
+            // 401 = wrong token or IP not whitelisted yet
+            if ($response->successful()) {
                 $this->settings->update([
                     'status'         => 'connected',
                     'last_tested_at' => now(),
@@ -213,63 +256,68 @@ class FbrService
     }
 
     /**
-     * Build the FBR IRIS invoice submission payload.
-     * Follows the mandatory fields required by FBR IRIS JSON schema.
+     * Build the PRAL DI API v1.12 invoice submission payload.
+     *
+     * Conforms exactly to the JSON schema in the DI API Technical Specification.
+     * Header fields appear once; per-item fields are in the `items` array.
      */
     public function buildPayload(Invoice $invoice): array
     {
-        $taxRate   = (float) ($this->settings->getMeta('tax_rate', 0));
-        $netAmount = (float) ($invoice->net_amount ?? $invoice->total_amount);
-        $discount  = (float) ($invoice->discount_amount ?? 0);
-        $saleValue = $taxRate > 0 ? round($netAmount / (1 + $taxRate / 100), 2) : $netAmount;
-        $taxCharged = round($netAmount - $saleValue, 2);
+        $taxRate    = (float) $this->settings->getMeta('tax_rate', 0);
+        $netAmount  = (float) ($invoice->net_amount ?? $invoice->total_amount);
+        $discount   = (float) ($invoice->discount_amount ?? 0);
+        $taxAmount  = $taxRate > 0 ? round($netAmount * $taxRate / (100 + $taxRate), 2) : 0.0;
+        $saleValue  = round($netAmount - $taxAmount, 2);
+        $totalIncl  = $netAmount; // totalValues = total including tax
 
-        $paymentMode = match ($invoice->payment_method) {
-            'card'     => 2,
-            'transfer' => 3,
-            default    => 1, // cash
-        };
+        $sellerNtn      = $this->settings->getMeta('ntn', '');
+        $sellerName     = $this->settings->getMeta('business_name', '');
+        $sellerProvince = $this->settings->getMeta('seller_province', 'Punjab');
+        $sellerAddress  = $this->settings->getMeta('business_address', '');
+        $saleType       = $this->settings->getMeta('sale_type', self::DEFAULT_SALE_TYPE);
+        $uom            = $this->settings->getMeta('uom', 'Numbers, pieces, units');
+        $rateString     = $taxRate > 0 ? number_format($taxRate, 0) . '%' : '0%';
 
-        $usin   = $this->buildUsin($invoice);
-        $fbrNum = $invoice->fbr_invoice_number ?? (string) $invoice->id;
-        $items  = $this->buildItemsPayload($invoice, $taxRate, $netAmount, $saleValue, $taxCharged, $discount);
+        $buyerCnic = preg_replace('/[^0-9]/', '', $invoice->patient?->cnic ?? '');
+        $buyerName = $invoice->patient?->full_name ?? 'Walk-in Patient';
+        $buyerType = !empty($buyerCnic) ? 'Registered' : 'Unregistered';
 
-        return [
-            'InvoiceNumber'    => $fbrNum,
-            'POSID'            => (int) $this->settings->getMeta('posid'),
-            'USIN'             => $usin,
-            'DateTime'         => $invoice->paid_at?->format('Ymd\THis') ?? now()->format('Ymd\THis'),
-            'BuyerNTN'         => '',
-            'BuyerCNIC'        => $this->formatCnic($invoice->patient?->cnic ?? ''),
-            'BuyerName'        => $invoice->patient?->full_name ?? 'Walk-in Patient',
-            'BuyerPhoneNumber' => $invoice->patient?->phone ?? '',
-            'BuyerAddress'     => '',
-            'TotalBillAmount'  => $netAmount,
-            'TotalQuantity'    => max(1, $invoice->items()->count() ?: 1),
-            'TotalSaleValue'   => $saleValue,
-            'TotalTaxCharged'  => $taxCharged,
-            'Discount'         => $discount,
-            'FurtherTax'       => 0,
-            'PaymentMode'      => $paymentMode,
-            'RefUSIN'          => null,
-            'InvoiceType'      => 1,
-            'Items'            => $items,
+        $payload = [
+            'invoiceType'            => 'Sale Invoice',
+            'invoiceDate'            => ($invoice->paid_at ?? now())->format('Y-m-d'),
+            'sellerNTNCNIC'          => $sellerNtn,
+            'sellerBusinessName'     => $sellerName,
+            'sellerProvince'         => $sellerProvince,
+            'sellerAddress'          => $sellerAddress,
+            'buyerNTNCNIC'           => $buyerCnic,
+            'buyerBusinessName'      => $buyerName,
+            'buyerProvince'          => '',
+            'buyerAddress'           => $invoice->patient?->address ?? '',
+            'buyerRegistrationType'  => $buyerType,
+            'invoiceRefNo'           => '',
+            'items'                  => $this->buildItemsPayload($invoice, $taxRate, $saleType, $uom, $rateString),
         ];
+
+        // scenarioId is required for sandbox only
+        if ($this->settings->getMeta('is_sandbox', true)) {
+            $payload['scenarioId'] = $this->settings->getMeta('scenario_id', 'SN019');
+        }
+
+        return $payload;
     }
 
     /**
      * Generate an HMAC-SHA256 digital signature for the given payload.
-     * The signing secret is stored in the FBR platform settings meta.
-     * Configure it via Owner Profile → FBR Settings → Digital Signing Secret.
+     * This is OUR tamper-detection mechanism â€” not sent to FBR.
+     * Stored on the invoice for audit purposes.
      */
     public function sign(array $payload): string
     {
-        $secret = $this->settings->getMeta('signing_secret');
+        $secret = $this->settings->getMeta('signing_secret', '');
 
         if (empty($secret)) {
-            Log::warning('FBR: No signing_secret configured — digital signatures will not be verifiable. Set one in Owner Profile → FBR Settings.');
-            // Use a deterministic but non-secret value so signatures are at least consistent
-            $secret = 'fbr-unsigned-' . $this->settings->getMeta('posid', 'default');
+            // Fall back to NTN-derived secret so signatures are at least consistent
+            $secret = 'fbr-di-' . ($this->settings->getMeta('ntn', 'unsigned'));
         }
 
         $message = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -285,187 +333,207 @@ class FbrService
     }
 
     /**
-     * Build the items array for the FBR payload.
-     * Uses HS code from service_catalog if available.
+     * Build the items array for the DI API payload.
+     * Each item maps to one service line, using HS code from service catalog.
      */
     private function buildItemsPayload(
         Invoice $invoice,
         float $taxRate,
-        float $netAmount,
-        float $saleValue,
-        float $taxCharged,
-        float $discount,
+        string $saleType,
+        string $uom,
+        string $rateString,
     ): array {
         $items = $invoice->items()->with('serviceCatalog')->get();
 
         if ($items->isNotEmpty()) {
-            return $items->map(function ($item) use ($taxRate) {
-                $lineNet  = (float) $item->line_total;
-                $lineSale = $taxRate > 0 ? round($lineNet / (1 + $taxRate / 100), 2) : $lineNet;
-                $lineTax  = round($lineNet - $lineSale, 2);
-                $hsCode   = $item->serviceCatalog?->hs_code ?? self::DEFAULT_HS_CODE;
+            return $items->map(function ($item) use ($taxRate, $saleType, $uom, $rateString) {
+                $lineNet    = (float) $item->line_total;
+                $lineTax    = $taxRate > 0 ? round($lineNet * $taxRate / (100 + $taxRate), 2) : 0.0;
+                $lineSale   = round($lineNet - $lineTax, 2);
+                $hsCode     = $item->serviceCatalog?->hs_code ?? self::DEFAULT_HS_CODE;
 
                 return [
-                    'ItemCode'   => (string) $item->id,
-                    'ItemName'   => $item->description,
-                    'PCTCode'    => $hsCode,
-                    'Quantity'   => $item->quantity,
-                    'TaxRate'    => $taxRate,
-                    'Amount'     => $lineNet,
-                    'Discount'   => 0,
-                    'FurtherTax' => 0,
-                    'FixedTax'   => 0,
-                    'SaleValue'  => $lineSale,
-                    'TaxCharged' => $lineTax,
+                    'hsCode'                          => $hsCode,
+                    'productDescription'              => $item->description ?? ($item->serviceCatalog?->name ?? 'Medical Service'),
+                    'rate'                            => $rateString,
+                    'uoM'                             => $uom,
+                    'quantity'                        => (float) $item->quantity,
+                    'totalValues'                     => round($lineNet, 2),
+                    'valueSalesExcludingST'           => $lineSale,
+                    'fixedNotifiedValueOrRetailPrice' => 0.00,
+                    'salesTaxApplicable'              => $lineTax,
+                    'salesTaxWithheldAtSource'        => 0.00,
+                    'extraTax'                        => 0.00,
+                    'furtherTax'                      => 0.00,
+                    'sroScheduleNo'                   => '',
+                    'fedPayable'                      => 0.00,
+                    'discount'                        => 0.00,
+                    'saleType'                        => $saleType,
+                    'sroItemSerialNo'                 => '',
                 ];
             })->all();
         }
 
-        // Fallback: single line item from invoice
-        $hsCode = $invoice->serviceCatalog?->hs_code ?? self::DEFAULT_HS_CODE;
+        // Fallback: single item from invoice header
+        $discount   = (float) ($invoice->discount_amount ?? 0);
+        $netAmount  = (float) ($invoice->net_amount ?? $invoice->total_amount);
+        $taxAmount  = $taxRate > 0 ? round($netAmount * $taxRate / (100 + $taxRate), 2) : 0.0;
+        $saleValue  = round($netAmount - $taxAmount, 2);
+        $hsCode     = $invoice->serviceCatalog?->hs_code ?? self::DEFAULT_HS_CODE;
+
         return [[
-            'ItemCode'   => (string) $invoice->id,
-            'ItemName'   => $invoice->service_name,
-            'PCTCode'    => $hsCode,
-            'Quantity'   => 1,
-            'TaxRate'    => $taxRate,
-            'Amount'     => $netAmount,
-            'Discount'   => $discount,
-            'FurtherTax' => 0,
-            'FixedTax'   => 0,
-            'SaleValue'  => $saleValue,
-            'TaxCharged' => $taxCharged,
+            'hsCode'                          => $hsCode,
+            'productDescription'              => $invoice->service_name ?? 'Medical Service',
+            'rate'                            => $rateString,
+            'uoM'                             => $uom,
+            'quantity'                        => 1.0,
+            'totalValues'                     => $netAmount,
+            'valueSalesExcludingST'           => $saleValue,
+            'fixedNotifiedValueOrRetailPrice' => 0.00,
+            'salesTaxApplicable'              => $taxAmount,
+            'salesTaxWithheldAtSource'        => 0.00,
+            'extraTax'                        => 0.00,
+            'furtherTax'                      => 0.00,
+            'sroScheduleNo'                   => '',
+            'fedPayable'                      => 0.00,
+            'discount'                        => $discount,
+            'saleType'                        => $saleType,
+            'sroItemSerialNo'                 => '',
         ]];
     }
 
     /**
-     * Build a minimal test payload for connection verification.
+     * Build a minimal sandbox test payload for connection verification.
+     * Uses scenario SN019 (Services rendered or provided) â€” correct for healthcare.
      */
     private function buildTestPayload(): array
     {
-        $ts = now()->format('Ymd\THis');
+        $ntn     = $this->settings->getMeta('ntn', '0000000');
+        $name    = $this->settings->getMeta('business_name', 'Test Clinic');
+        $province = $this->settings->getMeta('seller_province', 'Punjab');
+
         return [
-            'InvoiceNumber'    => 'TEST-' . $ts,
-            'POSID'            => (int) $this->settings->getMeta('posid'),
-            'USIN'             => 'TEST-' . $ts,
-            'DateTime'         => $ts,
-            'BuyerNTN'         => '',
-            'BuyerCNIC'        => '',
-            'BuyerName'        => 'TEST',
-            'BuyerPhoneNumber' => '',
-            'BuyerAddress'     => '',
-            'TotalBillAmount'  => 0,
-            'TotalQuantity'    => 0,
-            'TotalSaleValue'   => 0,
-            'TotalTaxCharged'  => 0,
-            'Discount'         => 0,
-            'FurtherTax'       => 0,
-            'PaymentMode'      => 1,
-            'RefUSIN'          => null,
-            'InvoiceType'      => 3,
-            'Items'            => [],
+            'invoiceType'           => 'Sale Invoice',
+            'invoiceDate'           => now()->format('Y-m-d'),
+            'sellerNTNCNIC'         => $ntn,
+            'sellerBusinessName'    => $name,
+            'sellerProvince'        => $province,
+            'sellerAddress'         => $this->settings->getMeta('business_address', 'Pakistan'),
+            'buyerNTNCNIC'          => '',
+            'buyerBusinessName'     => 'Walk-in Patient',
+            'buyerProvince'         => '',
+            'buyerAddress'          => '',
+            'buyerRegistrationType' => 'Unregistered',
+            'invoiceRefNo'          => '',
+            'scenarioId'            => 'SN019',
+            'items'                 => [[
+                'hsCode'                          => self::DEFAULT_HS_CODE,
+                'productDescription'              => 'Medical Consultation',
+                'rate'                            => '0%',
+                'uoM'                             => 'Numbers, pieces, units',
+                'quantity'                        => 1.0,
+                'totalValues'                     => 1000.00,
+                'valueSalesExcludingST'           => 1000.00,
+                'fixedNotifiedValueOrRetailPrice' => 0.00,
+                'salesTaxApplicable'              => 0.00,
+                'salesTaxWithheldAtSource'        => 0.00,
+                'extraTax'                        => 0.00,
+                'furtherTax'                      => 0.00,
+                'sroScheduleNo'                   => '',
+                'fedPayable'                      => 0.00,
+                'discount'                        => 0.00,
+                'saleType'                        => 'Services',
+                'sroItemSerialNo'                 => '',
+            ]],
         ];
     }
 
     /**
-     * Build a USIN (Unique Sales Invoice Number).
-     * Format: {POSID}-{YYYYMMDD}-{invoiceId}
+     * Extract the FBR-issued Invoice Number (IRN) from the DI API response.
+     * Per spec: response field is `invoiceNumber` (e.g. "7000007DI1747119701593").
      */
-    private function buildUsin(Invoice $invoice): string
+    private function extractIrn(array $data): string
     {
-        $posid = $this->settings->getMeta('posid', '0');
-        $date  = $invoice->paid_at?->format('Ymd') ?? now()->format('Ymd');
-        return sprintf('%s-%s-%d', $posid, $date, $invoice->id);
-    }
-
-    /**
-     * Allocate the next sequential FBR invoice number using a DB lock.
-     * Thread-safe: uses SELECT FOR UPDATE to prevent duplicate sequence numbers.
-     */
-    private function nextSequenceNumber(): int
-    {
-        return (int) DB::transaction(function () {
-            $last = DB::table('invoices')
-                ->whereNotNull('fbr_invoice_seq')
-                ->lockForUpdate()
-                ->max('fbr_invoice_seq');
-
-            return ($last ?? 0) + 1;
-        });
-    }
-
-    /**
-     * Format the sequential number as a human-readable FBR invoice number.
-     * Format: {POSID}-{YYYY}-{000001}
-     */
-    private function formatInvoiceNumber(int $seq): string
-    {
-        $posid = $this->settings->getMeta('posid', '0');
-        return sprintf('%s-%s-%06d', $posid, now()->year, $seq);
-    }
-
-    /**
-     * Extract the IRN from the FBR IRIS API response.
-     */
-    private function extractIrn(array $data, string $fallback): string
-    {
-        if (!empty($data['IRN'])) {
-            return (string) $data['IRN'];
+        // Top-level invoiceNumber is the primary IRN
+        if (!empty($data['invoiceNumber'])) {
+            return (string) $data['invoiceNumber'];
         }
 
-        // Some FBR IRIS versions embed the IRN in the Response string
-        if (!empty($data['Response']) && preg_match('/IRN[:\s]+([A-Z0-9\-]+)/i', $data['Response'], $m)) {
-            return $m[1];
+        // Some responses nest it in validationResponse
+        if (!empty($data['validationResponse']['invoiceStatuses'][0]['invoiceNo'])) {
+            return (string) $data['validationResponse']['invoiceStatuses'][0]['invoiceNo'];
         }
 
-        return $data['USIN'] ?? $fallback;
+        // Fallback to dated response if present
+        return $data['dated'] ?? ('DI-' . now()->format('YmdHis'));
     }
 
     /**
-     * Build the FBR verification QR code URL.
-     * Encodes seller STRN, POSID, USIN, date, amount, and IRN — all required fields.
+     * Extract application-level error from a DI API response body.
+     * FBR may return HTTP 200 with statusCode "01" (Invalid) â€” we must check this.
      */
-    public function buildQrCodeData(Invoice $invoice, string $irn, string $fbrNum): string
+    private function extractAppError(array $data): ?string
     {
-        $posid  = $this->settings->getMeta('posid', '');
-        $strn   = $this->settings->getMeta('strn', '');
-        $usin   = $this->buildUsin($invoice);
-        $date   = $invoice->paid_at?->format('Ymd') ?? now()->format('Ymd');
-        $amount = number_format((float) ($invoice->net_amount ?? $invoice->total_amount), 2, '.', '');
+        $vr = $data['validationResponse'] ?? null;
+        if (!$vr) {
+            return null;
+        }
 
-        return sprintf(
-            'https://gst.fbr.gov.pk/qrinvoice/v1?TaxpayerRegistrationNo=%s&POSID=%s&USIN=%s&InvoiceDateTime=%s&TotalBillAmount=%s&IRN=%s&InvoiceNumber=%s',
-            urlencode($strn),
-            urlencode($posid),
-            urlencode($usin),
-            urlencode($date),
-            urlencode($amount),
-            urlencode($irn),
-            urlencode($fbrNum)
-        );
+        if (($vr['statusCode'] ?? '') === '01' || strtolower($vr['status'] ?? '') === 'invalid') {
+            // Collect errors from line items
+            $errors = [];
+            foreach ($vr['invoiceStatuses'] ?? [] as $item) {
+                if (!empty($item['error'])) {
+                    $errors[] = "Item {$item['itemSNo']}: [{$item['errorCode']}] {$item['error']}";
+                }
+            }
+            if (!empty($vr['error'])) {
+                $errors[] = "[{$vr['errorCode']}] {$vr['error']}";
+            }
+            return implode('; ', $errors) ?: 'FBR validation failed';
+        }
+
+        return null;
     }
 
     /**
-     * Format a CNIC string to the FBR-expected format (digits only, max 15 chars).
+     * Build the QR code data string per FBR specification.
+     * Encodes: Seller NTN | FBR Invoice Number | Total Amount | Sales Tax | DateTime | Business Name
+     * This pipe-delimited string is what gets encoded into the printable QR image.
      */
-    private function formatCnic(string $cnic): string
+    public function buildQrCodeData(Invoice $invoice, string $irn): string
     {
-        return preg_replace('/[^0-9]/', '', $cnic);
+        $ntn        = $this->settings->getMeta('ntn', '');
+        $name       = $this->settings->getMeta('business_name', '');
+        $netAmount  = number_format((float) ($invoice->net_amount ?? $invoice->total_amount), 2, '.', '');
+        $taxRate    = (float) $this->settings->getMeta('tax_rate', 0);
+        $taxAmount  = $taxRate > 0
+            ? number_format((float)($invoice->net_amount) * $taxRate / (100 + $taxRate), 2, '.', '')
+            : '0.00';
+        $datetime   = ($invoice->paid_at ?? now())->format('Y-m-d H:i:s');
+
+        return implode('|', [
+            $ntn,
+            $irn,
+            $netAmount,
+            $taxAmount,
+            $datetime,
+            $name,
+        ]);
     }
 
     /**
-     * Return a human-readable description for FBR IRIS HTTP errors.
+     * Return a human-readable description for FBR DI API HTTP errors.
      */
     private function describeHttpError(int $status, string $body): string
     {
         $truncated = mb_substr($body, 0, 300);
 
         return match ($status) {
-            401 => 'FBR IRIS authentication failed. Please verify your Bearer Token in Owner Profile → FBR Settings.',
-            403 => 'Access denied by FBR IRIS. Ensure your POSID and STRN are correctly registered with FBR.',
-            422 => 'FBR IRIS validation error — check mandatory fields (NTN/CNIC, HS code, POSID): ' . $truncated,
-            503 => 'FBR IRIS is temporarily unavailable. The invoice will need to be resubmitted. (Max 24-hour window applies.)',
-            default => "FBR IRIS returned HTTP {$status}: {$truncated}",
+            401 => 'FBR DI authentication failed. Verify your Bearer Token. If IP whitelisting is pending (PRAL approval takes up to 2 hours), try again later.',
+            403 => 'Access denied by FBR DI. Ensure your server IP is whitelisted via IRIS portal.',
+            500 => 'FBR DI internal server error. Contact PRAL support at dicrm.pral.com.pk.',
+            default => "FBR DI returned HTTP {$status}: {$truncated}",
         };
     }
 }

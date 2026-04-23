@@ -2,222 +2,198 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prescription #{{ $prescription->id }}</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'DejaVu Sans', sans-serif;
-            font-size: 12px;
-            line-height: 1.4;
-            color: #333;
-        }
-        .container {
-            padding: 20px;
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #059669;
-        }
-        .clinic-info {
-            text-align: left;
-        }
-        .clinic-name {
-            font-size: 20px;
-            font-weight: bold;
-            color: #047857;
-        }
-        .doctor-info {
-            text-align: right;
-        }
-        .rx-symbol {
-            font-size: 36px;
-            color: #047857;
-            font-weight: bold;
-            margin: 20px 0;
-        }
-        .patient-info {
-            background-color: #f0fdf4;
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .patient-info-row {
-            display: flex;
-            margin-bottom: 5px;
-        }
-        .patient-label {
-            font-weight: bold;
-            width: 100px;
-            color: #4b5563;
-        }
-        .diagnosis-section {
-            margin-bottom: 20px;
-            padding: 15px;
-            background-color: #fef3c7;
-            border-left: 4px solid #f59e0b;
-        }
-        .diagnosis-label {
-            font-weight: bold;
-            font-size: 11px;
-            text-transform: uppercase;
-            color: #92400e;
-        }
-        .medications-section {
-            margin-bottom: 20px;
-        }
-        .section-title {
-            font-size: 14px;
-            font-weight: bold;
-            color: #047857;
-            margin-bottom: 10px;
-            padding-bottom: 5px;
-            border-bottom: 1px solid #d1fae5;
-        }
-        .medication-item {
-            padding: 10px;
-            margin-bottom: 10px;
-            background-color: #f9fafb;
-            border-left: 3px solid #3b82f6;
-        }
-        .medication-name {
-            font-weight: bold;
-            font-size: 13px;
-            color: #1f2937;
-        }
-        .medication-details {
-            font-size: 11px;
-            color: #6b7280;
-            margin-top: 5px;
-        }
-        .medication-instructions {
-            font-size: 10px;
-            color: #4b5563;
-            margin-top: 5px;
-            font-style: italic;
-        }
-        .notes-section {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f3f4f6;
-            border-radius: 5px;
-        }
-        .signature-section {
-            margin-top: 40px;
-            text-align: right;
-        }
-        .signature-line {
-            width: 200px;
-            border-top: 1px solid #333;
-            margin-left: auto;
-            margin-top: 40px;
-            padding-top: 5px;
-        }
-        .footer {
-            margin-top: 30px;
-            padding-top: 15px;
-            border-top: 1px solid #e5e7eb;
-            text-align: center;
-            font-size: 10px;
-            color: #6b7280;
-        }
+        @page { size: A4 portrait; margin: 10mm 12mm; }
+        html, body { margin: 0; padding: 0; font-family: 'DejaVu Sans', sans-serif; font-size: 10px; line-height: 1.4; color: #1a1a2e; background: #fff; }
+
+        /* Header */
+        .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+        .hdr-rx-cell { width: 40px; vertical-align: middle; }
+        .hdr-rx { font-size: 28px; color: #047857; font-weight: bold; }
+        .hdr-clinic-cell { vertical-align: middle; padding-left: 8px; }
+        .hdr-clinic-name { font-size: 15px; font-weight: bold; color: #047857; }
+        .hdr-clinic-sub  { font-size: 8px; color: #5a6a85; margin-top: 1px; }
+        .hdr-doc-cell    { vertical-align: middle; text-align: right; }
+        .hdr-doc-name    { font-size: 11px; font-weight: bold; color: #1a1a2e; }
+        .hdr-doc-date    { font-size: 8px; color: #5a6a85; }
+        .divider { border: none; border-top: 2px solid #047857; margin: 0 0 8px; }
+
+        /* Patient info */
+        .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        .meta-box { vertical-align: top; padding: 5px 8px; background: #f0fdf4; }
+        .meta-lbl { font-size: 7px; font-weight: bold; text-transform: uppercase; color: #047857; margin-bottom: 1px; }
+        .meta-val { font-size: 9px; color: #1a1a2e; line-height: 1.5; }
+
+        /* Diagnosis */
+        .diag-box { padding: 5px 8px; background: #fef3c7; border-left: 3px solid #f59e0b; margin-bottom: 8px; }
+        .diag-lbl { font-size: 7px; font-weight: bold; text-transform: uppercase; color: #92400e; margin-bottom: 1px; }
+        .diag-val { font-size: 9px; color: #1a1a2e; }
+
+        /* Medications table */
+        .meds-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 8px; }
+        .meds-table th { background: #047857; color: #fff; font-size: 8px; font-weight: bold; padding: 4px 5px; text-align: left; text-transform: uppercase; }
+        .meds-table td { font-size: 9px; padding: 4px 5px; border-bottom: 1px solid #dde4ef; color: #1a1a2e; }
+        .meds-table tr:last-child td { border-bottom: none; }
+        .tr-alt td { background: #f8faff; }
+        .text-right { text-align: right; }
+
+        /* Notes */
+        .notes-box { padding: 5px 8px; background: #f3f4f6; margin-bottom: 8px; font-size: 9px; }
+        .notes-lbl { font-size: 7px; font-weight: bold; text-transform: uppercase; color: #047857; margin-bottom: 1px; }
+
+        /* Signature */
+        .sig-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        .sig-cell { width: 50%; vertical-align: bottom; }
+        .sig-line { border-top: 1px solid #1a1a2e; margin-top: 24px; padding-top: 3px; font-size: 9px; color: #5a6a85; }
+
+        /* Footer */
+        .footer-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        .footer-td { font-size: 7px; color: #5a6a85; text-align: center; border-top: 1px solid #dde4ef; padding-top: 5px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="clinic-info">
-                <div class="clinic-name">Aviva HealthCare</div>
-                <div>Excellence in Medical Care</div>
-            </div>
-            <div class="doctor-info">
-                <strong>Dr. {{ $prescription->doctor->name }}</strong><br>
-                <span style="font-size: 10px;">{{ $prescription->created_at->format('d M Y') }}</span>
-            </div>
-        </div>
 
-        <div class="rx-symbol">℞</div>
+@php
+    $logoPath = public_path('images/logo JPEG.jpeg');
+    if (!file_exists($logoPath)) {
+        $logoPath = public_path('images/logo.png');
+    }
+    $logoSrc = null;
+    if (file_exists($logoPath)) {
+        $ext = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
+        $mime = ($ext === 'png') ? 'png' : 'jpeg';
+        $logoSrc = 'data:image/' . $mime . ';base64,' . base64_encode(file_get_contents($logoPath));
+        list($origW, $origH) = getimagesize($logoPath);
+        $displayW = min(100, $origW);
+        $displayH = (int) round($displayW * $origH / $origW);
+        if ($displayH > 45) { $displayH = 45; $displayW = (int) round($displayH * $origW / $origH); }
+    }
+@endphp
 
-        <div class="patient-info">
-            <div class="patient-info-row">
-                <span class="patient-label">Patient:</span>
-                <span>{{ $prescription->patient->full_name }}</span>
-            </div>
-            @if($prescription->patient->date_of_birth)
-            <div class="patient-info-row">
-                <span class="patient-label">Age:</span>
-                <span>{{ $prescription->patient->date_of_birth->age }} years</span>
-            </div>
-            @endif
-            <div class="patient-info-row">
-                <span class="patient-label">Gender:</span>
-                <span>{{ ucfirst($prescription->patient->gender) }}</span>
-            </div>
-        </div>
-
-        @if($prescription->diagnosis)
-        <div class="diagnosis-section">
-            <div class="diagnosis-label">Diagnosis</div>
-            <div>{{ $prescription->diagnosis }}</div>
-        </div>
+{{-- Header --}}
+<table class="hdr-table">
+    <tr>
+        @if($logoSrc)
+        <td style="width:{{ $displayW + 6 }}px; vertical-align:middle;">
+            <img src="{{ $logoSrc }}" width="{{ $displayW }}" height="{{ $displayH }}" alt="Logo" style="display:block;">
+        </td>
+        @else
+        <td class="hdr-rx-cell"><span class="hdr-rx">&#8478;</span></td>
         @endif
+        <td class="hdr-clinic-cell">
+            <div class="hdr-clinic-name">Aviva HealthCare</div>
+            <div class="hdr-clinic-sub">Excellence in Medical Care</div>
+        </td>
+        <td class="hdr-doc-cell">
+            <div class="hdr-doc-name">Dr. {{ $prescription->doctor->name }}</div>
+            <div class="hdr-doc-date">{{ $prescription->created_at->format('d M Y') }}</div>
+            <div class="hdr-doc-date">Prescription #{{ $prescription->id }}</div>
+        </td>
+    </tr>
+</table>
+<hr class="divider">
 
-        <div class="medications-section">
-            <div class="section-title">Prescribed Medications</div>
-            @foreach($prescription->items as $index => $item)
-            <div class="medication-item">
-                <div class="medication-name">{{ $index + 1 }}. {{ $item->medication_name }}</div>
-                <div class="medication-details">
-                    @if($item->dosage)
-                        <strong>Dosage:</strong> {{ $item->dosage }}
-                    @endif
-                    @if($item->frequency)
-                        &nbsp;|&nbsp; <strong>Frequency:</strong> {{ $item->frequency }}
-                    @endif
-                    @if($item->duration)
-                        &nbsp;|&nbsp; <strong>Duration:</strong> {{ $item->duration }}
-                    @endif
-                    @if($item->quantity)
-                        &nbsp;|&nbsp; <strong>Qty:</strong> {{ $item->quantity }}
-                    @endif
-                </div>
-                @if($item->instructions)
-                <div class="medication-instructions">
-                    Instructions: {{ $item->instructions }}
-                </div>
+{{-- Patient Info --}}
+<table class="meta-table">
+    <tr>
+        <td class="meta-box" style="width:50%;">
+            <div class="meta-lbl">Patient</div>
+            <div class="meta-val">
+                <strong>{{ $prescription->patient->full_name }}</strong>
+                @if($prescription->patient->date_of_birth)
+                    &nbsp;&mdash;&nbsp;{{ $prescription->patient->date_of_birth->age }} years
+                @endif
+                @if($prescription->patient->gender)
+                    &nbsp;({{ ucfirst($prescription->patient->gender) }})
                 @endif
             </div>
-            @endforeach
-        </div>
-
-        @if($prescription->notes)
-        <div class="notes-section">
-            <strong>Additional Notes:</strong><br>
-            {{ $prescription->notes }}
-        </div>
-        @endif
-
-        <div class="signature-section">
-            <div class="signature-line">
-                Dr. {{ $prescription->doctor->name }}<br>
-                <span style="font-size: 10px;">Signature</span>
+        </td>
+        <td class="meta-box" style="width:50%; text-align:right;">
+            <div class="meta-lbl">Visit Information</div>
+            <div class="meta-val">
+                Date: {{ $prescription->created_at->format('d M Y, H:i') }}
             </div>
-        </div>
+        </td>
+    </tr>
+</table>
 
-        <div class="footer">
-            <p>This prescription is valid for 7 days from the date of issue.</p>
-            <p>Keep medicines out of reach of children.</p>
-            <p>Aviva HealthCare | Excellence in Medical Care</p>
-        </div>
-    </div>
+{{-- Diagnosis --}}
+@if($prescription->diagnosis)
+<div class="diag-box">
+    <div class="diag-lbl">Diagnosis</div>
+    <div class="diag-val">{{ $prescription->diagnosis }}</div>
+</div>
+@endif
+
+{{-- Rx Symbol + Medications --}}
+<table style="width:100%; border-collapse:collapse; margin-bottom:4px;">
+    <tr>
+        <td style="font-size:20px; color:#047857; font-weight:bold; width:30px; vertical-align:middle;">&#8478;</td>
+        <td style="font-size:10px; font-weight:bold; color:#047857; text-transform:uppercase; vertical-align:middle;">Prescribed Medications</td>
+    </tr>
+</table>
+
+<table class="meds-table">
+    <thead>
+        <tr>
+            <th style="width:5%;">#</th>
+            <th style="width:28%;">Medication</th>
+            <th style="width:17%;">Dosage</th>
+            <th style="width:17%;">Frequency</th>
+            <th style="width:13%;">Duration</th>
+            <th style="width:8%;" class="text-right">Qty</th>
+            <th style="width:12%;">Instructions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach($prescription->items as $i => $item)
+        <tr class="{{ $i % 2 === 1 ? 'tr-alt' : '' }}">
+            <td>{{ $i + 1 }}</td>
+            <td><strong>{{ $item->medication_name }}</strong></td>
+            <td>{{ $item->dosage ?? '—' }}</td>
+            <td>{{ $item->frequency ?? '—' }}</td>
+            <td>{{ $item->duration ?? '—' }}</td>
+            <td class="text-right">{{ $item->quantity ?? '—' }}</td>
+            <td style="font-size:8px;">{{ $item->instructions ?? '—' }}</td>
+        </tr>
+        @endforeach
+    </tbody>
+</table>
+
+{{-- Notes --}}
+@if($prescription->notes)
+<div class="notes-box">
+    <div class="notes-lbl">Additional Notes</div>
+    {{ $prescription->notes }}
+</div>
+@endif
+
+{{-- Signature --}}
+<table class="sig-table">
+    <tr>
+        <td class="sig-cell">&nbsp;</td>
+        <td class="sig-cell" style="text-align:right;">
+            <div style="text-align:center; display:inline-block; width:180px;">
+                <div class="sig-line">
+                    <strong>Dr. {{ $prescription->doctor->name }}</strong><br>
+                    Signature &amp; Stamp
+                </div>
+            </div>
+        </td>
+    </tr>
+</table>
+
+{{-- Footer --}}
+<table class="footer-table">
+    <tr>
+        <td class="footer-td">
+            This prescription is valid for 7 days from the date of issue. &nbsp;|&nbsp;
+            Keep medicines out of reach of children. &nbsp;|&nbsp;
+            Aviva HealthCare &mdash; Excellence in Medical Care
+        </td>
+    </tr>
+</table>
+
 </body>
 </html>
