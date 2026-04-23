@@ -22,6 +22,7 @@ use App\Http\Controllers\Dashboard\ExpenseIntelligenceController;
 use App\Http\Controllers\Dashboard\InventoryHealthController;
 use App\Http\Controllers\Dashboard\ProcurementPipelineController;
 use App\Http\Controllers\Owner\RevenueForecastController;
+use App\Http\Controllers\Owner\ArchitectureController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('role:Owner')->group(function () {
@@ -105,4 +106,7 @@ Route::middleware('role:Owner')->group(function () {
     // FBR IRIS Digital Invoicing Settings
     Route::patch('/owner/fbr-settings', [FbrSettingsController::class, 'update'])->name('owner.fbr-settings.update');
     Route::post('/owner/fbr-settings/test', [FbrSettingsController::class, 'testConnection'])->name('owner.fbr-settings.test');
+
+    // Architecture / GitNexus (Phase 1 — flag-gated read-only view)
+    Route::get('/owner/architecture', [ArchitectureController::class, 'index'])->name('owner.architecture');
 });
