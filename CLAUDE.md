@@ -25,6 +25,7 @@ CLINIC_RO_PASSWORD=         # Password for the clinic_ro read-only MySQL user
 | `php artisan audit:verify-chain [--chunk=500]` | Verify audit_logs hash chain integrity. Exits non-zero if tampered. Run after every deploy. |
 | `php artisan gitnexus:scan [--force]` | Index codebase with GitNexus and emit `storage/gitnexus/graph.json`. Run after significant refactors. (Phase 1) |
 | `php artisan gitnexus:impact <symbol> [--depth=3]` | Print blast-radius report for a class or file. Paste output in every PR that touches listed callers. (Phase 1) |
+| `php artisan ragflow:sync [--dry-run]` | Sync service_catalog + inventory_items (non-financial columns only) to RAGFlow via sidecar. Runs nightly at 03:00. (Phase 3) |
 
 ## Phase 0 Migration Order
 
@@ -70,9 +71,34 @@ CLINIC_SIDECAR_URL=http://localhost:8001   # FastAPI sidecar URL (native) / http
 CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php -r "echo base64_encode(random_bytes(32));"
 ```
 
+## Phase 3 Notes (RAGFlow + Chat Surfaces)
+
+- **RAGFlow stack:** added to `docker-compose.ai.yml` — `ragflow` + `ragflow-es` + `ragflow-minio` + `ragflow-mysql` + `ragflow-redis`. Start with `docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d`.
+- **RAGFlow admin UI:** http://localhost:8080 (bound to 127.0.0.1 only). Owner creates datasets and API key in the UI after first boot. Copy key into `.env` as `RAGFLOW_API_KEY`.
+- **Sidecar RAGFlow client:** `sidecar/app/services/ragflow.py` — reads `RAGFLOW_URL`, `RAGFLOW_API_KEY`, `RAGFLOW_DATASET_*` env vars. Degrades gracefully when unconfigured.
+- **`RagflowClient` in Laravel:** calls to RAGFlow go through `AiSidecarClient::ragQuery()` / `ragIngestContent()` — same circuit-breaker + hash-chain logging path as Phase 2.
+- **`AiOversightController`:** Owner-only page at `/owner/ai-oversight` — sidecar health ping, RAGFlow flag status, pending `ai_action_requests`, top cited docs (7d), recent invocations.
+- **`AiAssistantController`:** AJAX at `POST /ai-assistant/query` + `POST /ai-assistant/flag`. Flag check: `ai.chat.enabled.{role}` (all default OFF). Returns 503 JSON on sidecar outage — never 500.
+- **`ai-assistant-panel` component:** included on doctor consultation view (flag `ai.chat.enabled.doctor`). Collection defaults to `service_catalog` for Doctor, `inventory` for Pharmacy.
+- **Owner dashboard:** AI & Infrastructure card injected when `ai.sidecar.enabled` OR `ai.ragflow.enabled` is ON. No change to existing metrics.
+- **Feature flags (new):** no new seeded flags — Phase 0 already seeded `ai.chat.enabled.{owner,doctor,laboratory,radiology,pharmacy}` (all OFF).
+- **Phase 3 deviation:** Opus plan specified Postgres for RAGFlow internals; RAGFlow 0.14 uses MySQL. `ragflow-mysql` is used instead. Isolated volume, never touches app MySQL.
+- **New env vars:**
+  ```
+  RAGFLOW_API_KEY=               # Generated in RAGFlow admin UI after first boot
+  RAGFLOW_DATASET_GENERAL=       # Dataset ID from RAGFlow UI (default: "general")
+  RAGFLOW_DATASET_CATALOG=       # Dataset ID for service catalog corpus
+  RAGFLOW_DATASET_INVENTORY=     # Dataset ID for inventory corpus
+  RAGFLOW_MINIO_USER=ragflow     # MinIO root user for RAGFlow (default: ragflow)
+  RAGFLOW_MINIO_PASSWORD=        # MinIO password for RAGFlow
+  RAGFLOW_MYSQL_ROOT_PASSWORD=   # Root password for ragflow-mysql container
+  RAGFLOW_MYSQL_PASSWORD=        # ragflow user password for ragflow-mysql
+  ```
+
 ## Test Baseline
 
 - Phase -1 baseline: 178 pass / 3 pre-existing failures (logout session, 2x Ollama-offline)
 - Phase 0 baseline: 188 pass / 3 pre-existing failures (same 3, +10 new Phase 0 tests all green)
 - Phase 1 baseline: target 188 pass / 3 pre-existing failures (no new test files — Phase 1 is CI tooling only)
 - Phase 2 baseline: 195 pass / 3 pre-existing failures (+7 new Phase 2 tests: CircuitBreakerTest×4, AiSidecarClientTest×3)
+- Phase 3 baseline: target 202 pass / 3 pre-existing failures (+7 new Phase 3 tests: RagflowOutageTest×4, RagflowSyncPhiTest×3)

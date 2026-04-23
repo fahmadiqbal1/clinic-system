@@ -1,8 +1,12 @@
-# Phase 2 — AI Sidecar (opt-in)
+# Phase 2/3 — AI Sidecar + RAGFlow (opt-in)
 # Usage: docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d
 #
 # The sidecar joins the default network defined by docker-compose.yml,
 # so it can reach ollama:11434 and host.docker.internal for the MySQL RO user.
+#
+# Phase 3 note: Plan specified Postgres for RAGFlow; RAGFlow 0.14 uses MySQL internally.
+# ragflow-mysql is a separate container — it never touches the app's MariaDB.
+# RAGFlow admin UI binds to 127.0.0.1:8080 only (Owner accesses directly; not proxied).
 
 services:
   sidecar:
@@ -15,6 +19,12 @@ services:
       SIDECAR_JWT_SECRET: ${CLINIC_SIDECAR_JWT_SECRET}
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${MEDGEMMA_MODEL:-medgemma}
+      # RAGFlow integration (Phase 3)
+      RAGFLOW_URL: http://ragflow:9380
+      RAGFLOW_API_KEY: ${RAGFLOW_API_KEY:-}
+      RAGFLOW_DATASET_GENERAL: ${RAGFLOW_DATASET_GENERAL:-general}
+      RAGFLOW_DATASET_CATALOG: ${RAGFLOW_DATASET_CATALOG:-service_catalog}
+      RAGFLOW_DATASET_INVENTORY: ${RAGFLOW_DATASET_INVENTORY:-inventory}
       # clinic_ro MySQL access for forecast endpoints (Phase 5)
       DB_HOST: ${DB_HOST:-host.docker.internal}
       DB_PORT: ${DB_PORT:-3306}
@@ -25,5 +35,97 @@ services:
       - "8001:8001"
     depends_on:
       - ollama
+      - ragflow
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # ── RAGFlow stack ───────────────────────────────────────────────────────────
+  ragflow-es:
+    image: elasticsearch:8.11.3
+    container_name: ragflow-es
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      xpack.security.enabled: "false"
+    volumes:
+      - ragflow_es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+
+  ragflow-minio:
+    image: quay.io/minio/minio:RELEASE.2024-01-16T16-07-38Z
+    container_name: ragflow-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${RAGFLOW_MINIO_USER:-ragflow}
+      MINIO_ROOT_PASSWORD: ${RAGFLOW_MINIO_PASSWORD:-ragflow123}
+    volumes:
+      - ragflow_minio_data:/data
+
+  ragflow-mysql:
+    image: mysql:8.0
+    container_name: ragflow-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${RAGFLOW_MYSQL_ROOT_PASSWORD:-ragflow_root}
+      MYSQL_DATABASE: rag_flow
+      MYSQL_USER: ragflow
+      MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow123}
+    volumes:
+      - ragflow_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uragflow", "-p${RAGFLOW_MYSQL_PASSWORD:-ragflow123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  ragflow-redis:
+    image: redis:7-alpine
+    container_name: ragflow-redis
+    restart: unless-stopped
+    volumes:
+      - ragflow_redis_data:/data
+
+  ragflow:
+    image: infiniflow/ragflow:v0.14.1-slim
+    container_name: clinic-ragflow
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:9380"   # Admin UI — localhost only; Owner accesses directly
+    environment:
+      MYSQL_HOST: ragflow-mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: ragflow
+      MYSQL_PASSWORD: ${RAGFLOW_MYSQL_PASSWORD:-ragflow123}
+      MYSQL_DBNAME: rag_flow
+      ES_HOST: ragflow-es
+      ES_PORT: 9200
+      MINIO_HOST: ragflow-minio
+      MINIO_PORT: 9000
+      MINIO_USER: ${RAGFLOW_MINIO_USER:-ragflow}
+      MINIO_PASSWORD: ${RAGFLOW_MINIO_PASSWORD:-ragflow123}
+      REDIS_HOST: ragflow-redis
+      REDIS_PORT: 6379
+    depends_on:
+      ragflow-mysql:
+        condition: service_healthy
+      ragflow-es:
+        condition: service_healthy
+      ragflow-minio:
+        condition: service_started
+      ragflow-redis:
+        condition: service_started
+    volumes:
+      - ragflow_data:/ragflow/logs
+
+volumes:
+  ragflow_es_data:
+  ragflow_minio_data:
+  ragflow_mysql_data:
+  ragflow_redis_data:
+  ragflow_data:

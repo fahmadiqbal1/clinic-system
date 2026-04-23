@@ -23,6 +23,8 @@ use App\Http\Controllers\Dashboard\InventoryHealthController;
 use App\Http\Controllers\Dashboard\ProcurementPipelineController;
 use App\Http\Controllers\Owner\RevenueForecastController;
 use App\Http\Controllers\Owner\ArchitectureController;
+use App\Http\Controllers\Owner\AiOversightController;
+use App\Http\Controllers\Api\AiAssistantController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('role:Owner')->group(function () {
@@ -109,4 +111,13 @@ Route::middleware('role:Owner')->group(function () {
 
     // Architecture / GitNexus (Phase 1 — flag-gated read-only view)
     Route::get('/owner/architecture', [ArchitectureController::class, 'index'])->name('owner.architecture');
+
+    // AI & Infrastructure (Phase 3 — flag-gated)
+    Route::get('/owner/ai-oversight', [AiOversightController::class, 'index'])->name('owner.ai-oversight');
+});
+
+// AI Assistant AJAX — accessible to any authenticated user; flag-checked per role inside controller
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::post('/ai-assistant/query', [AiAssistantController::class, 'query'])->name('ai.assistant.query');
+    Route::post('/ai-assistant/flag',  [AiAssistantController::class, 'flag'])->name('ai.assistant.flag');
 });

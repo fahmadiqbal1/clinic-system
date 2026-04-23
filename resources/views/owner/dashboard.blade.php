@@ -248,6 +248,51 @@
         </div>
     </div>
 
+    {{-- AI & Infrastructure card (Phase 3 — flag-gated) --}}
+    @if(\App\Models\PlatformSetting::isEnabled('ai.sidecar.enabled') || \App\Models\PlatformSetting::isEnabled('ai.ragflow.enabled'))
+    @php $pendingAiCount = \App\Models\AiActionRequest::where('status', 'pending')->count(); @endphp
+    <div class="glass-card p-4 mb-4 fade-in delay-7" style="border:1px solid rgba(129,140,248,0.3);">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h5 class="mb-0"><i class="bi bi-cpu me-2" style="color:var(--accent-primary);"></i>AI & Infrastructure</h5>
+            <a href="{{ route('owner.ai-oversight') }}" class="btn btn-sm btn-outline-primary" style="font-size:0.75rem;">View All →</a>
+        </div>
+        <div class="row g-2">
+            <div class="col-6 col-md-3">
+                <div class="p-2 rounded text-center" style="background:rgba(129,140,248,0.08); border:1px solid rgba(129,140,248,0.2);">
+                    <div class="small text-muted">Sidecar</div>
+                    <div class="fw-semibold" style="color:{{ \App\Models\PlatformSetting::isEnabled('ai.sidecar.enabled') ? 'var(--accent-success)' : 'var(--text-muted)' }}; font-size:0.85rem;">
+                        {{ \App\Models\PlatformSetting::isEnabled('ai.sidecar.enabled') ? 'ON' : 'OFF' }}
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="p-2 rounded text-center" style="background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.2);">
+                    <div class="small text-muted">RAGFlow</div>
+                    <div class="fw-semibold" style="color:{{ \App\Models\PlatformSetting::isEnabled('ai.ragflow.enabled') ? 'var(--accent-success)' : 'var(--text-muted)' }}; font-size:0.85rem;">
+                        {{ \App\Models\PlatformSetting::isEnabled('ai.ragflow.enabled') ? 'ON' : 'OFF' }}
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="p-2 rounded text-center" style="background:rgba(251,191,36,0.08); border:1px solid rgba(251,191,36,0.2);">
+                    <div class="small text-muted">Pending AI Requests</div>
+                    <div class="fw-semibold" style="color:{{ $pendingAiCount > 0 ? 'var(--accent-warning)' : 'var(--text-primary)' }}; font-size:0.85rem;">
+                        {{ $pendingAiCount }}
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="p-2 rounded text-center" style="background:rgba(129,140,248,0.08); border:1px solid rgba(129,140,248,0.2);">
+                    <div class="small text-muted">Knowledge Assistant</div>
+                    <div class="fw-semibold" style="color:{{ \App\Models\PlatformSetting::isEnabled('ai.chat.enabled.owner') ? 'var(--accent-success)' : 'var(--text-muted)' }}; font-size:0.85rem;">
+                        {{ \App\Models\PlatformSetting::isEnabled('ai.chat.enabled.owner') ? 'Active' : 'Inactive' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @endif
+
     {{-- Quick Actions --}}
     <div class="glass-card p-4 fade-in delay-7">
         <h5 class="mb-3"><i class="bi bi-lightning me-2"></i>Quick Actions</h5>

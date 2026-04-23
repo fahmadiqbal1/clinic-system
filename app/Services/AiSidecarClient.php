@@ -56,6 +56,12 @@ class AiSidecarClient
         return $this->call('POST', '/v1/rag/ingest', compact('filePath', 'collection'));
     }
 
+    /** Send text content directly to RAGFlow (e.g. DB-generated corpus). */
+    public function ragIngestContent(string $content, string $collection = 'general'): array
+    {
+        return $this->call('POST', '/v1/rag/ingest', compact('content', 'collection'));
+    }
+
     public function forecastRevenue(array $params = []): array
     {
         return $this->call('POST', '/v1/forecast/revenue', $params);

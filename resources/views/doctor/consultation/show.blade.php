@@ -808,6 +808,14 @@
         'quickChatAction' => route('ai-analysis.quick-chat', $patient),
     ])
 
+    {{-- Knowledge Assistant — RAGFlow right-rail (Phase 3, flag-gated) --}}
+    @if(\App\Models\PlatformSetting::isEnabled('ai.chat.enabled.doctor'))
+    <x-ai-assistant-panel
+        collection="service_catalog"
+        panelTitle="Knowledge Assistant"
+        placeholder="Ask about lab protocols, drug interactions, service parameters…" />
+    @endif
+
     {{-- Complete / Back --}}
     <div class="d-flex gap-2 fade-in delay-5">
         @if($patient->status === 'with_doctor')

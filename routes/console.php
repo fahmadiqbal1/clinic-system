@@ -19,3 +19,6 @@ Schedule::command('ai:retry-pending')->everyTenMinutes();
 
 // Send 24-hour appointment reminders to patients — runs hourly
 Schedule::command('appointments:send-reminders')->hourly();
+
+// Sync service catalog + inventory to RAGFlow corpus — nightly at 03:00 (Phase 3)
+Schedule::command('ragflow:sync')->dailyAt('03:00');

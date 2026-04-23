@@ -71,7 +71,8 @@ class RagQueryOutput(BaseModel):
 
 
 class RagIngestInput(BaseModel):
-    filePath: str
+    filePath: Optional[str] = None   # path on the sidecar filesystem (for PDF uploads)
+    content: Optional[str] = None    # raw text to ingest directly (for DB corpus sync)
     collection: str = "general"
 
 
