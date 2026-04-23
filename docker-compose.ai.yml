@@ -25,12 +25,12 @@ services:
       RAGFLOW_DATASET_GENERAL: ${RAGFLOW_DATASET_GENERAL:-general}
       RAGFLOW_DATASET_CATALOG: ${RAGFLOW_DATASET_CATALOG:-service_catalog}
       RAGFLOW_DATASET_INVENTORY: ${RAGFLOW_DATASET_INVENTORY:-inventory}
-      # clinic_ro MySQL access for forecast endpoints (Phase 5)
-      DB_HOST: ${DB_HOST:-host.docker.internal}
-      DB_PORT: ${DB_PORT:-3306}
-      DB_DATABASE: ${DB_DATABASE:-clinic_system}
-      DB_RO_USER: clinic_ro
-      DB_RO_PASSWORD: ${CLINIC_RO_PASSWORD}
+      # clinic_ro MySQL — read-only access for forecast endpoints (Phase 6)
+      CLINIC_RO_HOST: ${DB_HOST:-host.docker.internal}
+      CLINIC_RO_PORT: ${DB_PORT:-3306}
+      CLINIC_RO_DATABASE: ${DB_DATABASE:-clinic_system}
+      CLINIC_RO_USER: clinic_ro
+      CLINIC_RO_PASSWORD: ${CLINIC_RO_PASSWORD:-}
     ports:
       - "8001:8001"
     depends_on:

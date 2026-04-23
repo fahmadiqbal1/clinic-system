@@ -125,6 +125,22 @@ CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php 
   GRAFANA_ADMIN_PASSWORD=                    # Grafana admin password for observability stack
   ```
 
+## Phase 6 Notes (Forecasting + Stress/Regression + Cutover)
+
+- **Revenue forecast sidecar (`/v1/forecast/revenue`):** Queries `audit_logs` (via `clinic_ro`) for 90-day event counts grouped by day, applies single exponential smoothing (α=0.3), projects `days_ahead` forward. Model ID: `revenue-ses-v1`.
+- **Inventory forecast sidecar (`/v1/forecast/inventory`):** Queries `inventory_items` (non-financial columns via `clinic_ro`) and classifies each active item as `critical` (qty=0), `warning` (qty ≤ min_stock_level), or `ok`. Model ID: `inventory-threshold-v1`. Both endpoints degrade gracefully (empty `forecast: []`) when `CLINIC_RO_*` env vars are not set.
+- **DB service:** `sidecar/app/services/db.py` — async `aiomysql` connection pool. Lazy-init; never throws at import time.
+- **Laravel tests:** `tests/Feature/Ai/ForecastTest.php` ×5.
+- **Sidecar tests:** `sidecar/tests/test_forecast.py` ×5.
+- **Load test:** `tests/load/k6-load.js` — E.3 gate (50 VUs, 5 min, p95 < 800 ms, errors < 1%). Run instructions in file header.
+- **Tab sweep:** `tests/e2e/tab-sweep.spec.js` — E.4 gate, all 8 roles, all nav links, screenshots to `tests/e2e/screenshots/<role>/`.
+- **Cutover runbook:** `docs/runbooks/cutover.md` — Part G steps as an executable checklist. Run on staging first, then production.
+- **New env vars (sidecar only — passed via docker-compose.ai.yml):**
+  ```
+  # DB_HOST / DB_PORT / DB_DATABASE already exist in .env — no new vars needed in native mode.
+  # Docker: CLINIC_RO_HOST=host.docker.internal injected automatically from docker-compose.ai.yml.
+  ```
+
 ## Test Baseline
 
 - Phase -1 baseline: 178 pass / 3 pre-existing failures (logout session, 2x Ollama-offline)
@@ -134,3 +150,4 @@ CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php 
 - Phase 3 baseline: target 202 pass / 3 pre-existing failures (+7 new Phase 3 tests: RagflowOutageTest×4, RagflowSyncPhiTest×3)
 - Phase 4 baseline: target 207 pass / 3 pre-existing failures (+5 new Phase 4 tests: NocobaseAuditHookTest×5)
 - Phase 5 baseline: target 212 pass / 3 pre-existing failures (+5 new Phase 5 tests: Soc2EvidenceTest×5)
+- Phase 6 baseline: 217 pass / 3 pre-existing failures (+5 new Phase 6 tests: ForecastTest×5)
