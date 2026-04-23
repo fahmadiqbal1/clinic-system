@@ -26,6 +26,7 @@ CLINIC_RO_PASSWORD=         # Password for the clinic_ro read-only MySQL user
 | `php artisan gitnexus:scan [--force]` | Index codebase with GitNexus and emit `storage/gitnexus/graph.json`. Run after significant refactors. (Phase 1) |
 | `php artisan gitnexus:impact <symbol> [--depth=3]` | Print blast-radius report for a class or file. Paste output in every PR that touches listed callers. (Phase 1) |
 | `php artisan ragflow:sync [--dry-run]` | Sync service_catalog + inventory_items (non-financial columns only) to RAGFlow via sidecar. Runs nightly at 03:00. (Phase 3) |
+| `php artisan soc2:evidence [--from=YYYY-MM-DD] [--to=YYYY-MM-DD]` | Export SOC 2 evidence bundle (audit chain + AI invocations + chain-verify proof + flag snapshot) to `storage/app/soc2/`. Omit `--from` for full history. (Phase 5) |
 
 ## Phase 0 Migration Order
 
@@ -111,6 +112,19 @@ CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php 
   NOCOBASE_URL=http://localhost:13000  # URL of NocoBase UI (displayed in owner gateway page)
   ```
 
+## Phase 5 Notes (Observability + Evidence Export)
+
+- **`soc2:evidence`:** Exports audit_logs + ai_invocations (date-filtered) + chain-verify proof + feature-flag snapshot into a ZIP at `storage/app/soc2/`. Suitable for SOC 2 auditors.
+- **Retention Policy:** Owner UI at `GET /owner/retention-policy`. Settings stored in `platform_settings` rows with `provider='retention_policy'` (keys: `retention.clinical`, `retention.financial`, `retention.ai`). Default: clinical=indefinite, financial=7y, AI=2y. Advisory only — no automated purge in v1.
+- **Prometheus `/metrics`:** Exposed by the Python sidecar at `GET /metrics` (no auth). Tracks `sidecar_requests_total` and `sidecar_request_duration_seconds` per endpoint.
+- **Grafana (optional):** Added to `docker-compose.ai.yml`. Start with `docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d prometheus grafana`. UI at 127.0.0.1:3000. Pre-provisioned dashboard: `sidecar/observability/grafana/dashboards/clinic-sidecar.json`.
+- **Outage runbook:** `docs/runbooks/ai-outage.md` — steps for sidecar / RAGFlow / NocoBase outage recovery, flag-toggle quick-disable, and evidence export during incident.
+- **New env vars:**
+  ```
+  CLINIC_GRAFANA_URL=http://localhost:3000   # URL of Grafana UI (optional, display only)
+  GRAFANA_ADMIN_PASSWORD=                    # Grafana admin password for observability stack
+  ```
+
 ## Test Baseline
 
 - Phase -1 baseline: 178 pass / 3 pre-existing failures (logout session, 2x Ollama-offline)
@@ -119,3 +133,4 @@ CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php 
 - Phase 2 baseline: 195 pass / 3 pre-existing failures (+7 new Phase 2 tests: CircuitBreakerTest×4, AiSidecarClientTest×3)
 - Phase 3 baseline: target 202 pass / 3 pre-existing failures (+7 new Phase 3 tests: RagflowOutageTest×4, RagflowSyncPhiTest×3)
 - Phase 4 baseline: target 207 pass / 3 pre-existing failures (+5 new Phase 4 tests: NocobaseAuditHookTest×5)
+- Phase 5 baseline: target 212 pass / 3 pre-existing failures (+5 new Phase 5 tests: Soc2EvidenceTest×5)

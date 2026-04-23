@@ -31,4 +31,10 @@ return [
      * Binds to 127.0.0.1:13000 by default; owner accesses directly.
      */
     'nocobase_url' => env('NOCOBASE_URL', 'http://localhost:13000'),
+
+    /*
+     * Grafana observability UI (Phase 5 — optional container).
+     * Only available when Prometheus + Grafana are started via docker-compose.ai.yml.
+     */
+    'grafana_url' => env('CLINIC_GRAFANA_URL', 'http://localhost:3000'),
 ];

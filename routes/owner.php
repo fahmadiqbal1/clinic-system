@@ -25,6 +25,7 @@ use App\Http\Controllers\Owner\RevenueForecastController;
 use App\Http\Controllers\Owner\ArchitectureController;
 use App\Http\Controllers\Owner\AiOversightController;
 use App\Http\Controllers\Owner\NocobaseController;
+use App\Http\Controllers\Owner\RetentionPolicyController;
 use App\Http\Controllers\Api\AiAssistantController;
 use Illuminate\Support\Facades\Route;
 
@@ -118,6 +119,10 @@ Route::middleware('role:Owner')->group(function () {
 
     // Property & Equipment Admin — NocoBase gateway (Phase 4 — flag-gated)
     Route::get('/owner/nocobase', [NocobaseController::class, 'index'])->name('owner.nocobase');
+
+    // Data Retention Policy (Phase 5)
+    Route::get('/owner/retention-policy',   [RetentionPolicyController::class, 'index'])->name('owner.retention-policy.index');
+    Route::patch('/owner/retention-policy', [RetentionPolicyController::class, 'update'])->name('owner.retention-policy.update');
 });
 
 // AI Assistant AJAX — accessible to any authenticated user; flag-checked per role inside controller
