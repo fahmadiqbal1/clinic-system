@@ -569,7 +569,7 @@ SESSION_SECURE_COOKIE=true
 
 <div align="center">
 
-**Aviva HealthCare** · Built for Pakistani private clinics
+**Aviva HealthCare** · Built for Private clinics
 
 *Laravel 12 · PHP 8.2+ · Bootstrap 5 · MedGemma AI*
 
