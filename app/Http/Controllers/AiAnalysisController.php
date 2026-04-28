@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AiAnalysis;
 use App\Models\Invoice;
 use App\Models\Patient;
+use App\Providers\AppServiceProvider;
 use App\Services\MedGemmaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -82,6 +83,41 @@ class AiAnalysisController extends Controller
             'analysis_id' => $analysis->id,
             'status'      => 'pending',
             'message'     => 'Question queued. Answer will appear shortly.',
+        ]);
+    }
+
+    /**
+     * Return whether the queue worker process is running (for UI status indicator).
+     */
+    public function workerStatus(): JsonResponse
+    {
+        return response()->json(AppServiceProvider::workerStatus());
+    }
+
+    /**
+     * Manually start the queue worker if it is not running.
+     * Acts as a fallback for when auto-start failed (e.g. shell_exec disabled).
+     */
+    public function workerStart(): JsonResponse
+    {
+        $status = AppServiceProvider::workerStatus();
+
+        if ($status['running']) {
+            return response()->json(['started' => false, 'message' => 'Worker is already running.']);
+        }
+
+        $provider = new AppServiceProvider(app());
+        $provider->ensureQueueWorkerRunning(force: true);
+
+        // Give the process 1 second to write its PID file, then re-check
+        sleep(1);
+        $newStatus = AppServiceProvider::workerStatus();
+
+        return response()->json([
+            'started' => $newStatus['running'],
+            'message' => $newStatus['running']
+                ? 'Queue worker started successfully.'
+                : 'Could not start worker automatically. Please run start.bat manually.',
         ]);
     }
 

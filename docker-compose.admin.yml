@@ -43,5 +43,34 @@ services:
     volumes:
       - nocobase_pg_data:/var/lib/postgresql/data
 
+  # ---------------------------------------------------------------------------
+  # Apache Superset — BI / data visualisation (Owner-only, 127.0.0.1:8088)
+  # Usage: docker compose -f docker-compose.yml -f docker-compose.admin.yml up -d superset
+  # Login: http://127.0.0.1:8088  admin / admin
+  # ---------------------------------------------------------------------------
+  superset:
+    image: apache/superset:latest
+    container_name: clinic-superset
+    restart: unless-stopped
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-clinic-superset-insecure-dev-key-change-me}
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      CLINIC_DB_HOST: host.docker.internal
+      CLINIC_DB_PORT: "3306"
+      CLINIC_DB_NAME: clinic_system
+      CLINIC_DB_USER: root
+      CLINIC_DB_PASSWORD: ""
+    volumes:
+      - superset_home:/app/superset_home
+      - ./docker/superset/superset_config.py:/app/superset_config.py:ro
+      - ./docker/superset/init.sh:/app/init.sh:ro
+      - ./docker/superset/clinic_datasource.yaml:/app/clinic_datasource.yaml:ro
+    ports:
+      - "127.0.0.1:8088:8088"
+    command: ["bash", "/app/init.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   nocobase_pg_data:
+  superset_home:

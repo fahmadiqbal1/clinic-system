@@ -135,6 +135,12 @@ Route::middleware('role:Doctor|Laboratory|Radiology')
     ->get('/ai-analysis/{analysis}/status', [AiAnalysisController::class, 'statusCheck'])
     ->name('ai-analysis.status-check');
 
+// Queue worker status + manual start (any authenticated staff)
+Route::middleware('auth')->group(function () {
+    Route::get('/queue/worker/status', [AiAnalysisController::class, 'workerStatus'])->name('queue.worker.status');
+    Route::post('/queue/worker/start', [AiAnalysisController::class, 'workerStart'])->name('queue.worker.start');
+});
+
 Route::middleware(['role:Laboratory', 'throttle:ai-analysis'])->group(function () {
     Route::post('/ai-analysis/lab/{invoice}', [AiAnalysisController::class, 'analyseLab'])->name('ai-analysis.lab');
 });

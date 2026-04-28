@@ -14,8 +14,8 @@ echo [1/3] Warming caches...
 %PHP% "%ROOT%artisan" event:cache
 
 echo.
-echo [2/3] Starting queue worker (background)...
-start "Aviva Queue Worker" /B %PHP% "%ROOT%artisan" queue:work --tries=3 --timeout=120 --sleep=3 --max-jobs=500 --max-time=3600
+echo [2/3] Starting queue worker (persistent, auto-restarts)...
+start "Aviva Queue Worker" cmd /c "title Aviva Queue Worker & :loop & %PHP% "%ROOT%artisan" queue:work --tries=3 --timeout=300 --sleep=3 & echo Queue worker exited, restarting... & timeout /t 3 /nobreak > nul & goto loop"
 
 echo.
 echo [3/3] Starting web server on http://localhost:8000
