@@ -1,15 +1,21 @@
 """
 Immutable medical contracts — the anti-corruption layer between Laravel and AI backends.
 Field constraints are load-bearing: changing them is a breaking change.
+
+v2 additions (ETCSLV):
+  - ConsultOutput.confidence: derived from VerificationInterface (no longer hardcoded)
+  - ConsultOutput.retrieval_citations: real RAGFlow citations (no longer always [])
+  - ConsultOutput.verification_issues: advisory gate failures
 """
 
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 from pydantic import BaseModel, Field
 
 
 # Constrained primitive types
 CaseToken = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
 AgeBand = Annotated[str, Field(pattern=r"^\d{1,3}-\d{1,3}$|^unknown$")]
+ConfidenceLevel = Literal["low", "medium", "high"]
 
 
 class VitalSet(BaseModel):
@@ -53,10 +59,11 @@ class ConsultInput(BaseModel):
 class ConsultOutput(BaseModel):
     model_id: str
     prompt_hash: str
-    retrieval_citations: list[str] = []
     rationale: str
     confidence: float = Field(ge=0.0, le=1.0)
     requires_human_review: bool
+    retrieval_citations: list[str] = []
+    verification_issues: list[str] = []  # advisory — non-empty means quality gates flagged
 
 
 class RagQueryInput(BaseModel):

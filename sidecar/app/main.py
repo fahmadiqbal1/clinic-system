@@ -25,12 +25,15 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Pre-warm the ETCSLV harness singleton at startup (not at first request)
+    from app.agent.harness import get_harness
+    get_harness()
     yield
 
 
 app = FastAPI(
     title="Aviva Clinic AI Sidecar",
-    version="2.0.0",
+    version="3.0.0",  # ETCSLV harness
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url=None,

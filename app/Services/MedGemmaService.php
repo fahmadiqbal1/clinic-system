@@ -255,7 +255,7 @@ class MedGemmaService
      */
     private function buildConsultationPrompt(Patient $patient, $vitals): string
     {
-        $parts = ["You are MedGemma, an AI medical assistant providing a second opinion. Analyse ALL the following patient data comprehensively and provide your clinical assessment, possible differential diagnoses, and recommendations.\n"];
+        $parts = ["Analyse ALL the following patient data and provide your clinical second opinion.\n"];
 
         $caseToken = $this->caseTokenService->tokenize($patient);
         $ageBand   = $this->caseTokenService->ageBand($patient->date_of_birth);
@@ -281,10 +281,10 @@ class MedGemmaService
             $parts[] = $patient->consultation_notes;
         }
 
-        // Include prescriptions
-        $prescriptions = $patient->prescriptions()->with('items')->latest()->get();
+        // Include prescriptions — cap at 10 most recent to stay within token budget
+        $prescriptions = $patient->prescriptions()->with('items')->latest()->limit(10)->get();
         if ($prescriptions->count() > 0) {
-            $parts[] = "\n--- Prescribed Medications ---";
+            $parts[] = "\n--- Prescribed Medications (recent 10) ---";
             foreach ($prescriptions as $rx) {
                 foreach ($rx->items as $item) {
                     $line = $item->medication_name;
@@ -296,7 +296,7 @@ class MedGemmaService
             }
         }
 
-        // Include completed lab/radiology results
+        // Include completed lab/radiology results — cap at 5 most recent to stay within token budget
         $completedInvoices = $patient->invoices()
             ->where(function ($q) {
                 $q->where(function ($q2) {
@@ -304,7 +304,7 @@ class MedGemmaService
                 })->orWhere(function ($q2) {
                     $q2->where('department', 'radiology')->whereNotNull('report_text');
                 });
-            })->with('items.serviceCatalog')->get();
+            })->latest()->limit(5)->with('items.serviceCatalog')->get();
 
         foreach ($completedInvoices as $inv) {
             if ($inv->department === 'lab' && $inv->lab_results) {
@@ -331,9 +331,17 @@ class MedGemmaService
             }
         }
 
-        $parts[] = "\nProvide your comprehensive analysis as a clinical second opinion based on ALL available data above. Include: overall assessment, differential diagnoses, correlation between findings from different departments, and recommendations.";
+        $parts[] = "\n---\nThink step by step. Provide a comprehensive clinical second opinion using ALL data above. Use the required section structure: ## ASSESSMENT, ## DIFFERENTIALS, ## RECOMMENDATIONS, ## CONFIDENCE.";
 
-        return implode("\n", $parts);
+        $prompt = implode("\n", $parts);
+
+        // Token budget guard: ~12 000 chars ≈ 4 000 tokens for direct-path calls.
+        // Truncate gracefully rather than letting the model context overflow silently.
+        if (mb_strlen($prompt) > 12000) {
+            $prompt = mb_substr($prompt, 0, 12000) . "\n\n[Context truncated to stay within token budget. Analyse the data provided above.]\n\n---\nThink step by step. Use the required section structure: ## ASSESSMENT, ## DIFFERENTIALS, ## RECOMMENDATIONS, ## CONFIDENCE.";
+        }
+
+        return $prompt;
     }
 
     /**
@@ -343,7 +351,7 @@ class MedGemmaService
      */
     private function buildLabPrompt(Invoice $invoice): string
     {
-        $parts = ["You are MedGemma, an AI medical assistant. Analyse the following laboratory test results and provide your clinical interpretation.\n"];
+        $parts = ["Analyse the following laboratory test results and provide your clinical interpretation.\n"];
 
         $patient = $invoice->patient;
         if ($patient) {
@@ -370,7 +378,7 @@ class MedGemmaService
             $parts[] = $invoice->report_text;
         }
 
-        $parts[] = "\nProvide your analysis: interpretation of results, any abnormalities detected, clinical significance, and recommendations.";
+        $parts[] = "\n---\nThink step by step. Use the required section structure: ## ASSESSMENT, ## DIFFERENTIALS, ## RECOMMENDATIONS, ## CONFIDENCE.";
 
         return implode("\n", $parts);
     }
@@ -382,7 +390,7 @@ class MedGemmaService
      */
     private function buildRadiologyPrompt(Invoice $invoice): string
     {
-        $parts = ["You are MedGemma, an AI medical assistant. Analyse the following radiology imaging data and provide your clinical interpretation.\n"];
+        $parts = ["Analyse the following radiology imaging data and provide your clinical interpretation.\n"];
 
         $patient = $invoice->patient;
         if ($patient) {
@@ -403,7 +411,7 @@ class MedGemmaService
             $parts[] = "\n" . count($invoice->radiology_images) . " image(s) attached for analysis.";
         }
 
-        $parts[] = "\nProvide your analysis: findings from the imaging data, any abnormalities detected, clinical significance, and recommendations.";
+        $parts[] = "\n---\nThink step by step. Use the required section structure: ## ASSESSMENT, ## DIFFERENTIALS, ## RECOMMENDATIONS, ## CONFIDENCE.";
 
         return implode("\n", $parts);
     }
@@ -468,6 +476,30 @@ class MedGemmaService
     }
 
     /**
+     * Shared system prompt — governs model behaviour for all direct-path calls.
+     * Mirrors ContextManager::SYSTEM_PROMPT in the Python sidecar.
+     */
+    private function systemPrompt(): string
+    {
+        return
+            "You are MedGemma, a clinical AI assistant providing second opinions to human doctors. " .
+            "Strict rules:\n" .
+            "1. Never reference personal identifiers — only case tokens.\n" .
+            "2. Always recommend human clinical review — this is non-negotiable.\n" .
+            "3. Think step by step before concluding. Consider all provided data.\n" .
+            "4. Structure every response with EXACTLY these markdown sections:\n" .
+            "   ## ASSESSMENT\n" .
+            "   (overall clinical picture)\n" .
+            "   ## DIFFERENTIALS\n" .
+            "   1. [Diagnosis] — [Supporting evidence] — [Confidence: low|medium|high]\n" .
+            "   ## RECOMMENDATIONS\n" .
+            "   (investigations, management, urgency)\n" .
+            "   ## CONFIDENCE\n" .
+            "   [overall: low|medium|high] — [one sentence rationale]\n" .
+            "5. If any vital sign is life-threatening, open ASSESSMENT with: ⚠️ URGENT:";
+    }
+
+    /**
      * Call the MedGemma API (Hugging Face Inference API or local Ollama).
      */
     private function callApi(string $prompt, array $imageContents = []): string
@@ -503,21 +535,20 @@ class MedGemmaService
             $url = rtrim($this->apiUrl, '/') . '/' . $this->model . '/v1/chat/completions';
         }
 
-        // Build messages array
-        $content = [];
+        // Build messages array with system prompt separation (D4 fix)
+        $userContent = $prompt;
         if (!empty($imageContents)) {
-            // Multimodal: images + text
+            $content = [];
             foreach ($imageContents as $img) {
                 $content[] = $img;
             }
             $content[] = ['type' => 'text', 'text' => $prompt];
+            $userContent = $content;
         }
 
         $messages = [
-            [
-                'role' => 'user',
-                'content' => !empty($imageContents) ? $content : $prompt,
-            ],
+            ['role' => 'system', 'content' => $this->systemPrompt()],
+            ['role' => 'user', 'content' => $userContent],
         ];
 
         $payload = [
@@ -536,7 +567,7 @@ class MedGemmaService
             $headers['bypass-tunnel-reminder'] = 'true';
         }
 
-        $response = Http::withHeaders($headers)->timeout(120)->post($url, $payload);
+        $response = Http::withHeaders($headers)->timeout(300)->post($url, $payload);
 
         if (!$response->successful()) {
             throw new \RuntimeException('MedGemma API returned status ' . $response->status() . ': ' . $response->body());

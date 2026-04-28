@@ -34,7 +34,7 @@ class AnalyseConsultationJob implements ShouldQueue
     /**
      * The maximum number of seconds the job can run.
      */
-    public int $timeout = 120;
+    public int $timeout = 300;
 
     /**
      * Create a new job instance.
@@ -53,6 +53,16 @@ class AnalyseConsultationJob implements ShouldQueue
      */
     public function handle(MedGemmaService $service, AiSidecarClient $sidecar): void
     {
+        // Re-check reachability at execution time — Ollama may have stopped since dispatch.
+        // Mark offline_pending so the scheduler retries; don't consume a retry attempt.
+        if (!$service->isReachable()) {
+            $this->analysis->update([
+                'status'      => 'offline_pending',
+                'ai_response' => 'AI model went offline after the job was queued. Will retry automatically.',
+            ]);
+            return;
+        }
+
         try {
             if ($this->contextType === 'consultation' && PlatformSetting::isEnabled('ai.sidecar.enabled')) {
                 $this->handleViaSidecar($sidecar);
@@ -85,14 +95,13 @@ class AnalyseConsultationJob implements ShouldQueue
             Log::error('AI Analysis job failed', [
                 'analysis_id'  => $this->analysis->id,
                 'context_type' => $this->contextType,
+                'attempt'      => $this->attempts(),
                 'error'        => $e->getMessage(),
             ]);
 
-            $this->analysis->update([
-                'status'      => 'failed',
-                'ai_response' => 'Analysis failed: ' . $e->getMessage(),
-            ]);
-
+            // Do NOT set status=failed here — the job will be retried.
+            // Keeping status as 'pending' lets the frontend keep polling.
+            // The failed() method sets status=failed only after all retries are exhausted.
             throw $e;
         }
     }
@@ -142,14 +151,13 @@ class AnalyseConsultationJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::error('AI Analysis via sidecar failed', [
                 'analysis_id' => $this->analysis->id,
+                'attempt'     => $this->attempts(),
                 'error'       => $e->getMessage(),
             ]);
 
-            $this->analysis->update([
-                'status'      => 'failed',
-                'ai_response' => 'Sidecar analysis failed: ' . $e->getMessage(),
-            ]);
-
+            // Do NOT set status=failed here — the job retry mechanism is still active.
+            // Status remains 'pending' so the UI polling continues.
+            // The failed() method sets status=failed only after all retries are exhausted.
             throw $e;
         }
     }

@@ -9,6 +9,35 @@ Laravel 11 ERP for a single clinic. Production runs natively (XAMPP / MariaDB 10
 - **Audit:** `audit_logs` table with SHA-256 hash chain (Phase 0). Immutable at DB level via MySQL trigger.
 - **Feature flags:** `platform_settings` rows with `provider='feature_flag'`. All AI/admin flags default `false`. Check via `PlatformSetting::isEnabled('flag.name')`.
 
+## ETCSLV Agent Harness (Phase 7)
+
+**Agent = Model + Harness.** Every AI consultation routes through the ETCSLV harness in `sidecar/app/agent/`.
+
+| Pillar | File | Responsibility |
+|---|---|---|
+| **E** Execution Loop | `execution_loop.py` | Parallel tool pre-fetch → Ollama inference |
+| **T** Tool Registry | `tool_registry.py` | Declarative tool catalogue; RAGFlow wired here |
+| **C** Context Manager | `context_manager.py` | Token budget (6000t), anti-ROT, system prompt |
+| **S** State Store | `state_store.py` | Per-case persistence (24h TTL); prior summary |
+| **L** Lifecycle Hooks | `lifecycle_hooks.py` | Pre/post hooks; structured logging; metrics |
+| **V** Verification | `verification_interface.py` | PHI scan, confidence parsing, quality gates |
+
+**Entry point:** `sidecar/app/agent/harness.py` → `AgentHarness.run(body, session_id)`
+
+**Key behaviours:**
+- System prompt is in the `system` role (not user message) — governs model behaviour
+- RAGFlow retrieves relevant guidelines before inference (fail-open)
+- Real confidence derived from `## CONFIDENCE` section in model output (not hardcoded)
+- Real `retrieval_citations` from RAGFlow (not always `[]`)
+- Prior consultation summary injected at top of context (S → C anti-ROT)
+- PHI gate: if CNIC/phone detected in output, confidence=0 and output is quarantined
+
+**MCP server:** `sidecar/mcp_server.py` — exposes tools to Claude Code:
+- `sidecar_health`, `sidecar_metrics`, `toggle_feature_flag`, `verify_audit_chain`, `run_forecast`, `queue_status`
+- Registered in `.claude/settings.json` as `clinic-sidecar`
+
+**Slash commands:** `.claude/commands/` — `/toggle-flag`, `/verify-chain`, `/sidecar-health`, `/run-forecast`
+
 ## Environment Variables (Phase 0 additions)
 
 ```
