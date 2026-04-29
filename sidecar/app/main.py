@@ -5,6 +5,9 @@ from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.routes import health, consult, rag, forecast, metrics
+from app.routes import admin as admin_route
+from app.routes import ops as ops_route
+from app.routes import compliance as compliance_route
 from app.routes.metrics import REQUEST_COUNT, REQUEST_DURATION
 
 
@@ -25,15 +28,18 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pre-warm the ETCSLV harness singleton at startup (not at first request)
-    from app.agent.harness import get_harness
-    get_harness()
+    # Pre-warm all four ETCSLV persona harnesses (not lazy at first request)
+    from app.agent.harness_factory import HarnessFactory
+    HarnessFactory.clinical()
+    HarnessFactory.admin()
+    HarnessFactory.ops()
+    HarnessFactory.compliance()
     yield
 
 
 app = FastAPI(
     title="Aviva Clinic AI Sidecar",
-    version="3.0.0",  # ETCSLV harness
+    version="4.0.0",  # ETCSLV multi-persona harness (Phase 8)
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url=None,
@@ -45,4 +51,7 @@ app.include_router(health.router)
 app.include_router(consult.router, prefix="/v1")
 app.include_router(rag.router, prefix="/v1")
 app.include_router(forecast.router, prefix="/v1")
+app.include_router(admin_route.router, prefix="/v1")
+app.include_router(ops_route.router, prefix="/v1")
+app.include_router(compliance_route.router, prefix="/v1")
 app.include_router(metrics.router)  # GET /metrics — no auth, Prometheus scrapes this

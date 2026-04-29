@@ -8,11 +8,20 @@ Strategies:
   - Prioritises high-signal data: vitals > labs > meds > radiology > history
   - Caps collections at safe limits before token counting
   - Injects prior-consultation summary at the top (recency bias)
-  - Builds a strict system prompt that governs model behaviour
+  - Compresses prior summaries that exceed 300 chars (regex extraction —
+    no model call) to keep recurring sessions from growing unbounded
+  - System prompt is injectable so admin/ops/compliance harnesses can
+    each load their own persona without subclassing this manager
+
+Phase 8A upgrade:
+  - SYSTEM_PROMPT moved from class-attribute to module-level CLINICAL_SYSTEM_PROMPT
+  - ContextManager.__init__ accepts a system_prompt arg (default: clinical)
+  - compress_prior() shrinks long prior summaries to ASSESSMENT + CONFIDENCE only
 """
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -20,6 +29,29 @@ logger = logging.getLogger(__name__)
 # Conservative budget: 6000 prompt tokens → 2048+ for output
 TOKEN_BUDGET = 6000
 CHARS_PER_TOKEN = 3.5  # medical English estimate
+
+# Above this length, the prior summary is compressed before injection
+PRIOR_COMPRESSION_THRESHOLD = 300
+
+
+# ── Default persona prompts ─────────────────────────────────────────────────
+CLINICAL_SYSTEM_PROMPT = (
+    "You are MedGemma, a clinical AI assistant providing second opinions to human doctors. "
+    "Strict rules:\n"
+    "1. Never reference personal identifiers — only case tokens.\n"
+    "2. Always recommend human clinical review — this is non-negotiable.\n"
+    "3. Think step by step before concluding. Consider all provided data.\n"
+    "4. Structure every response with EXACTLY these markdown sections:\n"
+    "   ## ASSESSMENT\n"
+    "   (overall clinical picture)\n"
+    "   ## DIFFERENTIALS\n"
+    "   1. [Diagnosis] — [Supporting evidence] — [Confidence: low|medium|high]\n"
+    "   ## RECOMMENDATIONS\n"
+    "   (investigations, management, urgency)\n"
+    "   ## CONFIDENCE\n"
+    "   [overall: low|medium|high] — [one sentence rationale]\n"
+    "5. If any vital sign is life-threatening, open ASSESSMENT with: ⚠️ URGENT:"
+)
 
 
 @dataclass
@@ -44,6 +76,7 @@ class AgentContext:
         tool_block = "\n".join(
             f"[{r.get('tool', 'tool')} result]\n{r.get('answer', '')}"
             for r in successful
+            if r.get("answer")
         ).strip()
 
         if not tool_block:
@@ -58,29 +91,50 @@ class AgentContext:
         return updated
 
 
+def compress_prior(summary: str) -> str:
+    """
+    Shrink a long prior-consultation summary to its highest-signal sections.
+
+    Pure regex — never calls the model. If ASSESSMENT or CONFIDENCE sections
+    are present we keep those; otherwise we keep the first 300 chars.
+    """
+    if not summary or len(summary) <= PRIOR_COMPRESSION_THRESHOLD:
+        return summary or ""
+
+    parts: list[str] = []
+    for header in ("ASSESSMENT", "CONFIDENCE"):
+        m = re.search(
+            rf"##\s*{header}\s*\n(.+?)(?=\n##\s|\Z)",
+            summary,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if m:
+            body = m.group(1).strip()
+            # cap each section to 200 chars
+            parts.append(f"## {header}\n{body[:200]}")
+
+    if parts:
+        return "\n".join(parts)
+
+    # No structured sections found — fall back to leading slice
+    return summary[:PRIOR_COMPRESSION_THRESHOLD] + "…"
+
+
 class ContextManager:
     """Assembles a token-budgeted AgentContext — the C pillar."""
 
-    # ------------------------------------------------------------------ #
-    # System prompt — governs model behaviour for every consultation       #
-    # ------------------------------------------------------------------ #
-    SYSTEM_PROMPT = (
-        "You are MedGemma, a clinical AI assistant providing second opinions to human doctors. "
-        "Strict rules:\n"
-        "1. Never reference personal identifiers — only case tokens.\n"
-        "2. Always recommend human clinical review — this is non-negotiable.\n"
-        "3. Think step by step before concluding. Consider all provided data.\n"
-        "4. Structure every response with EXACTLY these markdown sections:\n"
-        "   ## ASSESSMENT\n"
-        "   (overall clinical picture)\n"
-        "   ## DIFFERENTIALS\n"
-        "   1. [Diagnosis] — [Supporting evidence] — [Confidence: low|medium|high]\n"
-        "   ## RECOMMENDATIONS\n"
-        "   (investigations, management, urgency)\n"
-        "   ## CONFIDENCE\n"
-        "   [overall: low|medium|high] — [one sentence rationale]\n"
-        "5. If any vital sign is life-threatening, open ASSESSMENT with: ⚠️ URGENT:"
-    )
+    def __init__(
+        self,
+        system_prompt: str | None = None,
+        token_budget: int = TOKEN_BUDGET,
+    ) -> None:
+        self.system_prompt = system_prompt or CLINICAL_SYSTEM_PROMPT
+        self.token_budget = token_budget
+
+    # Backwards-compat: existing callers reading ContextManager.SYSTEM_PROMPT
+    @property
+    def SYSTEM_PROMPT(self) -> str:  # noqa: N802 — keeps the legacy public name
+        return self.system_prompt
 
     def _tokens(self, text: str) -> int:
         return max(1, int(len(text) / CHARS_PER_TOKEN))
@@ -90,19 +144,24 @@ class ContextManager:
         Assemble a token-budgeted context from ConsultInput and optional prior state.
         Truncates lower-priority data when the budget is exceeded.
         """
-        budget = TOKEN_BUDGET - self._tokens(self.SYSTEM_PROMPT)
+        budget = self.token_budget - self._tokens(self.system_prompt)
         lines: list[str] = []
 
         # ── Prior context (highest priority — prevents context ROT) ──────
         if prior_context and prior_context.get("last_summary"):
-            prior = f"[Prior consultation summary]\n{prior_context['last_summary']}"
+            compressed = compress_prior(prior_context["last_summary"])
+            prior = f"[Prior consultation summary]\n{compressed}"
             cost = self._tokens(prior)
             if cost < budget * 0.15:  # cap at 15% of budget
                 lines.append(prior)
                 budget -= cost
 
         # ── Demographics (always include) ─────────────────────────────────
-        demo = f"Case Token: {body.case_token} | Gender: {body.gender} | Age Band: {body.age_band}"
+        demo = (
+            f"Case Token: {getattr(body, 'case_token', 'n/a')} "
+            f"| Gender: {getattr(body, 'gender', 'n/a')} "
+            f"| Age Band: {getattr(body, 'age_band', 'n/a')}"
+        )
         lines.append(demo)
         budget -= self._tokens(demo)
 
@@ -182,17 +241,21 @@ class ContextManager:
         lines.append(instruction)
 
         user_content = "\n".join(lines)
-        budget_used = TOKEN_BUDGET - budget
+        budget_used = self.token_budget - budget
 
-        if budget_used > TOKEN_BUDGET * 0.9:
-            logger.warning("ContextManager: high budget utilisation %d/%d tokens", budget_used, TOKEN_BUDGET)
+        if budget_used > self.token_budget * 0.9:
+            logger.warning(
+                "ContextManager: high budget utilisation %d/%d tokens",
+                budget_used,
+                self.token_budget,
+            )
 
         return AgentContext(
-            system_prompt=self.SYSTEM_PROMPT,
+            system_prompt=self.system_prompt,
             messages=[
-                {"role": "system", "content": self.SYSTEM_PROMPT},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": user_content},
             ],
             budget_used=budget_used,
-            budget_total=TOKEN_BUDGET,
+            budget_total=self.token_budget,
         )

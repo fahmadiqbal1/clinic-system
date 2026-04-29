@@ -180,6 +180,67 @@ CLINIC_SIDECAR_JWT_SECRET=                 # HS256 JWT secret — generate: php 
 - Phase 4 baseline: target 207 pass / 3 pre-existing failures (+5 new Phase 4 tests: NocobaseAuditHookTest×5)
 - Phase 5 baseline: target 212 pass / 3 pre-existing failures (+5 new Phase 5 tests: Soc2EvidenceTest×5)
 - Phase 6 baseline: 217 pass / 3 pre-existing failures (+5 new Phase 6 tests: ForecastTest×5)
+- Phase 8 baseline: target 232 pass / 3 pre-existing failures (+15 new tests: AdminAiTest×5, OpsAiTest×5, ComplianceAiTest×5)
+- Phase 8 sidecar baseline: target 39 pytest (was 18; +6 clinical 10x10 + 5 admin + 5 ops + 5 compliance)
+
+## Phase 8 Notes (Administrative & Operations AI — multi-persona ETCSLV)
+
+**Architecture:** four ETCSLV harnesses share the same six pillar classes via injectable config. Each persona has its own input schema, system prompt, ContextManager subclass usage, VerificationInterface gates, ToolRegistry tool set, and StateStore namespace. Singletons created via `HarnessFactory.{clinical,admin,ops,compliance}()`.
+
+**Personas:**
+| Persona | Endpoint | Model (default) | Tools | Verification | Confidence floor |
+|---------|----------|-----------------|-------|--------------|:---:|
+| clinical | `/v1/consult` | `medgemma` | rag_query, vital_alert, medication_safety | `VerificationInterface` | 0.0 |
+| admin | `/v1/admin/analyse` | `llama3.1:8b` | revenue_anomaly, discount_risk, fbr_status, payout_audit | `AdminVerification` (no PKR/Rs amounts) | 0.55 |
+| ops | `/v1/ops/analyse` | `llama3.1:8b` | inventory_velocity, procurement, expense_category, queue_health | `OpsVerification` (no currency, item-name required) | 0.50 |
+| compliance | `/v1/compliance/analyse` | `llama3.1:8b` | audit_chain_verify, phi_access_scan, flag_snapshot, evidence_gap | `ComplianceVerification` (evidence-ref required, 0.85 floor) | 0.85 |
+
+**Phase 8A — Clinical harness 10/10 upgrades:**
+- E: ExecutionLoop now retries (max 2 iterations) when first response confidence < 0.40
+- T: clinical tools moved to `sidecar/app/agent/clinical_tools.py` — added `vital_alert` (pure-Python, fail-closed) + `medication_safety` (RAGFlow, fail-open)
+- C: `ContextManager(system_prompt=…)` is injectable; `compress_prior()` shrinks long prior summaries to ASSESSMENT + CONFIDENCE only (300-char threshold)
+- S: `StateStore(namespace=…, redis_url=…)` selects Redis backend automatically when `REDIS_URL` env var is set; falls back to in-memory dict — same interface either way
+- L: `prometheus_metrics_hook` + `low_confidence_alert_hook` auto-registered alongside `default_logging_hook`. Metrics: `agent_invocations_total{agent,confidence_band}`, `agent_duration_seconds{agent}`, `agent_low_confidence_total{agent}`, `agent_tool_calls_total{agent,tool,outcome}`
+- V: fixed Phase 7 `passed`-logic bug; added `_detect_hallucinated_drugs()` heuristic and `_section_completeness()` score
+
+**MCP additions (`sidecar/mcp_server.py`):**
+- `admin_analyse`, `ops_analyse`, `compliance_analyse` — proxy to sidecar persona endpoints; require `CLINIC_SIDECAR_JWT` env var (mint via `AiSidecarClient::mintJwt()`)
+- `etcslv_status` — reports pillar health for all 4 personas (hooks/tools/redis/verification class)
+
+**Slash commands (`.claude/commands/`):**
+- `/admin-ops-report` — runs admin + ops in parallel, synthesises owner report
+- `/compliance-check` — runs compliance persona end-to-end
+- `/etcslv-status` — pillar health table
+
+**Laravel additions:**
+- `app/Http/Controllers/Owner/AdminAiController.php` (`/owner/admin-ai`, `POST /owner/admin-ai/analyse`)
+- `app/Http/Controllers/Owner/OpsAiController.php` (`/owner/ops-ai`, `POST /owner/ops-ai/analyse`)
+- `app/Http/Controllers/Owner/ComplianceAiController.php` (`/owner/compliance-ai`, `POST /owner/compliance-ai/run` — writes `ai_action_requests` row when `escalation_pending` or `status=NON_COMPLIANT`)
+- `AiSidecarClient::adminAnalyse()`, `opsAnalyse()`, `complianceAnalyse()` — same circuit-breaker + hash-chain logging path as Phase 2
+
+**New feature flags (Phase 8 migration `2026_04_29_000008`):**
+- `ai.admin.enabled` — default OFF
+- `ai.ops.enabled` — default OFF
+- `ai.compliance.enabled` — default OFF
+
+**New env vars (sidecar):**
+```
+REDIS_URL=                        # optional — when set, StateStore uses Redis
+CLINIC_LOW_CONFIDENCE_THRESHOLD=0.35   # threshold for low_confidence_alert_hook
+CLINIC_ALERT_WEBHOOK_URL=         # optional Laravel endpoint that receives low-confidence alerts
+CLINIC_ALERT_WEBHOOK_SECRET=      # HMAC secret for the webhook header
+OLLAMA_MODEL_PERSONA=llama3.1:8b  # default model for non-clinical personas
+OLLAMA_MODEL_ADMIN=               # per-persona override
+OLLAMA_MODEL_OPS=
+OLLAMA_MODEL_COMPLIANCE=
+CLINIC_SIDECAR_JWT=               # for MCP server admin_analyse / ops_analyse / compliance_analyse
+```
+
+**Pillar scoring after Phase 8 (target 10/10 each, all 4 personas):**
+- Clinical: E retry / T 3 tools / C injectable + compression / S Redis-aware / L 3 hooks / V hallucination + score + bug fix
+- Admin: E retry / T 4 tools / C admin prompt + financial-context / S "admin" namespace / L 3 hooks / V 0.55 floor + currency redaction
+- Ops: E retry / T 4 tools / C ops prompt + critical-first / S "ops" namespace / L 3 hooks / V 0.50 floor + currency block + item-name gate
+- Compliance: E retry / T 4 tools / C compliance prompt + deterministic sections / S "compliance" namespace / L 3 hooks / V 0.85 floor + evidence-ref gate + audit-fail override
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

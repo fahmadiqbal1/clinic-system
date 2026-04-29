@@ -72,6 +72,33 @@ class AiSidecarClient
         return $this->call('POST', '/v1/forecast/inventory', $params);
     }
 
+    /**
+     * Phase 8 — Administrative AI persona.
+     * Returns rationale + priority + action_items.
+     */
+    public function adminAnalyse(array $payload): array
+    {
+        return $this->call('POST', '/v1/admin/analyse', $payload);
+    }
+
+    /**
+     * Phase 8 — Operations AI persona.
+     * Returns rationale + urgency + critical_items + action_items.
+     */
+    public function opsAnalyse(array $payload): array
+    {
+        return $this->call('POST', '/v1/ops/analyse', $payload);
+    }
+
+    /**
+     * Phase 8 — Compliance AI persona.
+     * Returns rationale + status + escalation_pending + evidence_refs.
+     */
+    public function complianceAnalyse(array $payload): array
+    {
+        return $this->call('POST', '/v1/compliance/analyse', $payload);
+    }
+
     private function call(string $method, string $path, array $payload = [], ?string $caseToken = null): array
     {
         if ($this->isCircuitOpen()) {

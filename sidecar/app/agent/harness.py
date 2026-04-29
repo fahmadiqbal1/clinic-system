@@ -26,7 +26,7 @@ Architecture:
   ToolRegistry.resolve(context)      ← T (which tools fire)
       │
       ▼
-  ExecutionLoop.run(ctx, tools)      ← E (pre-fetch + inference)
+  ExecutionLoop.run(ctx, tools)      ← E (pre-fetch + inference + retry)
       │
       ▼
   VerificationInterface.validate()   ← V (quality gates + confidence)
@@ -42,6 +42,14 @@ Architecture:
 
 The harness connects through MCP — each pillar is independently
 swappable without changing the interface.
+
+Phase 8A — pillar upgrades to 10/10:
+  • C: injectable system prompt + summary compression for prior state
+  • S: Redis backend (when REDIS_URL set) + namespace
+  • L: prometheus_metrics_hook + low_confidence_alert_hook auto-registered
+  • V: passed-bug fix + hallucination heuristic + section completeness score
+  • T: vital_alert + medication_safety added alongside rag_query
+  • E: retry-on-low-confidence (max 2 iterations)
 """
 from __future__ import annotations
 
@@ -51,71 +59,82 @@ import os
 import time
 import uuid
 
-from app.agent.context_manager import ContextManager
+from app.agent.clinical_tools import (
+    make_medication_safety_tool,
+    make_rag_query_tool,
+    make_vital_alert_tool,
+)
+from app.agent.context_manager import CLINICAL_SYSTEM_PROMPT, ContextManager
 from app.agent.execution_loop import ExecutionLoop
-from app.agent.lifecycle_hooks import LifecycleHooks, default_logging_hook
+from app.agent.lifecycle_hooks import (
+    LifecycleHooks,
+    default_logging_hook,
+    low_confidence_alert_hook,
+    prometheus_metrics_hook,
+)
 from app.agent.state_store import StateStore
-from app.agent.tool_registry import Tool, ToolRegistry
+from app.agent.tool_registry import ToolRegistry
 from app.agent.verification_interface import VerificationInterface
 from app.schemas.medical import ConsultInput, ConsultOutput
-from app.services import ragflow
 
 logger = logging.getLogger(__name__)
 
 
-def _make_rag_tool(body: ConsultInput) -> Tool:
-    """
-    Build a RAGFlow retrieval tool pre-bound to this case's chief complaint.
-    Fail-open: if RAGFlow is down or unconfigured, returns empty citations.
-    """
-    query_text = (
-        body.vitals.chief_complaint
-        if body.vitals and body.vitals.chief_complaint
-        else "clinical assessment guidelines"
-    )
-
-    async def _invoke(ctx: dict) -> dict:
-        result = await ragflow.query(query_text, collection="general")
-        return {
-            "tool": "rag_query",
-            "answer": result.get("answer", ""),
-            "citations": result.get("citations", []),
-        }
-
-    return Tool(
-        name="rag_query",
-        description="Retrieve relevant clinical guidelines from the RAGFlow knowledge base.",
-        schema={
-            "type": "object",
-            "properties": {"query": {"type": "string"}},
-        },
-        invoke_fn=_invoke,
-        fail_open=True,
-    )
-
-
 class AgentHarness:
     """
-    ETCSLV harness — instantiate once per app startup.
+    ETCSLV harness — instantiate once per persona at app startup.
     Call run() once per consultation request.
+
+    Per-persona configuration:
+      agent             — label used by metrics + logs ("clinical" by default)
+      system_prompt     — injected into ContextManager
+      verification      — VerificationInterface with persona-specific gates
+      build_tools(body) — function that returns the tool list for a request
     """
 
-    def __init__(self) -> None:
-        self.context_manager = ContextManager()         # C
-        self.execution_loop = ExecutionLoop()            # E
-        self.state_store = StateStore()                  # S
-        self.lifecycle = LifecycleHooks()                # L
-        self.verification = VerificationInterface()      # V
+    def __init__(
+        self,
+        agent: str = "clinical",
+        system_prompt: str | None = None,
+        verification: VerificationInterface | None = None,
+        ollama_url: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        self.agent = agent
+        self.context_manager = ContextManager(
+            system_prompt=system_prompt or CLINICAL_SYSTEM_PROMPT
+        )
+        self.verification = verification or VerificationInterface()
+        self.execution_loop = ExecutionLoop(verification=self.verification)
+        self.state_store = StateStore(namespace=agent)
+        self.lifecycle = LifecycleHooks(agent=agent)
 
-        self.ollama_url = os.environ.get("OLLAMA_URL", "http://ollama:11434")
-        self.model = os.environ.get("OLLAMA_MODEL", "medgemma")
+        self.ollama_url = ollama_url or os.environ.get("OLLAMA_URL", "http://ollama:11434")
+        self.model = model or os.environ.get("OLLAMA_MODEL", "medgemma")
 
-        # Default hook: structured logging
+        # Standard hooks for every persona
         self.lifecycle.register(default_logging_hook)
+        self.lifecycle.register(prometheus_metrics_hook)
+        self.lifecycle.register(low_confidence_alert_hook)
 
         logger.info(
-            "AgentHarness initialised (ollama=%s model=%s)", self.ollama_url, self.model
+            "AgentHarness[%s] initialised (ollama=%s model=%s redis=%s)",
+            agent,
+            self.ollama_url,
+            self.model,
+            self.state_store.is_redis,
         )
+
+    def build_tools(self, body: ConsultInput) -> ToolRegistry:
+        """
+        Default clinical tool set. Subclasses (admin / ops / compliance)
+        override this to wire their own tools.
+        """
+        registry = ToolRegistry()
+        registry.register(make_rag_query_tool(body))
+        registry.register(make_vital_alert_tool(body))
+        registry.register(make_medication_safety_tool(body))
+        return registry
 
     async def run(
         self, body: ConsultInput, session_id: str | None = None
@@ -138,12 +157,10 @@ class AgentHarness:
             context.session_id = session_id
 
             # ── T: build tool registry for this request ─────────────────
-            registry = ToolRegistry()
-            registry.register(_make_rag_tool(body))
-
+            registry = self.build_tools(body)
             tools = registry.resolve({"context": context})
 
-            # ── E: execute loop (pre-fetch tools → model inference) ─────
+            # ── E: execute loop (pre-fetch tools → model inference → retry) ─
             loop_result = await self.execution_loop.run(
                 context=context,
                 tools=tools,
@@ -151,6 +168,7 @@ class AgentHarness:
                 session_id=session_id,
                 ollama_url=self.ollama_url,
                 model=self.model,
+                body=body,
             )
 
             # ── V: validate output ──────────────────────────────────────
@@ -158,7 +176,8 @@ class AgentHarness:
 
             if not vr.passed:
                 logger.warning(
-                    "VerificationInterface: output issues %s for session %s",
+                    "VerificationInterface[%s]: output issues %s for session %s",
+                    self.agent,
                     vr.issues,
                     session_id[:12],
                 )
@@ -177,7 +196,9 @@ class AgentHarness:
                 "confidence": vr.confidence,
                 "requires_human_review": vr.requires_review,
                 "retrieval_citations": citations[:5],
+                "verification_issues": vr.issues,
                 "_tool_count": len(loop_result.tool_results),
+                "_iterations": loop_result.iterations,
             }
 
             # ── S: persist state for next consultation ──────────────────
@@ -194,6 +215,7 @@ class AgentHarness:
                 confidence=result_dict["confidence"],
                 requires_human_review=result_dict["requires_human_review"],
                 retrieval_citations=result_dict["retrieval_citations"],
+                verification_issues=result_dict["verification_issues"],
             )
 
         except Exception as exc:
@@ -208,5 +230,5 @@ _harness: AgentHarness | None = None
 def get_harness() -> AgentHarness:
     global _harness
     if _harness is None:
-        _harness = AgentHarness()
+        _harness = AgentHarness(agent="clinical")
     return _harness
