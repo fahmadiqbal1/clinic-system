@@ -151,28 +151,8 @@ class ExecutionLoop:
     async def _call_ollama(
         self, messages: list[dict], ollama_url: str, model: str
     ) -> str:
+        from app.agent.model_provider import call_model
         try:
-            async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT_S) as client:
-                resp = await client.post(
-                    f"{ollama_url}/v1/chat/completions",
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "max_tokens": 2048,
-                        "temperature": 0.3,
-                    },
-                    headers={"bypass-tunnel-reminder": "true"},
-                )
+            return await call_model(messages, ollama_url, model, timeout_s=OLLAMA_TIMEOUT_S)
         except (httpx.RequestError, httpx.TimeoutException) as exc:
-            raise RuntimeError(f"Ollama unreachable: {type(exc).__name__}: {exc}") from exc
-
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"Ollama returned {resp.status_code}: {resp.text[:200]}"
-            )
-
-        data = resp.json()
-        return (
-            data.get("choices", [{}])[0].get("message", {}).get("content")
-            or "No response generated."
-        )
+            raise RuntimeError(f"Model provider unreachable: {type(exc).__name__}: {exc}") from exc

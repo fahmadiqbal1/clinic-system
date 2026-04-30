@@ -370,6 +370,90 @@ cloudflared tunnel --url http://localhost:11434</pre>
         </div>
     </div>
 
+    {{-- AI Model Provider --}}
+    @php
+        $currentProvider = \App\Models\PlatformSetting::where('platform_name', 'ai.model.provider')
+            ->where('provider', 'model_config')->value('meta')['value'] ?? 'ollama';
+        $currentModelId  = \App\Models\PlatformSetting::where('platform_name', 'ai.model.online_model_id')
+            ->where('provider', 'model_config')->value('meta')['value'] ?? 'gpt-4o-mini';
+        $providerLabels  = ['ollama' => 'Offline (Ollama)', 'openai' => 'OpenAI', 'anthropic' => 'Anthropic (Claude)'];
+    @endphp
+    <div class="glass-panel p-4 mb-4">
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <div class="rounded-3 p-2 bg-info bg-opacity-10">
+                <i class="bi bi-cloud-arrow-up fs-4 text-info"></i>
+            </div>
+            <div>
+                <h5 class="mb-0 fw-semibold">AI Model Provider</h5>
+                <small class="text-muted">Switch between local Ollama and online AI services — takes effect immediately without restart</small>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            {{-- Provider selector --}}
+            <div class="col-12">
+                <label class="form-label fw-semibold small text-uppercase text-muted mb-2">Active Provider</label>
+                <div class="d-flex gap-2 flex-wrap" id="providerBtns">
+                    @foreach(['ollama' => ['icon'=>'bi-pc-display','label'=>'Offline (Ollama)','col'=>'secondary'],
+                               'openai' => ['icon'=>'bi-stars','label'=>'OpenAI','col'=>'primary'],
+                               'anthropic' => ['icon'=>'bi-lightning-charge','label'=>'Anthropic (Claude)','col'=>'success']]
+                              as $pVal => $pCfg)
+                    <button type="button"
+                            class="btn btn-sm provider-btn {{ $currentProvider === $pVal ? 'btn-'.$pCfg['col'] : 'btn-outline-'.$pCfg['col'] }}"
+                            data-provider="{{ $pVal }}"
+                            data-col="{{ $pCfg['col'] }}">
+                        <i class="bi {{ $pCfg['icon'] }} me-1"></i>{{ $pCfg['label'] }}
+                    </button>
+                    @endforeach
+                </div>
+                <div class="mt-2">
+                    <span class="badge bg-secondary px-3" id="activeProviderBadge">
+                        Active: {{ $providerLabels[$currentProvider] ?? $currentProvider }}
+                    </span>
+                </div>
+            </div>
+
+            {{-- Online config — hidden when provider = ollama --}}
+            <div class="col-12" id="onlineConfig" style="{{ $currentProvider === 'ollama' ? 'display:none' : '' }}">
+                <hr class="my-1">
+                <div class="row g-2 mt-1">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold">Model ID</label>
+                        <input type="text" id="modelIdInput" class="form-control form-control-sm"
+                               placeholder="e.g. gpt-4o-mini, claude-haiku-4-5-20251001"
+                               value="{{ $currentModelId }}">
+                        <div class="form-text">Leave blank to keep current</div>
+                    </div>
+                    <div class="col-md-4" id="openaiKeyWrap" style="{{ $currentProvider !== 'openai' ? 'display:none' : '' }}">
+                        <label class="form-label small fw-semibold">OpenAI API Key</label>
+                        <input type="password" id="openaiKeyInput" class="form-control form-control-sm"
+                               placeholder="sk-...  (leave blank to keep current)">
+                    </div>
+                    <div class="col-md-4" id="anthropicKeyWrap" style="{{ $currentProvider !== 'anthropic' ? 'display:none' : '' }}">
+                        <label class="form-label small fw-semibold">Anthropic API Key</label>
+                        <input type="password" id="anthropicKeyInput" class="form-control form-control-sm"
+                               placeholder="sk-ant-...  (leave blank to keep current)">
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-sm btn-primary" id="saveModelConfig">
+                            <i class="bi bi-check-circle me-1"></i>Save & Apply
+                        </button>
+                        <span class="ms-2 small text-muted" id="modelConfigStatus"></span>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Offline note --}}
+            <div class="col-12" id="offlineNote" style="{{ $currentProvider !== 'ollama' ? 'display:none' : '' }}">
+                <div class="alert alert-secondary mb-0 py-2 small">
+                    <i class="bi bi-pc-display me-1"></i>
+                    Running locally via Ollama — no data leaves this server.
+                    Start the sidecar with <code>OLLAMA_URL=http://127.0.0.1:8081</code> and model <code>llama3.2:3b</code>.
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Feature Flags --}}
     <div class="glass-panel p-4 mb-4">
         <div class="d-flex align-items-center gap-3 mb-4">
@@ -762,5 +846,72 @@ document.querySelectorAll('.flag-toggle').forEach(function(toggle) {
         .catch(() => { this.checked = !enabled; });
     });
 });
+
+// ── AI Model Provider switcher ────────────────────────────────────────────────
+(function () {
+    let selectedProvider = document.querySelector('.provider-btn.btn-primary, .provider-btn.btn-success, .provider-btn.btn-secondary')?.dataset.provider ?? 'ollama';
+
+    const colMap = { ollama: 'secondary', openai: 'primary', anthropic: 'success' };
+
+    document.querySelectorAll('.provider-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            selectedProvider = this.dataset.provider;
+
+            // Update button styles
+            document.querySelectorAll('.provider-btn').forEach(b => {
+                const col = b.dataset.col;
+                b.classList.remove('btn-' + col);
+                b.classList.add('btn-outline-' + col);
+            });
+            const col = this.dataset.col;
+            this.classList.remove('btn-outline-' + col);
+            this.classList.add('btn-' + col);
+
+            // Show/hide config panels
+            document.getElementById('onlineConfig').style.display = selectedProvider === 'ollama' ? 'none' : '';
+            document.getElementById('offlineNote').style.display  = selectedProvider === 'ollama' ? '' : 'none';
+            document.getElementById('openaiKeyWrap').style.display    = selectedProvider === 'openai'    ? '' : 'none';
+            document.getElementById('anthropicKeyWrap').style.display = selectedProvider === 'anthropic' ? '' : 'none';
+
+            // If switching TO ollama, auto-save immediately (no key needed)
+            if (selectedProvider === 'ollama') {
+                saveModelConfig();
+            }
+        });
+    });
+
+    document.getElementById('saveModelConfig')?.addEventListener('click', saveModelConfig);
+
+    function saveModelConfig() {
+        const status = document.getElementById('modelConfigStatus');
+        if (status) status.textContent = 'Saving…';
+
+        const payload = {
+            provider:      selectedProvider,
+            model_id:      document.getElementById('modelIdInput')?.value?.trim() || '',
+            openai_key:    document.getElementById('openaiKeyInput')?.value?.trim() || '',
+            anthropic_key: document.getElementById('anthropicKeyInput')?.value?.trim() || '',
+            _token:        document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+        };
+
+        fetch('{{ route("owner.platform-settings.model-config") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': payload._token },
+            body: JSON.stringify(payload),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                const providerLabels = { ollama: 'Offline (Ollama)', openai: 'OpenAI', anthropic: 'Anthropic (Claude)' };
+                document.getElementById('activeProviderBadge').textContent = 'Active: ' + (providerLabels[data.provider] ?? data.provider);
+                if (status) status.textContent = '✓ Applied';
+                setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+            } else {
+                if (status) status.textContent = '✗ ' + (data.error ?? 'Error');
+            }
+        })
+        .catch(() => { if (status) status.textContent = '✗ Network error'; });
+    }
+})();
 </script>
 @endpush

@@ -90,6 +90,69 @@ class PlatformSettingsController extends Controller
     }
 
     /**
+     * Save AI model provider config and hot-swap the sidecar's active provider.
+     */
+    public function saveModelConfig(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'provider'      => ['required', 'in:ollama,openai,anthropic'],
+            'model_id'      => ['nullable', 'string', 'max:100'],
+            'openai_key'    => ['nullable', 'string', 'max:300'],
+            'anthropic_key' => ['nullable', 'string', 'max:300'],
+        ]);
+
+        PlatformSetting::updateOrCreate(
+            ['platform_name' => 'ai.model.provider', 'provider' => 'model_config'],
+            ['meta' => ['value' => $v['provider']]]
+        );
+
+        if (!empty($v['model_id'])) {
+            PlatformSetting::updateOrCreate(
+                ['platform_name' => 'ai.model.online_model_id', 'provider' => 'model_config'],
+                ['meta' => ['value' => $v['model_id']]]
+            );
+        }
+        if (!empty($v['openai_key'])) {
+            PlatformSetting::updateOrCreate(
+                ['platform_name' => 'ai.model.openai_key', 'provider' => 'model_config'],
+                ['meta' => ['value' => encrypt($v['openai_key'])]]
+            );
+        }
+        if (!empty($v['anthropic_key'])) {
+            PlatformSetting::updateOrCreate(
+                ['platform_name' => 'ai.model.anthropic_key', 'provider' => 'model_config'],
+                ['meta' => ['value' => encrypt($v['anthropic_key'])]]
+            );
+        }
+
+        // Tell sidecar to reload config from DB — fail-open, sidecar may not be running
+        try {
+            $sidecarUrl = config('services.sidecar.url', env('CLINIC_SIDECAR_URL', 'http://localhost:8001'));
+            Http::withToken($this->mintSidecarJwt())
+                ->timeout(5)
+                ->post($sidecarUrl . '/v1/config/reload');
+        } catch (\Exception) {
+            // Non-fatal — sidecar will pick up new provider on next restart
+        }
+
+        return response()->json(['ok' => true, 'provider' => $v['provider']]);
+    }
+
+    private function mintSidecarJwt(): string
+    {
+        $secret = config('services.sidecar.jwt_secret', env('CLINIC_SIDECAR_JWT_SECRET', ''));
+        if (!$secret) {
+            return '';
+        }
+        $header  = rtrim(base64_encode(json_encode(['alg' => 'HS256', 'typ' => 'JWT'])), '=');
+        $payload = rtrim(base64_encode(json_encode(['sub' => 'laravel', 'role' => 'system', 'exp' => time() + 60])), '=');
+        $header  = strtr($header,  '+/', '-_');
+        $payload = strtr($payload, '+/', '-_');
+        $sig     = rtrim(strtr(base64_encode(hash_hmac('sha256', "$header.$payload", $secret, true)), '+/', '-_'), '=');
+        return "$header.$payload.$sig";
+    }
+
+    /**
      * Test the connection to the MedGemma API (Hugging Face or Ollama).
      * Returns JSON so the frontend can update the status badge live.
      */
