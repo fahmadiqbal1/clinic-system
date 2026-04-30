@@ -148,6 +148,9 @@ class PlatformSettingsController extends Controller
             }
         }
 
+        // Sync medgemma row so the status badge and test logic have a consistent record
+        $this->syncMedgemmaRow($v);
+
         // Hot-swap sidecar — pass all current config (including plaintext keys) directly in the
         // request body so the sidecar never needs to decrypt anything from DB.
         try {
@@ -162,6 +165,145 @@ class PlatformSettingsController extends Controller
         }
 
         return response()->json(['ok' => true, 'provider' => $v['provider']]);
+    }
+
+    /**
+     * Test whichever provider is currently active in model_config.
+     * Makes a minimal real inference call (max_tokens=1) and updates the medgemma
+     * status row so the UI badge reflects real connectivity.
+     */
+    public function testProvider(): JsonResponse
+    {
+        $mc = PlatformSetting::where('provider', 'model_config')
+            ->pluck('meta', 'platform_name')
+            ->map(fn ($m) => is_array($m) ? ($m['value'] ?? '') : $m);
+
+        $provider = $mc['ai.model.provider'] ?? 'ollama';
+        $medgemma = PlatformSetting::medgemma();
+        $medgemma->update(['status' => 'connecting', 'last_error' => null]);
+
+        try {
+            match ($provider) {
+                'ollama'      => $this->pingOllama($mc),
+                'openai'      => $this->pingOpenAI($mc),
+                'anthropic'   => $this->pingAnthropic($mc),
+                'huggingface' => $this->pingHuggingFace($mc),
+                default       => throw new \RuntimeException("Unknown provider: {$provider}"),
+            };
+
+            $medgemma->update(['status' => 'connected', 'last_tested_at' => now(), 'last_error' => null]);
+            return response()->json(['status' => 'connected', 'last_tested_at' => now()->diffForHumans()]);
+
+        } catch (\Exception $e) {
+            $error = $e->getMessage();
+            $medgemma->update(['status' => 'failed', 'last_tested_at' => now(), 'last_error' => $error]);
+            return response()->json(['status' => 'failed', 'error' => $error]);
+        }
+    }
+
+    private function pingOllama(\Illuminate\Support\Collection $mc): void
+    {
+        $url   = rtrim($mc['ai.model.ollama.url'] ?? 'http://127.0.0.1:8081', '/') . '/v1/chat/completions';
+        $model = $mc['ai.model.ollama.model'] ?? '';
+
+        if (!$model) {
+            throw new \RuntimeException('No Ollama model name configured.');
+        }
+
+        $resp = Http::withHeaders(['bypass-tunnel-reminder' => 'true'])
+            ->timeout(30)
+            ->post($url, ['model' => $model, 'messages' => [['role' => 'user', 'content' => 'Hi']], 'max_tokens' => 1]);
+
+        if (!$resp->successful()) {
+            throw new \RuntimeException("Ollama replied with HTTP {$resp->status()}.\n" . $resp->body());
+        }
+    }
+
+    private function pingOpenAI(\Illuminate\Support\Collection $mc): void
+    {
+        $key   = $mc['ai.model.openai.key']      ?? '';
+        $model = $mc['ai.model.openai.model']     ?? '';
+        $base  = rtrim($mc['ai.model.openai.base_url'] ?? 'https://api.openai.com/v1', '/');
+
+        if (!$key)   { throw new \RuntimeException('No OpenAI API key configured.'); }
+        if (!$model) { throw new \RuntimeException('No OpenAI model name configured.'); }
+
+        $resp = Http::withHeaders(['Authorization' => "Bearer {$key}"])->timeout(20)
+            ->post("{$base}/chat/completions", ['model' => $model, 'messages' => [['role' => 'user', 'content' => 'Hi']], 'max_tokens' => 1]);
+
+        if (!$resp->successful()) {
+            throw new \RuntimeException("OpenAI replied with HTTP {$resp->status()}: " . $resp->body());
+        }
+    }
+
+    private function pingAnthropic(\Illuminate\Support\Collection $mc): void
+    {
+        $key   = $mc['ai.model.anthropic.key']   ?? '';
+        $model = $mc['ai.model.anthropic.model'] ?? '';
+
+        if (!$key)   { throw new \RuntimeException('No Anthropic API key configured.'); }
+        if (!$model) { throw new \RuntimeException('No Anthropic model name configured.'); }
+
+        $resp = Http::withHeaders([
+            'x-api-key'         => $key,
+            'anthropic-version' => '2023-06-01',
+        ])->timeout(20)->post('https://api.anthropic.com/v1/messages', [
+            'model'      => $model,
+            'max_tokens' => 1,
+            'messages'   => [['role' => 'user', 'content' => 'Hi']],
+        ]);
+
+        if (!$resp->successful()) {
+            throw new \RuntimeException("Anthropic replied with HTTP {$resp->status()}: " . $resp->body());
+        }
+    }
+
+    private function pingHuggingFace(\Illuminate\Support\Collection $mc): void
+    {
+        $key   = $mc['ai.model.hf.key']      ?? '';
+        $model = $mc['ai.model.hf.model']    ?? '';
+        $base  = rtrim($mc['ai.model.hf.base_url'] ?? 'https://api-inference.huggingface.co/v1', '/');
+
+        if (!$key)   { throw new \RuntimeException('No Hugging Face API key configured.'); }
+        if (!$model) { throw new \RuntimeException('No Hugging Face model ID configured.'); }
+
+        $resp = Http::withHeaders(['Authorization' => "Bearer {$key}"])->timeout(30)
+            ->post("{$base}/chat/completions", ['model' => $model, 'messages' => [['role' => 'user', 'content' => 'Hi']], 'max_tokens' => 1]);
+
+        if (!$resp->successful()) {
+            throw new \RuntimeException("Hugging Face replied with HTTP {$resp->status()}: " . mb_substr($resp->body(), 0, 300));
+        }
+    }
+
+    /**
+     * Keep the medgemma row in sync with whatever provider is active in model_config.
+     * This ensures the status badge always reflects the right pipeline.
+     */
+    private function syncMedgemmaRow(array $v): void
+    {
+        $medgemma = PlatformSetting::medgemma();
+        $provider = $v['provider'];
+
+        $data = ['status' => 'disconnected', 'last_error' => null];
+
+        match ($provider) {
+            'ollama' => $data += [
+                'provider' => 'ollama',
+                'model'    => $v['ollama_model'] ?? $medgemma->model,
+                'api_url'  => $v['ollama_url']   ?? $medgemma->api_url,
+            ],
+            'huggingface' => $data += [
+                'provider' => 'huggingface',
+                'model'    => $v['hf_model']    ?? $medgemma->model,
+                'api_url'  => $v['hf_base_url'] ?? 'https://api-inference.huggingface.co/v1',
+                ...(!empty($v['hf_key']) ? ['api_key' => $v['hf_key']] : []),
+            ],
+            // Anthropic and OpenAI: mark as huggingface provider so isReady() won't block
+            // the PHP fallback path; actual calls go through sidecar model_provider.py
+            default => $data += ['provider' => 'huggingface', 'model' => $v[$provider . '_model'] ?? $medgemma->model],
+        };
+
+        $medgemma->update($data);
     }
 
     /**

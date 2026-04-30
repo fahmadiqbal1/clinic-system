@@ -19,8 +19,41 @@
         </div>
     @endif
 
-    {{-- MedGemma / Hugging Face Card --}}
-    <div class="glass-panel p-4 mb-4">
+    {{-- Connection Status Bar --}}
+    <div class="glass-panel p-3 mb-4" id="connectionStatusPanel">
+        <div class="d-flex align-items-center flex-wrap gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-robot text-primary fs-5"></i>
+                <span class="fw-semibold">Clinical AI Status</span>
+            </div>
+            <span id="status-badge"
+                  class="badge {{ $medgemma->statusBadgeClass() }} d-flex align-items-center gap-1 px-3 py-2">
+                <i id="status-icon" class="bi {{ $medgemma->statusIcon() }}"></i>
+                <span id="status-label">{{ $medgemma->statusLabel() }}</span>
+            </span>
+            <span class="text-muted small" id="last-tested-text">
+                @if($medgemma->last_tested_at)
+                    <i class="bi bi-clock me-1"></i>Last tested {{ $medgemma->last_tested_at->diffForHumans() }}
+                @else
+                    <i class="bi bi-clock me-1"></i>Never tested
+                @endif
+            </span>
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-success" id="test-provider-btn">
+                    <i class="bi bi-lightning me-1" id="test-provider-icon"></i>
+                    <span id="test-provider-label">Test Connection</span>
+                </button>
+            </div>
+        </div>
+        <div id="error-alert" class="{{ $medgemma->status === 'failed' ? '' : 'd-none' }} alert alert-danger alert-dismissible mt-2 mb-0 py-2 small" role="alert">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            <span id="error-message">{{ $medgemma->last_error }}</span>
+            <button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+
+    {{-- HIDDEN legacy panel — keep DOM so old JS references don't crash --}}
+    <div class="d-none" id="__legacy-medgemma-panel">
 
         {{-- Card Header with live status badge --}}
         <div class="d-flex align-items-center justify-content-between mb-3">
@@ -519,6 +552,10 @@ cloudflared tunnel --url http://localhost:11434</pre>
             </button>
             <span class="small text-muted" id="modelConfigStatus"></span>
         </div>
+        <p class="text-muted small mt-2 mb-0">
+            <i class="bi bi-info-circle me-1"></i>
+            After saving, click <strong>Test Connection</strong> at the top to verify the provider is reachable.
+        </p>
     </div>
 
     {{-- Feature Flags --}}
@@ -982,5 +1019,69 @@ document.querySelectorAll('.flag-toggle').forEach(function(toggle) {
         });
     });
 })();
+
+// ── Test Connection (status bar) ──────────────────────────────────────────────
+(function () {
+    const btn    = document.getElementById('test-provider-btn');
+    const icon   = document.getElementById('test-provider-icon');
+    const label  = document.getElementById('test-provider-label');
+    const badge  = document.getElementById('status-badge');
+    const sIcon  = document.getElementById('status-icon');
+    const sLabel = document.getElementById('status-label');
+    const errDiv = document.getElementById('error-alert');
+    const errMsg = document.getElementById('error-message');
+    const tsText = document.getElementById('last-tested-text');
+    const csrf   = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        icon.className = 'bi bi-arrow-repeat spin me-1';
+        label.textContent = 'Testing…';
+        badge.className = 'badge bg-secondary d-flex align-items-center gap-1 px-3 py-2';
+        sIcon.className = 'bi bi-hourglass-split';
+        sLabel.textContent = 'Connecting…';
+
+        fetch('{{ route("owner.platform-settings.test-provider") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            icon.className = 'bi bi-lightning me-1';
+            label.textContent = 'Test Connection';
+
+            if (data.status === 'connected') {
+                badge.className = 'badge bg-success d-flex align-items-center gap-1 px-3 py-2';
+                sIcon.className = 'bi bi-check-circle-fill';
+                sLabel.textContent = 'Connected';
+                tsText.innerHTML = '<i class="bi bi-clock me-1"></i>Last tested ' + (data.last_tested_at ?? 'just now');
+                if (errDiv) errDiv.classList.add('d-none');
+            } else {
+                badge.className = 'badge bg-danger d-flex align-items-center gap-1 px-3 py-2';
+                sIcon.className = 'bi bi-x-circle-fill';
+                sLabel.textContent = 'Failed';
+                if (errDiv && errMsg) {
+                    errMsg.textContent = data.error ?? 'Connection failed';
+                    errDiv.classList.remove('d-none');
+                }
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            icon.className = 'bi bi-lightning me-1';
+            label.textContent = 'Test Connection';
+            badge.className = 'badge bg-warning d-flex align-items-center gap-1 px-3 py-2';
+            sLabel.textContent = 'Network Error';
+        });
+    });
+})();
 </script>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { display: inline-block; animation: spin .8s linear infinite; }
+</style>
 @endpush
