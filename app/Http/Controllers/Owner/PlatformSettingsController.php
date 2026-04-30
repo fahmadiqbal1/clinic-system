@@ -91,51 +91,80 @@ class PlatformSettingsController extends Controller
 
     /**
      * Save AI model provider config and hot-swap the sidecar's active provider.
+     *
+     * Accepts a flat payload of provider + per-provider model names, URLs, and
+     * API keys. Every field is optional — only non-empty values overwrite the DB.
+     * API keys are encrypted at rest. Provider selection always saved.
      */
     public function saveModelConfig(Request $request): JsonResponse
     {
         $v = $request->validate([
-            'provider'      => ['required', 'in:ollama,openai,anthropic'],
-            'model_id'      => ['nullable', 'string', 'max:100'],
-            'openai_key'    => ['nullable', 'string', 'max:300'],
-            'anthropic_key' => ['nullable', 'string', 'max:300'],
+            'provider'           => ['required', 'in:ollama,openai,anthropic,huggingface'],
+            // Ollama
+            'ollama_url'         => ['nullable', 'string', 'max:300'],
+            'ollama_model'       => ['nullable', 'string', 'max:200'],
+            // OpenAI
+            'openai_base_url'    => ['nullable', 'url', 'max:300'],
+            'openai_model'       => ['nullable', 'string', 'max:200'],
+            'openai_key'         => ['nullable', 'string', 'max:300'],
+            // Anthropic
+            'anthropic_model'    => ['nullable', 'string', 'max:200'],
+            'anthropic_key'      => ['nullable', 'string', 'max:300'],
+            // Hugging Face
+            'hf_base_url'        => ['nullable', 'url', 'max:300'],
+            'hf_model'           => ['nullable', 'string', 'max:200'],
+            'hf_key'             => ['nullable', 'string', 'max:300'],
         ]);
 
-        PlatformSetting::updateOrCreate(
-            ['platform_name' => 'ai.model.provider', 'provider' => 'model_config'],
-            ['meta' => ['value' => $v['provider']]]
-        );
+        // Always save active provider
+        $this->saveModelSetting('ai.model.provider', $v['provider']);
 
-        if (!empty($v['model_id'])) {
-            PlatformSetting::updateOrCreate(
-                ['platform_name' => 'ai.model.online_model_id', 'provider' => 'model_config'],
-                ['meta' => ['value' => $v['model_id']]]
-            );
-        }
-        if (!empty($v['openai_key'])) {
-            PlatformSetting::updateOrCreate(
-                ['platform_name' => 'ai.model.openai_key', 'provider' => 'model_config'],
-                ['meta' => ['value' => encrypt($v['openai_key'])]]
-            );
-        }
-        if (!empty($v['anthropic_key'])) {
-            PlatformSetting::updateOrCreate(
-                ['platform_name' => 'ai.model.anthropic_key', 'provider' => 'model_config'],
-                ['meta' => ['value' => encrypt($v['anthropic_key'])]]
-            );
+        // Save all non-empty plain fields
+        $plain = [
+            'ai.model.ollama.url'      => $v['ollama_url']      ?? null,
+            'ai.model.ollama.model'    => $v['ollama_model']     ?? null,
+            'ai.model.openai.base_url' => $v['openai_base_url']  ?? null,
+            'ai.model.openai.model'    => $v['openai_model']     ?? null,
+            'ai.model.anthropic.model' => $v['anthropic_model']  ?? null,
+            'ai.model.hf.base_url'     => $v['hf_base_url']      ?? null,
+            'ai.model.hf.model'        => $v['hf_model']         ?? null,
+        ];
+        foreach ($plain as $key => $value) {
+            if (!empty($value)) {
+                $this->saveModelSetting($key, $value);
+            }
         }
 
-        // Tell sidecar to reload config from DB — fail-open, sidecar may not be running
+        // Save API keys encrypted — only overwrite when a non-empty value submitted
+        $keys = [
+            'ai.model.openai.key'     => $v['openai_key']    ?? null,
+            'ai.model.anthropic.key'  => $v['anthropic_key'] ?? null,
+            'ai.model.hf.key'         => $v['hf_key']        ?? null,
+        ];
+        foreach ($keys as $settingKey => $rawKey) {
+            if (!empty($rawKey)) {
+                $this->saveModelSetting($settingKey, encrypt($rawKey));
+            }
+        }
+
+        // Hot-swap sidecar — fail-open
         try {
             $sidecarUrl = config('services.sidecar.url', env('CLINIC_SIDECAR_URL', 'http://localhost:8001'));
-            Http::withToken($this->mintSidecarJwt())
-                ->timeout(5)
+            Http::withToken($this->mintSidecarJwt())->timeout(5)
                 ->post($sidecarUrl . '/v1/config/reload');
         } catch (\Exception) {
-            // Non-fatal — sidecar will pick up new provider on next restart
+            // Non-fatal — sidecar picks up changes on next restart
         }
 
         return response()->json(['ok' => true, 'provider' => $v['provider']]);
+    }
+
+    private function saveModelSetting(string $key, string $value): void
+    {
+        PlatformSetting::updateOrCreate(
+            ['platform_name' => $key, 'provider' => 'model_config'],
+            ['meta' => ['value' => $value]]
+        );
     }
 
     private function mintSidecarJwt(): string

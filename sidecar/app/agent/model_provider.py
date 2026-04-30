@@ -1,13 +1,17 @@
 """
-Model provider router — Ollama (offline) | OpenAI | Anthropic (online).
+Model provider router — any provider, any model, all config from env at call time.
 
-Provider is read from os.environ["AI_MODEL_PROVIDER"] on every call so that
-a /v1/config/reload can hot-swap it without restarting the sidecar.
+Provider and model names are read from os.environ on EVERY call so that
+POST /v1/config/reload can hot-swap them without restarting the sidecar.
 
-Supported values:
-  "ollama"     — local Ollama instance (default / offline mode)
-  "openai"     — OpenAI Chat Completions API
-  "anthropic"  — Anthropic Messages API
+Supported providers (AI_MODEL_PROVIDER):
+  "ollama"       — local Ollama  (OLLAMA_URL + OLLAMA_MODEL)
+  "openai"       — OpenAI API    (OPENAI_BASE_URL optional, OPENAI_MODEL, OPENAI_API_KEY)
+  "anthropic"    — Anthropic API (ANTHROPIC_MODEL, ANTHROPIC_API_KEY)
+  "huggingface"  — HF Inference  (HF_BASE_URL, HF_MODEL, HF_API_KEY)
+
+All *_MODEL and *_BASE_URL vars are set from the UI via POST /v1/config/reload.
+No model name or URL is ever hardcoded.
 """
 from __future__ import annotations
 
@@ -22,78 +26,85 @@ logger = logging.getLogger(__name__)
 ONLINE_TIMEOUT_S = 120.0
 
 
-def _provider() -> str:
-    return os.environ.get("AI_MODEL_PROVIDER", "ollama").lower()
-
-
-def _online_model_id(fallback: str) -> str:
-    return os.environ.get("ONLINE_MODEL_ID", fallback)
+def _e(key: str, fallback: str = "") -> str:
+    """Read env var, strip whitespace."""
+    return os.environ.get(key, fallback).strip()
 
 
 async def call_model(
     messages: list[dict],
-    ollama_url: str,
-    ollama_model: str,
+    ollama_url: str,        # passed from harness — overridable via OLLAMA_URL
+    ollama_model: str,      # passed from harness — overridable via OLLAMA_MODEL
     timeout_s: float = 600.0,
 ) -> str:
-    provider = _provider()
-    logger.info("model_provider: using provider=%s", provider)
+    provider = _e("AI_MODEL_PROVIDER", "ollama")
+    logger.info("model_provider: provider=%s", provider)
 
     if provider == "openai":
         return await _call_openai(messages)
     if provider == "anthropic":
         return await _call_anthropic(messages)
-    return await _call_ollama(messages, ollama_url, ollama_model, timeout_s)
+    if provider == "huggingface":
+        return await _call_huggingface(messages)
+    # default: ollama — env vars override whatever harness passed in
+    url   = _e("OLLAMA_URL",   ollama_url)
+    model = _e("OLLAMA_MODEL", ollama_model)
+    return await _call_ollama(messages, url, model, timeout_s)
 
 
 # ── Ollama ────────────────────────────────────────────────────────────────────
 
-async def _call_ollama(
-    messages: list[dict], url: str, model: str, timeout_s: float
-) -> str:
+async def _call_ollama(messages: list[dict], url: str, model: str, timeout_s: float) -> str:
+    if not url:
+        raise RuntimeError("Ollama selected but OLLAMA_URL is not configured")
+    if not model:
+        raise RuntimeError("Ollama selected but OLLAMA_MODEL is not configured")
+
     async with httpx.AsyncClient(timeout=timeout_s) as client:
         resp = await client.post(
-            f"{url}/v1/chat/completions",
+            f"{url.rstrip('/')}/v1/chat/completions",
             json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.3},
             headers={"bypass-tunnel-reminder": "true"},
         )
     if resp.status_code != 200:
-        raise RuntimeError(f"Ollama {resp.status_code}: {resp.text[:200]}")
+        raise RuntimeError(f"Ollama {resp.status_code}: {resp.text[:300]}")
     return resp.json()["choices"][0]["message"]["content"]
 
 
-# ── OpenAI ────────────────────────────────────────────────────────────────────
+# ── OpenAI (or any OpenAI-compatible endpoint) ────────────────────────────────
 
 async def _call_openai(messages: list[dict]) -> str:
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("OpenAI provider selected but OPENAI_API_KEY is not set")
+    api_key = _e("OPENAI_API_KEY")
+    model   = _e("OPENAI_MODEL")
+    base    = _e("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 
-    model = _online_model_id("gpt-4o-mini")
+    if not api_key:
+        raise RuntimeError("OpenAI selected but OPENAI_API_KEY is not set")
+    if not model:
+        raise RuntimeError("OpenAI selected but OPENAI_MODEL is not set — enter a model name in Platform Settings")
 
     async with httpx.AsyncClient(timeout=ONLINE_TIMEOUT_S) as client:
         resp = await client.post(
-            "https://api.openai.com/v1/chat/completions",
+            f"{base}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.3},
         )
-
     if resp.status_code != 200:
         raise RuntimeError(f"OpenAI {resp.status_code}: {resp.text[:300]}")
-
     return resp.json()["choices"][0]["message"]["content"]
 
 
 # ── Anthropic ─────────────────────────────────────────────────────────────────
 
 async def _call_anthropic(messages: list[dict]) -> str:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    api_key = _e("ANTHROPIC_API_KEY")
+    model   = _e("ANTHROPIC_MODEL")
+
     if not api_key:
-        raise RuntimeError("Anthropic provider selected but ANTHROPIC_API_KEY is not set")
+        raise RuntimeError("Anthropic selected but ANTHROPIC_API_KEY is not set")
+    if not model:
+        raise RuntimeError("Anthropic selected but ANTHROPIC_MODEL is not set — enter a model name in Platform Settings")
 
-    model = _online_model_id("claude-haiku-4-5-20251001")
-
-    # Anthropic separates the system prompt from the conversation turns
     system_content = ""
     user_messages: list[dict[str, Any]] = []
     for m in messages:
@@ -114,15 +125,33 @@ async def _call_anthropic(messages: list[dict]) -> str:
     async with httpx.AsyncClient(timeout=ONLINE_TIMEOUT_S) as client:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
+            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
+                     "Content-Type": "application/json"},
             json=body,
         )
-
     if resp.status_code != 200:
         raise RuntimeError(f"Anthropic {resp.status_code}: {resp.text[:300]}")
-
     return resp.json()["content"][0]["text"]
+
+
+# ── Hugging Face Inference API (OpenAI-compatible /v1/ endpoint) ───────────────
+
+async def _call_huggingface(messages: list[dict]) -> str:
+    api_key = _e("HF_API_KEY")
+    model   = _e("HF_MODEL")
+    base    = _e("HF_BASE_URL", "https://api-inference.huggingface.co/v1").rstrip("/")
+
+    if not api_key:
+        raise RuntimeError("Hugging Face selected but HF_API_KEY is not set")
+    if not model:
+        raise RuntimeError("Hugging Face selected but HF_MODEL is not set — enter a model name (e.g. mistralai/Mistral-7B-Instruct-v0.3) in Platform Settings")
+
+    async with httpx.AsyncClient(timeout=ONLINE_TIMEOUT_S) as client:
+        resp = await client.post(
+            f"{base}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.3},
+        )
+    if resp.status_code != 200:
+        raise RuntimeError(f"HuggingFace {resp.status_code}: {resp.text[:300]}")
+    return resp.json()["choices"][0]["message"]["content"]
