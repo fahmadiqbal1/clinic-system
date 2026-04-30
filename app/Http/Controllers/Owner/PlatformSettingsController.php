@@ -60,6 +60,36 @@ class PlatformSettingsController extends Controller
     }
 
     /**
+     * Toggle a feature flag on or off. Called via AJAX from the flags panel.
+     */
+    public function toggleFlag(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'flag'    => ['required', 'string', 'max:100'],
+            'enabled' => ['required', 'boolean'],
+        ]);
+
+        $allowed = [
+            'ai.admin.enabled', 'ai.ops.enabled', 'ai.compliance.enabled',
+            'ai.sidecar.enabled', 'ai.ragflow.enabled', 'ai.gitnexus.enabled',
+            'ai.chat.enabled.owner', 'ai.chat.enabled.doctor',
+            'ai.chat.enabled.pharmacy', 'ai.chat.enabled.laboratory',
+            'ai.chat.enabled.radiology', 'admin.nocobase.enabled',
+        ];
+
+        if (!in_array($validated['flag'], $allowed, true)) {
+            return response()->json(['ok' => false, 'error' => 'Unknown flag.'], 422);
+        }
+
+        PlatformSetting::updateOrCreate(
+            ['platform_name' => $validated['flag'], 'provider' => 'feature_flag'],
+            ['meta' => ['value' => $validated['enabled']]]
+        );
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
      * Test the connection to the MedGemma API (Hugging Face or Ollama).
      * Returns JSON so the frontend can update the status badge live.
      */

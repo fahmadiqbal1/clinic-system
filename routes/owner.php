@@ -109,6 +109,7 @@ Route::middleware('role:Owner')->group(function () {
     Route::get('/owner/platform-settings', [PlatformSettingsController::class, 'index'])->name('owner.platform-settings.index');
     Route::patch('/owner/platform-settings', [PlatformSettingsController::class, 'update'])->name('owner.platform-settings.update');
     Route::post('/owner/platform-settings/test', [PlatformSettingsController::class, 'testConnection'])->name('owner.platform-settings.test');
+    Route::post('/owner/platform-settings/flag', [PlatformSettingsController::class, 'toggleFlag'])->name('owner.platform-settings.flag');
 
     // FBR IRIS Digital Invoicing Settings
     Route::patch('/owner/fbr-settings', [FbrSettingsController::class, 'update'])->name('owner.fbr-settings.update');

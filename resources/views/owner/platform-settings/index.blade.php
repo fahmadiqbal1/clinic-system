@@ -370,6 +370,85 @@ cloudflared tunnel --url http://localhost:11434</pre>
         </div>
     </div>
 
+    {{-- Feature Flags --}}
+    <div class="glass-panel p-4 mb-4">
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <div class="rounded-3 p-2 bg-warning bg-opacity-10">
+                <i class="bi bi-toggles fs-4 text-warning"></i>
+            </div>
+            <div>
+                <h5 class="mb-0 fw-semibold">Feature Flags</h5>
+                <small class="text-muted">Toggle AI and admin features on or off — changes take effect immediately</small>
+            </div>
+        </div>
+
+        @php
+            $flagGroups = [
+                'AI Personas' => [
+                    'ai.admin.enabled'      => ['label' => 'Administrative AI',  'desc' => 'Owner — /owner/admin-ai',      'icon' => 'bi-person-gear'],
+                    'ai.ops.enabled'        => ['label' => 'Operations AI',      'desc' => 'Owner — /owner/ops-ai',        'icon' => 'bi-boxes'],
+                    'ai.compliance.enabled' => ['label' => 'Compliance AI',      'desc' => 'Owner — /owner/compliance-ai', 'icon' => 'bi-shield-check'],
+                ],
+                'AI Infrastructure' => [
+                    'ai.sidecar.enabled'    => ['label' => 'AI Sidecar',         'desc' => 'Routes consultations through Python sidecar', 'icon' => 'bi-cpu'],
+                    'ai.ragflow.enabled'    => ['label' => 'RAGFlow',            'desc' => 'Knowledge retrieval for AI queries',          'icon' => 'bi-database'],
+                    'ai.gitnexus.enabled'   => ['label' => 'Architecture Graph', 'desc' => 'Owner — /owner/architecture',                 'icon' => 'bi-diagram-3'],
+                ],
+                'AI Chat (per role)' => [
+                    'ai.chat.enabled.owner'      => ['label' => 'Chat — Owner',      'desc' => 'Knowledge Assistant in Owner views',      'icon' => 'bi-chat-dots'],
+                    'ai.chat.enabled.doctor'     => ['label' => 'Chat — Doctor',     'desc' => 'Knowledge Assistant in consultation view', 'icon' => 'bi-chat-dots'],
+                    'ai.chat.enabled.pharmacy'   => ['label' => 'Chat — Pharmacy',   'desc' => 'Knowledge Assistant in pharmacy view',    'icon' => 'bi-chat-dots'],
+                    'ai.chat.enabled.laboratory' => ['label' => 'Chat — Laboratory', 'desc' => 'Knowledge Assistant in lab view',         'icon' => 'bi-chat-dots'],
+                    'ai.chat.enabled.radiology'  => ['label' => 'Chat — Radiology',  'desc' => 'Knowledge Assistant in radiology view',   'icon' => 'bi-chat-dots'],
+                ],
+                'Admin' => [
+                    'admin.nocobase.enabled' => ['label' => 'NocoBase Admin', 'desc' => 'Owner — /owner/nocobase property & equipment', 'icon' => 'bi-building'],
+                ],
+            ];
+            $allFlags = \App\Models\PlatformSetting::where('provider','feature_flag')
+                ->pluck('meta', 'platform_name')
+                ->map(fn($m) => (bool)($m['value'] ?? false));
+        @endphp
+
+        @foreach($flagGroups as $groupName => $flags)
+        <div class="mb-4">
+            <h6 class="text-muted text-uppercase fw-semibold mb-3" style="font-size:.75rem;letter-spacing:.08em;">{{ $groupName }}</h6>
+            <div class="row g-2">
+                @foreach($flags as $flagKey => $meta)
+                @php $isOn = $allFlags[$flagKey] ?? false; @endphp
+                <div class="col-12 col-md-6 col-xl-4">
+                    <div class="d-flex align-items-center justify-content-between p-3 rounded-3 border bg-white" style="min-height:64px;">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi {{ $meta['icon'] }} text-muted"></i>
+                            <div>
+                                <div class="fw-medium" style="font-size:.9rem;">{{ $meta['label'] }}</div>
+                                <div class="text-muted" style="font-size:.75rem;">{{ $meta['desc'] }}</div>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 ms-3 flex-shrink-0">
+                            <span id="badge-{{ str_replace('.', '-', $flagKey) }}"
+                                  class="badge {{ $isOn ? 'bg-success' : 'bg-secondary' }}"
+                                  style="min-width:2.5rem;text-align:center;">
+                                {{ $isOn ? 'ON' : 'OFF' }}
+                            </span>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input flag-toggle"
+                                       type="checkbox"
+                                       role="switch"
+                                       style="width:2.5rem;height:1.25rem;cursor:pointer;"
+                                       data-flag="{{ $flagKey }}"
+                                       {{ $isOn ? 'checked' : '' }}>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                @endforeach
+            </div>
+        </div>
+        @endforeach
+
+    </div>
+
 </div>
 @endsection
 
@@ -651,5 +730,37 @@ function copyToClipboard(text, btn) {
         document.body.removeChild(ta);
     });
 }
+</script>
+
+<script>
+document.querySelectorAll('.flag-toggle').forEach(function(toggle) {
+    toggle.addEventListener('change', function() {
+        const flag = this.dataset.flag;
+        const enabled = this.checked;
+        const badge = document.getElementById('badge-' + flag.replace(/\./g, '-'));
+        const label = document.getElementById('label-' + flag.replace(/\./g, '-'));
+
+        fetch('{{ route("owner.platform-settings.flag") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ flag: flag, enabled: enabled }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                badge.className = 'badge ' + (enabled ? 'bg-success' : 'bg-secondary');
+                badge.textContent = enabled ? 'ON' : 'OFF';
+                if (label) label.textContent = enabled ? 'Enabled' : 'Disabled';
+            } else {
+                this.checked = !enabled;
+            }
+        })
+        .catch(() => { this.checked = !enabled; });
+    });
+});
 </script>
 @endpush

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 2
 RETRY_CONFIDENCE_THRESHOLD = 0.40
-OLLAMA_TIMEOUT_S = 120.0
+OLLAMA_TIMEOUT_S = 600.0  # 10-min ceiling; llama3.2:3b can take 3-5 min on first full prompt
 
 
 @dataclass
@@ -163,8 +163,8 @@ class ExecutionLoop:
                     },
                     headers={"bypass-tunnel-reminder": "true"},
                 )
-        except httpx.RequestError as exc:
-            raise RuntimeError(f"Ollama unreachable: {exc}") from exc
+        except (httpx.RequestError, httpx.TimeoutException) as exc:
+            raise RuntimeError(f"Ollama unreachable: {type(exc).__name__}: {exc}") from exc
 
         if resp.status_code != 200:
             raise RuntimeError(

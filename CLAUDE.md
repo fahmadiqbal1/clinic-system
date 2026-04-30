@@ -245,7 +245,7 @@ CLINIC_SIDECAR_JWT=               # for MCP server admin_analyse / ops_analyse /
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **clinic-system** (3702 symbols, 9166 relationships, 279 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **clinic-system** (4024 symbols, 10047 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

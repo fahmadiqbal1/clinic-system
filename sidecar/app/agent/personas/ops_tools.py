@@ -35,8 +35,9 @@ def make_inventory_velocity_tool() -> Tool:
     async def _q() -> dict:
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT id, name, current_stock AS qty, "
-                "min_stock_level AS min_lvl, max_stock_level AS max_lvl "
+                "SELECT id, name, quantity_in_stock AS qty, "
+                "minimum_stock_level AS min_lvl, "
+                "GREATEST(minimum_stock_level * 3, minimum_stock_level + 50) AS max_lvl "
                 "FROM inventory_items WHERE is_active = 1 ORDER BY name"
             )
             rows = await cur.fetchall()
@@ -70,11 +71,11 @@ def make_procurement_recommendation_tool() -> Tool:
     async def _q() -> dict:
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT name, current_stock AS qty, min_stock_level AS min_lvl, "
-                "max_stock_level AS max_lvl "
+                "SELECT name, quantity_in_stock AS qty, minimum_stock_level AS min_lvl, "
+                "GREATEST(minimum_stock_level * 3, minimum_stock_level + 50) AS max_lvl "
                 "FROM inventory_items WHERE is_active = 1 "
-                "AND current_stock <= min_stock_level "
-                "ORDER BY (min_stock_level - current_stock) DESC LIMIT 10"
+                "AND quantity_in_stock <= minimum_stock_level "
+                "ORDER BY (minimum_stock_level - quantity_in_stock) DESC LIMIT 10"
             )
             rows = await cur.fetchall()
         if not rows:

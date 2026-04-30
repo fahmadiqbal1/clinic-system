@@ -82,10 +82,29 @@
                                     <li><a class="dropdown-item" href="{{ route('owner.activity-feed') }}"><i class="bi bi-clock-history me-2"></i>Activity Feed</a></li>
                                 </ul>
                             </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ route('owner.platform-settings.index') }}">
-                                    <i class="bi bi-cpu me-1"></i>AI Platforms
-                                </a>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"><i class="bi bi-robot me-1"></i>AI</a>
+                                <ul class="dropdown-menu">
+                                    <li><h6 class="dropdown-header">Configuration</h6></li>
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.platform-settings.*') ? 'active' : '' }}" href="{{ route('owner.platform-settings.index') }}"><i class="bi bi-cpu me-2"></i>Platform Settings</a></li>
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.ai-oversight') ? 'active' : '' }}" href="{{ route('owner.ai-oversight') }}"><i class="bi bi-binoculars me-2"></i>AI Oversight</a></li>
+                                    @if(\App\Models\PlatformSetting::isEnabled('ai.gitnexus.enabled'))
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.architecture') ? 'active' : '' }}" href="{{ route('owner.architecture') }}"><i class="bi bi-diagram-3 me-2"></i>Architecture Graph</a></li>
+                                    @endif
+                                    @if(\App\Models\PlatformSetting::isEnabled('ai.admin.enabled') || \App\Models\PlatformSetting::isEnabled('ai.ops.enabled') || \App\Models\PlatformSetting::isEnabled('ai.compliance.enabled'))
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><h6 class="dropdown-header">AI Personas</h6></li>
+                                    @endif
+                                    @if(\App\Models\PlatformSetting::isEnabled('ai.admin.enabled'))
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.admin-ai*') ? 'active' : '' }}" href="{{ route('owner.admin-ai.index') }}"><i class="bi bi-person-gear me-2"></i>Administrative AI</a></li>
+                                    @endif
+                                    @if(\App\Models\PlatformSetting::isEnabled('ai.ops.enabled'))
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.ops-ai*') ? 'active' : '' }}" href="{{ route('owner.ops-ai.index') }}"><i class="bi bi-boxes me-2"></i>Operations AI</a></li>
+                                    @endif
+                                    @if(\App\Models\PlatformSetting::isEnabled('ai.compliance.enabled'))
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.compliance-ai*') ? 'active' : '' }}" href="{{ route('owner.compliance-ai.index') }}"><i class="bi bi-shield-check me-2"></i>Compliance AI</a></li>
+                                    @endif
+                                </ul>
                             </li>
                         @endif
 
