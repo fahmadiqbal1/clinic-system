@@ -18,6 +18,7 @@ class AiSidecarClient
     private const CB_WINDOW_S     = 60;
     private const CB_OPEN_S       = 300; // 5 min
     private const TIMEOUT_S       = 15;
+    private const AI_TIMEOUT_S    = 120; // online providers; Ollama uses model_provider timeout
 
     public function __construct(private readonly CaseTokenService $caseTokenService) {}
 
@@ -43,7 +44,21 @@ class AiSidecarClient
             'custom_question' => $customQuestion,
         ];
 
-        return $this->call('POST', '/v1/consult', $payload, $caseToken);
+        return $this->call('POST', '/v1/consult', $payload, $caseToken, timeoutS: self::AI_TIMEOUT_S);
+    }
+
+    /**
+     * Generic single-turn text analysis — routes through whatever provider is active in the sidecar.
+     * Used for lab and radiology analyses so they share the same provider as consultations.
+     */
+    public function analyseText(string $systemPrompt, string $userMessage): string
+    {
+        $result = $this->call('POST', '/v1/analyse', [
+            'system_prompt' => $systemPrompt,
+            'user_message'  => $userMessage,
+        ], timeoutS: self::AI_TIMEOUT_S);
+
+        return $result['text'] ?? '';
     }
 
     public function ragQuery(string $query, string $collection = 'general'): array
@@ -99,7 +114,7 @@ class AiSidecarClient
         return $this->call('POST', '/v1/compliance/analyse', $payload);
     }
 
-    private function call(string $method, string $path, array $payload = [], ?string $caseToken = null): array
+    private function call(string $method, string $path, array $payload = [], ?string $caseToken = null, int $timeoutS = self::TIMEOUT_S): array
     {
         if ($this->isCircuitOpen()) {
             Log::warning('AiSidecarClient: circuit open', ['path' => $path]);
@@ -113,7 +128,7 @@ class AiSidecarClient
 
         try {
             $response = Http::withToken($jwt)
-                ->timeout(self::TIMEOUT_S)
+                ->timeout($timeoutS)
                 ->retry(1, 0)
                 ->{$method}($url, $payload);
 

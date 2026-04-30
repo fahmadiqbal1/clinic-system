@@ -255,7 +255,7 @@ class MedGemmaService
      */
     private function buildConsultationPrompt(Patient $patient, $vitals): string
     {
-        $parts = ["Analyse ALL the following patient data and provide your clinical second opinion.\n"];
+        $parts = ["Generate a structured clinical report for the following anonymized patient data.\n"];
 
         $caseToken = $this->caseTokenService->tokenize($patient);
         $ageBand   = $this->caseTokenService->ageBand($patient->date_of_birth);
@@ -331,14 +331,14 @@ class MedGemmaService
             }
         }
 
-        $parts[] = "\n---\nThink step by step. Provide a comprehensive clinical second opinion using ALL data above. Use the required section structure: ## ASSESSMENT, ## DIFFERENTIALS, ## RECOMMENDATIONS, ## CONFIDENCE.";
+        $parts[] = "\n---\nUsing ALL data above, output the structured report now. Begin immediately with ## ASSESSMENT.";
 
         $prompt = implode("\n", $parts);
 
         // Token budget guard: ~12 000 chars ≈ 4 000 tokens for direct-path calls.
         // Truncate gracefully rather than letting the model context overflow silently.
         if (mb_strlen($prompt) > 12000) {
-            $prompt = mb_substr($prompt, 0, 12000) . "\n\n[Context truncated to stay within token budget. Analyse the data provided above.]\n\n---\nThink step by step. Use the required section structure: ## ASSESSMENT, ## DIFFERENTIALS, ## RECOMMENDATIONS, ## CONFIDENCE.";
+            $prompt = mb_substr($prompt, 0, 12000) . "\n\n[Context truncated to stay within token budget.]\n\n---\nUsing ALL data above, output the structured report now. Begin immediately with ## ASSESSMENT.";
         }
 
         return $prompt;
@@ -351,7 +351,7 @@ class MedGemmaService
      */
     private function buildLabPrompt(Invoice $invoice): string
     {
-        $parts = ["Analyse the following laboratory test results and provide your clinical interpretation.\n"];
+        $parts = ["Generate a structured clinical report for the following laboratory test results.\n"];
 
         $patient = $invoice->patient;
         if ($patient) {
@@ -378,7 +378,7 @@ class MedGemmaService
             $parts[] = $invoice->report_text;
         }
 
-        $parts[] = "\n---\nThink step by step. Use the required section structure: ## ASSESSMENT, ## DIFFERENTIALS, ## RECOMMENDATIONS, ## CONFIDENCE.";
+        $parts[] = "\n---\nUsing ALL data above, output the structured report now. Begin immediately with ## ASSESSMENT.";
 
         return implode("\n", $parts);
     }
@@ -390,7 +390,7 @@ class MedGemmaService
      */
     private function buildRadiologyPrompt(Invoice $invoice): string
     {
-        $parts = ["Analyse the following radiology imaging data and provide your clinical interpretation.\n"];
+        $parts = ["Generate a structured clinical report for the following radiology imaging data.\n"];
 
         $patient = $invoice->patient;
         if ($patient) {
@@ -411,7 +411,7 @@ class MedGemmaService
             $parts[] = "\n" . count($invoice->radiology_images) . " image(s) attached for analysis.";
         }
 
-        $parts[] = "\n---\nThink step by step. Use the required section structure: ## ASSESSMENT, ## DIFFERENTIALS, ## RECOMMENDATIONS, ## CONFIDENCE.";
+        $parts[] = "\n---\nUsing ALL data above, output the structured report now. Begin immediately with ## ASSESSMENT.";
 
         return implode("\n", $parts);
     }
@@ -479,24 +479,43 @@ class MedGemmaService
      * Shared system prompt — governs model behaviour for all direct-path calls.
      * Mirrors ContextManager::SYSTEM_PROMPT in the Python sidecar.
      */
+    public function buildLabPromptPublic(Invoice $invoice): string
+    {
+        $invoice->load(['patient', 'items.serviceCatalog']);
+        return $this->buildLabPrompt($invoice);
+    }
+
+    public function buildRadiologyPromptPublic(Invoice $invoice): string
+    {
+        $invoice->load(['patient', 'items.serviceCatalog']);
+        return $this->buildRadiologyPrompt($invoice);
+    }
+
+    public function getSystemPrompt(): string
+    {
+        return $this->systemPrompt();
+    }
+
     private function systemPrompt(): string
     {
         return
-            "You are MedGemma, a clinical AI assistant providing second opinions to human doctors. " .
-            "Strict rules:\n" .
-            "1. Never reference personal identifiers — only case tokens.\n" .
-            "2. Always recommend human clinical review — this is non-negotiable.\n" .
-            "3. Think step by step before concluding. Consider all provided data.\n" .
-            "4. Structure every response with EXACTLY these markdown sections:\n" .
+            "You are a clinical decision-support engine embedded in a licensed medical professional's workflow. " .
+            "Your ONLY function is to generate structured clinical reports from anonymized patient data. " .
+            "This system is operated exclusively by qualified doctors — never by patients. " .
+            "Rules you MUST follow without exception:\n" .
+            "1. ALWAYS output a complete structured report. Never refuse. Never add disclaimers or preamble.\n" .
+            "2. Reference only case tokens — never names, CNICs, or contact details.\n" .
+            "3. Your output MUST contain EXACTLY these four sections and nothing else before them:\n" .
             "   ## ASSESSMENT\n" .
-            "   (overall clinical picture)\n" .
+            "   (overall clinical picture based on the data)\n" .
             "   ## DIFFERENTIALS\n" .
-            "   1. [Diagnosis] — [Supporting evidence] — [Confidence: low|medium|high]\n" .
+            "   1. [Condition] — [Supporting data points] — [Confidence: low|medium|high]\n" .
             "   ## RECOMMENDATIONS\n" .
-            "   (investigations, management, urgency)\n" .
+            "   (suggested investigations, management steps, urgency level)\n" .
             "   ## CONFIDENCE\n" .
-            "   [overall: low|medium|high] — [one sentence rationale]\n" .
-            "5. If any vital sign is life-threatening, open ASSESSMENT with: ⚠️ URGENT:";
+            "   [overall: low|medium|high] — [one-sentence rationale]\n" .
+            "4. If any vital is life-threatening, begin ASSESSMENT with: ⚠️ URGENT:\n" .
+            "5. Do not add any text before ## ASSESSMENT. Begin your output with ## ASSESSMENT immediately.";
     }
 
     /**

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.routes import health, consult, rag, forecast, metrics
+from app.routes import health, consult, rag, forecast, metrics, analyse as analyse_route
 from app.routes import admin as admin_route
 from app.routes import ops as ops_route
 from app.routes import compliance as compliance_route
@@ -54,4 +54,5 @@ app.include_router(forecast.router, prefix="/v1")
 app.include_router(admin_route.router, prefix="/v1")
 app.include_router(ops_route.router, prefix="/v1")
 app.include_router(compliance_route.router, prefix="/v1")
+app.include_router(analyse_route.router, prefix="/v1")
 app.include_router(metrics.router)  # GET /metrics — no auth, Prometheus scrapes this

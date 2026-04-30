@@ -48,13 +48,31 @@ class AnalyseConsultationJob implements ShouldQueue
 
     /**
      * Execute the job.
-     * When ai.sidecar.enabled flag is ON and context is consultation, routes through AiSidecarClient.
-     * All other contexts (lab, radiology) and the flag-off path use the direct MedGemma path.
+     * When ai.sidecar.enabled is ON: ALL context types route through the sidecar's
+     * active model provider (online or Ollama). Reachability check is skipped —
+     * the circuit breaker on AiSidecarClient handles outages.
+     * When flag is OFF: direct MedGemma path (Ollama / HuggingFace via PHP).
      */
     public function handle(MedGemmaService $service, AiSidecarClient $sidecar): void
     {
-        // Re-check reachability at execution time — Ollama may have stopped since dispatch.
-        // Mark offline_pending so the scheduler retries; don't consume a retry attempt.
+        // When sidecar is ON, skip the Ollama reachability check — the sidecar uses
+        // whatever online/offline provider is configured and has its own circuit breaker.
+        if (PlatformSetting::isEnabled('ai.sidecar.enabled')) {
+            try {
+                $this->handleViaSidecar($sidecar, $service);
+            } catch (\Exception $e) {
+                Log::error('AI Analysis via sidecar failed', [
+                    'analysis_id' => $this->analysis->id,
+                    'context'     => $this->contextType,
+                    'attempt'     => $this->attempts(),
+                    'error'       => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+            return;
+        }
+
+        // Flag-off path: direct PHP → Ollama / HuggingFace
         if (!$service->isReachable()) {
             $this->analysis->update([
                 'status'      => 'offline_pending',
@@ -64,10 +82,6 @@ class AnalyseConsultationJob implements ShouldQueue
         }
 
         try {
-            if ($this->contextType === 'consultation' && PlatformSetting::isEnabled('ai.sidecar.enabled')) {
-                $this->handleViaSidecar($sidecar);
-                return;
-            }
 
             $patient = Patient::find($this->analysis->patient_id);
 
@@ -107,10 +121,21 @@ class AnalyseConsultationJob implements ShouldQueue
     }
 
     /**
-     * Route a consultation analysis through the Python AI sidecar.
-     * Assembles a structured ConsultInput (pseudonymised) and calls /v1/consult.
+     * Route any analysis context through the sidecar's active model provider.
+     * Consultation → /v1/consult (ETCSLV harness).
+     * Lab / Radiology → /v1/analyse (generic single-turn, same provider).
      */
-    private function handleViaSidecar(AiSidecarClient $sidecar): void
+    private function handleViaSidecar(AiSidecarClient $sidecar, MedGemmaService $service): void
+    {
+        match ($this->contextType) {
+            'consultation' => $this->handleConsultationViaSidecar($sidecar),
+            'lab'          => $this->handleLabViaSidecar($sidecar, $service),
+            'radiology'    => $this->handleRadiologyViaSidecar($sidecar, $service),
+            default        => throw new \InvalidArgumentException("Unknown context type: {$this->contextType}"),
+        };
+    }
+
+    private function handleConsultationViaSidecar(AiSidecarClient $sidecar): void
     {
         $patient = Patient::with(['triageVitals', 'prescriptions.items', 'invoices.items.serviceCatalog'])
             ->find($this->analysis->patient_id);
@@ -143,22 +168,54 @@ class AnalyseConsultationJob implements ShouldQueue
                 'status'      => 'completed',
             ]);
 
-            $this->analysis->refresh();
-            $requester = $this->analysis->requester;
-            if ($requester) {
-                $requester->notify(new AiAnalysisCompleted($this->analysis));
-            }
+            $this->notifyRequester();
         } catch (\Exception $e) {
-            Log::error('AI Analysis via sidecar failed', [
-                'analysis_id' => $this->analysis->id,
-                'attempt'     => $this->attempts(),
-                'error'       => $e->getMessage(),
-            ]);
-
-            // Do NOT set status=failed here — the job retry mechanism is still active.
-            // Status remains 'pending' so the UI polling continues.
-            // The failed() method sets status=failed only after all retries are exhausted.
             throw $e;
+        }
+    }
+
+    private function handleLabViaSidecar(AiSidecarClient $sidecar, MedGemmaService $service): void
+    {
+        if (!$this->invoiceId) {
+            throw new \InvalidArgumentException('Invoice ID required for lab analysis');
+        }
+
+        $invoice = Invoice::with(['patient', 'items.serviceCatalog'])->find($this->invoiceId);
+        if (!$invoice) {
+            throw new \Exception('Invoice not found');
+        }
+
+        $prompt = $service->buildLabPromptPublic($invoice);
+        $text   = $sidecar->analyseText($service->getSystemPrompt(), $prompt);
+
+        $this->analysis->update(['ai_response' => $text, 'status' => 'completed']);
+        $this->notifyRequester();
+    }
+
+    private function handleRadiologyViaSidecar(AiSidecarClient $sidecar, MedGemmaService $service): void
+    {
+        if (!$this->invoiceId) {
+            throw new \InvalidArgumentException('Invoice ID required for radiology analysis');
+        }
+
+        $invoice = Invoice::with(['patient', 'items.serviceCatalog'])->find($this->invoiceId);
+        if (!$invoice) {
+            throw new \Exception('Invoice not found');
+        }
+
+        $prompt = $service->buildRadiologyPromptPublic($invoice);
+        $text   = $sidecar->analyseText($service->getSystemPrompt(), $prompt);
+
+        $this->analysis->update(['ai_response' => $text, 'status' => 'completed']);
+        $this->notifyRequester();
+    }
+
+    private function notifyRequester(): void
+    {
+        $this->analysis->refresh();
+        $requester = $this->analysis->requester;
+        if ($requester) {
+            $requester->notify(new AiAnalysisCompleted($this->analysis));
         }
     }
 
