@@ -37,7 +37,7 @@ class WorkflowSeeder extends Seeder
     private User $owner;
     private User $drAhmed;
     private User $drFatima;
-    private User $drSidra;
+    private ?User $drSidra;
     private User $receptionist;
     private User $triageNurse;
     private User $labTech;
@@ -53,7 +53,8 @@ class WorkflowSeeder extends Seeder
         $this->owner = User::role('Owner')->first();
         $this->drAhmed = User::where('email', 'doctor@clinic.com')->first();
         $this->drFatima = User::where('email', 'doctor2@clinic.com')->first();
-        $this->drSidra = User::where('email', 'muneebkhaliq@gmail.com')->first();
+        $this->drSidra = User::where('email', 'muneebkhaliq@gmail.com')->first()
+            ?? $this->drFatima;
         $this->receptionist = User::role('Receptionist')->first();
         $this->triageNurse = User::role('Triage')->first();
         $this->labTech = User::role('Laboratory')->first();

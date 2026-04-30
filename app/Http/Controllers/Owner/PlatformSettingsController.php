@@ -135,7 +135,8 @@ class PlatformSettingsController extends Controller
             }
         }
 
-        // Save API keys encrypted — only overwrite when a non-empty value submitted
+        // Save API keys as plaintext — sidecar must read them directly; Laravel encrypt() is
+        // PHP-only and cannot be decrypted by the Python sidecar.
         $keys = [
             'ai.model.openai.key'     => $v['openai_key']    ?? null,
             'ai.model.anthropic.key'  => $v['anthropic_key'] ?? null,
@@ -143,20 +144,54 @@ class PlatformSettingsController extends Controller
         ];
         foreach ($keys as $settingKey => $rawKey) {
             if (!empty($rawKey)) {
-                $this->saveModelSetting($settingKey, encrypt($rawKey));
+                $this->saveModelSetting($settingKey, $rawKey);
             }
         }
 
-        // Hot-swap sidecar — fail-open
+        // Hot-swap sidecar — pass all current config (including plaintext keys) directly in the
+        // request body so the sidecar never needs to decrypt anything from DB.
         try {
             $sidecarUrl = config('services.sidecar.url', env('CLINIC_SIDECAR_URL', 'http://localhost:8001'));
+
+            $reloadPayload = $this->buildReloadPayload($v);
+
             Http::withToken($this->mintSidecarJwt())->timeout(5)
-                ->post($sidecarUrl . '/v1/config/reload');
+                ->post($sidecarUrl . '/v1/config/reload', $reloadPayload);
         } catch (\Exception) {
             // Non-fatal — sidecar picks up changes on next restart
         }
 
         return response()->json(['ok' => true, 'provider' => $v['provider']]);
+    }
+
+    /**
+     * Build the env-var payload sent to /v1/config/reload.
+     * All values are plaintext — the sidecar sets them directly into os.environ.
+     */
+    private function buildReloadPayload(array $v): array
+    {
+        $env = ['AI_MODEL_PROVIDER' => $v['provider']];
+
+        $map = [
+            'OLLAMA_URL'      => $v['ollama_url']      ?? null,
+            'OLLAMA_MODEL'    => $v['ollama_model']     ?? null,
+            'OPENAI_BASE_URL' => $v['openai_base_url']  ?? null,
+            'OPENAI_MODEL'    => $v['openai_model']     ?? null,
+            'OPENAI_API_KEY'  => $v['openai_key']       ?? null,
+            'ANTHROPIC_MODEL' => $v['anthropic_model']  ?? null,
+            'ANTHROPIC_API_KEY' => $v['anthropic_key']  ?? null,
+            'HF_BASE_URL'     => $v['hf_base_url']      ?? null,
+            'HF_MODEL'        => $v['hf_model']         ?? null,
+            'HF_API_KEY'      => $v['hf_key']           ?? null,
+        ];
+
+        foreach ($map as $envKey => $value) {
+            if (!empty($value)) {
+                $env[$envKey] = $value;
+            }
+        }
+
+        return ['env' => $env];
     }
 
     private function saveModelSetting(string $key, string $value): void

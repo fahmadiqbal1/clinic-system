@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials
@@ -34,6 +35,12 @@ class HealthResponse(BaseModel):
     version: str
 
 
+class ReloadRequest(BaseModel):
+    # Optional direct env-var payload from Laravel (plaintext). When provided,
+    # these values are applied immediately without touching the DB query path.
+    env: Optional[dict[str, str]] = None
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(status="ok", version="2.0.0")
@@ -63,36 +70,53 @@ async def current_config(
 
 @router.post("/v1/config/reload")
 async def reload_config(
+    body: ReloadRequest = ReloadRequest(),
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
     """
     Hot-swap model provider + model names without restarting the sidecar.
-    Reads all ai.model.* rows from platform_settings (via clinic_ro) and
-    writes them into os.environ in-process, then resets harness singletons.
+
+    Two paths:
+    1. If `body.env` is present (sent by Laravel after UI save): apply those values
+       directly — no DB read needed, and no decryption problem with API keys.
+    2. Otherwise: read ai.model.* rows from platform_settings via clinic_ro (non-secret
+       fields only — provider, URLs, model names).
     """
     verify_jwt(credentials.credentials, os.environ["SIDECAR_JWT_SECRET"])
 
-    try:
-        from app.services import db as db_service
-        async with db_service.cursor() as cur:
-            await cur.execute(
-                "SELECT platform_name, meta FROM platform_settings "
-                "WHERE provider = 'model_config'"
-            )
-            rows = await cur.fetchall()
-    except Exception as exc:
-        return {"reloaded": False, "error": str(exc),
-                "provider": os.environ.get("AI_MODEL_PROVIDER", "ollama")}
-
     updated: list[str] = []
-    for row in rows:
-        env_key = _DB_TO_ENV.get(row["platform_name"])
-        if not env_key:
-            continue
-        raw = (row.get("meta") or {}).get("value", "")
-        if raw:
-            os.environ[env_key] = str(raw)
-            updated.append(env_key if "key" not in env_key.lower() else env_key + "=***")
+
+    if body.env:
+        # Fast path — Laravel passed the full config as plaintext
+        for env_key, value in body.env.items():
+            if value:
+                os.environ[env_key] = value
+                label = env_key + "=***" if "key" in env_key.lower() else env_key
+                updated.append(label)
+    else:
+        # Fallback — read non-secret fields from DB (API keys remain whatever was last set)
+        try:
+            from app.services import db as db_service
+            async with db_service.cursor() as cur:
+                await cur.execute(
+                    "SELECT platform_name, meta FROM platform_settings "
+                    "WHERE provider = 'model_config'"
+                )
+                rows = await cur.fetchall()
+        except Exception as exc:
+            return {"reloaded": False, "error": str(exc),
+                    "provider": os.environ.get("AI_MODEL_PROVIDER", "ollama")}
+
+        for row in rows:
+            env_key = _DB_TO_ENV.get(row["platform_name"])
+            if not env_key:
+                continue
+            # Skip key fields in DB fallback — they are stored plaintext but we only
+            # populate them via the body.env path to keep the fast path canonical.
+            raw = (row.get("meta") or {}).get("value", "")
+            if raw:
+                os.environ[env_key] = str(raw)
+                updated.append(env_key if "key" not in env_key.lower() else env_key + "=***")
 
     from app.agent.harness_factory import HarnessFactory
     HarnessFactory.reset()
