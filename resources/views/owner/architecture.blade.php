@@ -125,9 +125,16 @@
             <button id="btn-fit" class="btn btn-sm btn-outline-secondary ms-auto" style="font-size:0.75rem;">
                 <i class="bi bi-fullscreen me-1"></i>Fit
             </button>
+            <span id="graphSampleBadge" class="badge bg-secondary ms-1" style="font-size:0.7rem;"></span>
         </div>
 
-        <div id="cy"></div>
+        <div style="position:relative; height:560px;">
+            <div id="cy" style="width:100%;height:100%;"></div>
+            <div id="cy-loading" class="d-flex align-items-center justify-content-center"
+                 style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.85);border-radius:var(--card-radius,12px);color:#94a3b8;z-index:10;">
+                <span class="spinner-border spinner-border-sm me-2"></span> Loading graph…
+            </div>
+        </div>
 
         <div class="mt-2 small text-muted">
             Scroll to zoom · Drag nodes · Click a node to highlight its connections
@@ -162,12 +169,16 @@
 
 @if($enabled && $graph)
 @push('scripts')
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.4/cytoscape.min.js"
-        integrity="sha512-6tBbfPFl7F9LVoVPlaCJfCpH9Ky8qsMNb8E6GY2E3dqD9e6hcpq97G5WcUHHi7KF8SZ5VDVPYRCy0iFzNFNLg=="
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="{{ asset('js/cytoscape.min.js') }}"></script>
 <script>
 (function () {
-    const TYPE_COLORS = {
+    function showErr(msg) {
+        var el = document.getElementById('cy-loading');
+        if (el) el.innerHTML = '<span class="text-danger small"><i class="bi bi-exclamation-triangle me-1"></i>' + msg + '</span>';
+    }
+    if (typeof cytoscape === 'undefined') { showErr('Graph library not loaded.'); return; }
+
+    var TYPE_COLORS = {
         model:      '#6366f1',
         service:    '#10b981',
         controller: '#f59e0b',
@@ -183,25 +194,54 @@
         other:      '#94a3b8',
     };
 
-    const elements = @json($graph);
+    try {
+    var raw      = @json($graph);
+    } catch(e) { showErr('Graph data parse error: ' + e.message); return; }
+    var allNodes = (raw && raw.nodes) ? raw.nodes : (Array.isArray(raw) ? raw.filter(function(e){return !e.data.source;}) : []);
+    var allEdges = (raw && raw.edges) ? raw.edges : (Array.isArray(raw) ? raw.filter(function(e){return  e.data.source;}) : []);
 
-    const cy = cytoscape({
+    // Sample top MAX_NODES nodes by degree so the browser doesn't freeze
+    var MAX_NODES = 400;
+    var degree    = {};
+    allEdges.forEach(function (e) {
+        degree[e.data.source] = (degree[e.data.source] || 0) + 1;
+        degree[e.data.target] = (degree[e.data.target] || 0) + 1;
+    });
+    var sorted    = allNodes.slice().sort(function (a, b) { return (degree[b.data.id] || 0) - (degree[a.data.id] || 0); });
+    var topIds    = new Set(sorted.slice(0, MAX_NODES).map(function (n) { return n.data.id; }));
+    var nodes     = allNodes.filter(function (n) { return topIds.has(n.data.id); });
+    var edges     = allEdges.filter(function (e) { return topIds.has(e.data.source) && topIds.has(e.data.target); });
+
+    if (!allNodes.length) { showErr('No graph nodes found. Run: php artisan gitnexus:scan'); return; }
+
+    document.getElementById('graphSampleBadge').textContent =
+        allNodes.length > MAX_NODES ? 'Top ' + MAX_NODES + ' of ' + allNodes.length + ' nodes' : allNodes.length + ' nodes';
+
+    function hideLoader() {
+        var loader = document.getElementById('cy-loading');
+        if (loader) loader.style.display = 'none';
+    }
+    // Fallback: hide spinner after 3s regardless of layout state
+    var loaderTimeout = setTimeout(hideLoader, 3000);
+
+    try {
+    var cy = cytoscape({
         container: document.getElementById('cy'),
-        elements:  elements,
+        elements:  { nodes: nodes, edges: edges },
         style: [
             {
                 selector: 'node',
                 style: {
                     'label':            'data(label)',
-                    'background-color': (ele) => TYPE_COLORS[ele.data('type')] || '#94a3b8',
+                    'background-color': function (ele) { return TYPE_COLORS[ele.data('type')] || '#94a3b8'; },
                     'color':            '#f8fafc',
-                    'font-size':        '10px',
+                    'font-size':        '9px',
                     'text-valign':      'center',
                     'text-halign':      'center',
-                    'width':            28,
-                    'height':           28,
+                    'width':            22,
+                    'height':           22,
                     'text-wrap':        'wrap',
-                    'text-max-width':   60,
+                    'text-max-width':   50,
                     'border-width':     1,
                     'border-color':     'rgba(255,255,255,0.15)',
                 },
@@ -209,42 +249,42 @@
             {
                 selector: 'edge',
                 style: {
-                    'width':             1,
-                    'line-color':        'rgba(148,163,184,0.3)',
-                    'target-arrow-color':'rgba(148,163,184,0.4)',
-                    'target-arrow-shape':'triangle',
-                    'curve-style':       'bezier',
-                    'arrow-scale':       0.7,
+                    'width':              1,
+                    'line-color':         'rgba(148,163,184,0.25)',
+                    'target-arrow-color': 'rgba(148,163,184,0.35)',
+                    'target-arrow-shape': 'triangle',
+                    'curve-style':        'bezier',
+                    'arrow-scale':        0.6,
                 },
             },
             {
                 selector: 'node.highlighted',
-                style: {
-                    'border-width': 3,
-                    'border-color': '#f8fafc',
-                    'z-index':      10,
-                },
+                style: { 'border-width': 3, 'border-color': '#f8fafc', 'z-index': 10 },
             },
             {
                 selector: 'node.faded, edge.faded',
-                style: { opacity: 0.15 },
+                style: { opacity: 0.12 },
             },
         ],
         layout: {
-            name:              'cose',
-            animate:           false,
-            nodeRepulsion:     5000,
-            idealEdgeLength:   80,
-            gravity:           0.8,
-            numIter:           800,
+            name:         'grid',
+            animate:      false,
+            padding:      10,
+            avoidOverlap: true,
         },
     });
 
+    // Hide spinner once layout completes (works for both sync and async layouts)
+    cy.one('layoutstop', function () { clearTimeout(loaderTimeout); hideLoader(); });
+    // Also hide immediately in case layoutstop already fired synchronously
+    clearTimeout(loaderTimeout); hideLoader();
+    cy.fit(30);
+
     // Highlight on click
     cy.on('tap', 'node', function (evt) {
-        const node = evt.target;
+        var node      = evt.target;
+        var connected = node.closedNeighborhood();
         cy.elements().removeClass('highlighted faded');
-        const connected = node.closedNeighborhood();
         cy.elements().not(connected).addClass('faded');
         connected.addClass('highlighted');
     });
@@ -255,17 +295,18 @@
     });
 
     // Fit button
-    document.getElementById('btn-fit').addEventListener('click', () => cy.fit(30));
+    document.getElementById('btn-fit').addEventListener('click', function () { cy.fit(30); });
 
     // Filter buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    document.querySelectorAll('.filter-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             this.classList.toggle('active');
-            const type    = this.dataset.type;
-            const visible = this.classList.contains('active');
-            cy.nodes(`[type = "${type}"]`).style('display', visible ? 'element' : 'none');
+            var type    = this.dataset.type;
+            var visible = this.classList.contains('active');
+            cy.nodes('[type = "' + type + '"]').style('display', visible ? 'element' : 'none');
         });
     });
+    } catch(e) { showErr('Graph render error: ' + e.message); }
 })();
 </script>
 @endpush

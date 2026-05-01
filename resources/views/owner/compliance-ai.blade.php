@@ -15,7 +15,7 @@
 
     <div class="card mb-3 fade-in">
         <div class="card-body">
-            <form id="complianceAiForm" class="row g-3">
+            <form id="complianceAiForm" action="{{ route('owner.compliance-ai.run') }}" class="row g-3">
                 @csrf
                 <div class="col-md-4">
                     <label class="form-label">Scope</label>
@@ -32,7 +32,7 @@
                     <input type="number" name="period_days" class="form-control" min="1" max="365" value="30">
                 </div>
                 <div class="col-md-5 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">
+                    <button type="submit" id="complianceAiBtn" class="btn btn-primary w-100">
                         <i class="bi bi-cpu me-1"></i>Run compliance check
                     </button>
                 </div>
@@ -46,52 +46,110 @@
 
     <div id="complianceAiResult" class="card fade-in d-none">
         <div class="card-body">
-            <div id="complianceAiStatus" class="mb-2"></div>
-            <pre id="complianceAiRationale" style="white-space:pre-wrap;"></pre>
-            <div id="complianceAiEvidence" class="small text-muted"></div>
-            <div id="complianceAiIssues" class="text-warning small mt-3"></div>
+            <div id="complianceAiMeta" class="mb-3"></div>
+            <div id="complianceAiEscalation"></div>
+            <div id="complianceAiSections"></div>
+            <div id="complianceAiEvidence" class="small text-muted mt-2"></div>
+            <div id="complianceAiIssues" class="text-warning small mt-2"></div>
+            <details class="mt-3">
+                <summary class="text-muted small" style="cursor:pointer;">Full model output</summary>
+                <pre id="complianceAiRaw" style="white-space:pre-wrap; font-size:0.78rem;" class="mt-2 p-2 rounded"></pre>
+            </details>
         </div>
     </div>
 </div>
 
 <script>
-document.getElementById('complianceAiForm').addEventListener('submit', async function (e) {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const payload = Object.fromEntries(fd.entries());
-    delete payload._token;
-    const box = document.getElementById('complianceAiResult');
-    box.classList.remove('d-none');
-    document.getElementById('complianceAiRationale').textContent = 'Running compliance checks…';
+(function () {
+    function parseSections(text) {
+        return text.split(/^## /m).filter(Boolean).map(function (p) {
+            var nl = p.indexOf('\n');
+            return { title: p.slice(0, nl).trim(), body: p.slice(nl + 1).trim() };
+        });
+    }
+    function escHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function renderSections(sections, container) {
+        container.innerHTML = sections.map(function (s) {
+            return '<div class="card mb-2">' +
+                '<div class="card-header py-2 fw-semibold small text-uppercase">' + escHtml(s.title) + '</div>' +
+                '<div class="card-body py-2" style="white-space:pre-wrap;font-size:0.88rem;">' + escHtml(s.body) + '</div>' +
+                '</div>';
+        }).join('');
+    }
 
-    const r = await fetch('{{ route('owner.compliance-ai.run') }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-        body: JSON.stringify(payload),
+    var STATUS_CLASS = { COMPLIANT: 'success', REQUIRES_REVIEW: 'warning', NON_COMPLIANT: 'danger' };
+
+    document.getElementById('complianceAiForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var btn          = document.getElementById('complianceAiBtn');
+        var resultBox    = document.getElementById('complianceAiResult');
+        var metaEl       = document.getElementById('complianceAiMeta');
+        var escalationEl = document.getElementById('complianceAiEscalation');
+        var sectionsEl   = document.getElementById('complianceAiSections');
+        var evidenceEl   = document.getElementById('complianceAiEvidence');
+        var issuesEl     = document.getElementById('complianceAiIssues');
+        var rawEl        = document.getElementById('complianceAiRaw');
+
+        var fd      = new FormData(e.target);
+        var payload = Object.fromEntries(fd.entries());
+        delete payload._token;
+        if (payload.period_days) payload.period_days = parseInt(payload.period_days, 10);
+        if (!payload.custom_question) delete payload.custom_question;
+
+        btn.disabled = true;
+        resultBox.classList.remove('d-none');
+        metaEl.innerHTML      = '';
+        escalationEl.innerHTML = '';
+        evidenceEl.innerHTML   = '';
+        issuesEl.innerHTML     = '';
+        rawEl.textContent      = '';
+        sectionsEl.innerHTML   = '<div class="text-center py-4"><span class="spinner-border spinner-border-sm me-2"></span>Running compliance checks…</div>';
+
+        fetch(e.target.action, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            body: JSON.stringify(payload),
+        })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+            btn.disabled = false;
+            var data = res.data;
+            if (!res.ok) {
+                sectionsEl.innerHTML = '<div class="alert alert-danger">' + escHtml(data.error || data.message || 'Request failed.') + '</div>';
+                return;
+            }
+            var sClass = STATUS_CLASS[data.status] || 'secondary';
+            metaEl.innerHTML =
+                '<span class="badge bg-' + sClass + ' me-1">Status: ' + escHtml(data.status || '—') + '</span>' +
+                '<span class="badge bg-secondary">Confidence: ' + (data.confidence ? (data.confidence * 100).toFixed(0) : '—') + '%</span>';
+
+            escalationEl.innerHTML = data.escalation_pending
+                ? '<div class="alert alert-danger py-2 mt-2"><i class="bi bi-exclamation-triangle-fill me-1"></i><strong>ESCALATION REQUIRED</strong> — owner must review and respond.</div>'
+                : '';
+
+            var sections = parseSections(data.rationale || '');
+            if (sections.length) {
+                renderSections(sections, sectionsEl);
+            } else {
+                sectionsEl.innerHTML = '<p class="text-muted small">No structured output returned.</p>';
+            }
+
+            var refs = (data.evidence_refs || []).map(function (r) { return '<code>' + escHtml(r) + '</code>'; }).join(' ');
+            evidenceEl.innerHTML = refs ? '<strong>Evidence refs:</strong> ' + refs : '';
+
+            var iss = (data.verification_issues || []).map(function (i) { return '<li>' + escHtml(i) + '</li>'; }).join('');
+            issuesEl.innerHTML = iss ? '<strong>Quality flags:</strong><ul>' + iss + '</ul>' : '';
+
+            rawEl.textContent = data.rationale || '';
+        })
+        .catch(function (err) {
+            btn.disabled = false;
+            sectionsEl.innerHTML = '<div class="alert alert-warning">Network error: ' + escHtml(err.message) + '</div>';
+        });
     });
-    const data = await r.json();
-    if (!r.ok) {
-        document.getElementById('complianceAiRationale').textContent = data.error || 'Request failed.';
-        return;
-    }
-    const statusClass = {
-        COMPLIANT: 'success', REQUIRES_REVIEW: 'warning', NON_COMPLIANT: 'danger',
-    }[data.status] || 'secondary';
-    let banner = '';
-    if (data.escalation_pending) {
-        banner = '<div class="alert alert-danger mt-2">⚠️ ESCALATION REQUIRED — owner must review and respond.</div>';
-    }
-    document.getElementById('complianceAiStatus').innerHTML =
-        `<span class="badge bg-${statusClass}">Status: ${data.status}</span> ` +
-        `<span class="badge bg-secondary">Confidence: ${(data.confidence * 100).toFixed(0)}%</span>` +
-        banner;
-    document.getElementById('complianceAiRationale').textContent = data.rationale || '';
-    const refs = (data.evidence_refs || []).map(r => `<code>${r}</code>`).join(' ');
-    document.getElementById('complianceAiEvidence').innerHTML =
-        refs ? `<strong>Evidence refs:</strong> ${refs}` : '';
-    const issues = (data.verification_issues || []).map(i => `<li>${i}</li>`).join('');
-    document.getElementById('complianceAiIssues').innerHTML =
-        issues ? `<strong>Quality flags:</strong><ul>${issues}</ul>` : '';
-});
+}());
 </script>
 @endsection

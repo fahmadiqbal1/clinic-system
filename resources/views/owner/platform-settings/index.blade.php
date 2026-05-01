@@ -421,7 +421,7 @@ cloudflared tunnel --url http://localhost:11434</pre>
             </div>
             <div class="ms-auto">
                 <span class="badge bg-info px-3 py-2" id="activeProviderBadge">
-                    {{ ['ollama'=>'Offline (Ollama)','openai'=>'OpenAI','anthropic'=>'Anthropic','huggingface'=>'Hugging Face'][$currentProvider] ?? $currentProvider }}
+                    {{ ['ollama'=>'Offline (Ollama)','openai'=>'OpenAI','anthropic'=>'Anthropic','huggingface'=>'Hugging Face','groq'=>'Groq (Free)'][$currentProvider] ?? $currentProvider }}
                 </span>
             </div>
         </div>
@@ -433,6 +433,7 @@ cloudflared tunnel --url http://localhost:11434</pre>
                 'openai'       => ['icon'=>'bi-stars',             'label'=>'OpenAI',              'col'=>'primary'],
                 'anthropic'    => ['icon'=>'bi-lightning-charge',  'label'=>'Anthropic',           'col'=>'success'],
                 'huggingface'  => ['icon'=>'bi-boxes',             'label'=>'Hugging Face',        'col'=>'warning'],
+                'groq'         => ['icon'=>'bi-speedometer2',       'label'=>'Groq (Free)',         'col'=>'info'],
             ] as $pVal => $pCfg)
             <li class="nav-item">
                 <button class="nav-link provider-tab {{ $currentProvider === $pVal ? 'active' : '' }}"
@@ -523,7 +524,7 @@ cloudflared tunnel --url http://localhost:11434</pre>
                 <div class="col-md-4">
                     <label class="form-label small fw-semibold">Model ID <span class="text-danger">*</span></label>
                     <input type="text" id="hf_model" class="form-control form-control-sm"
-                           placeholder="e.g. mistralai/Mistral-7B-Instruct-v0.3"
+                           placeholder="e.g. HuggingFaceH4/zephyr-7b-beta"
                            value="{{ $mc['ai.model.hf.model'] ?? '' }}">
                     <div class="form-text">Full <code>org/model-name</code> from Hugging Face</div>
                 </div>
@@ -542,6 +543,31 @@ cloudflared tunnel --url http://localhost:11434</pre>
                            value="{{ $mc['ai.model.hf.base_url'] ?? '' }}">
                     <div class="form-text">Change only if using a private HF Endpoint</div>
                 </div>
+            </div>
+        </div>
+
+        {{-- ── Groq ── --}}
+        <div class="provider-pane" id="pane-groq" style="{{ $currentProvider !== 'groq' ? 'display:none' : '' }}">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label small fw-semibold">Model ID <span class="text-danger">*</span></label>
+                    <input type="text" id="groq_model" class="form-control form-control-sm"
+                           placeholder="e.g. llama-3.1-8b-instant"
+                           value="{{ $mc['ai.model.groq.model'] ?? '' }}">
+                    <div class="form-text">Free models: <code>llama-3.1-8b-instant</code>, <code>mixtral-8x7b-32768</code>, <code>llama-3.3-70b-versatile</code></div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-semibold">API Key <span class="text-danger">*</span></label>
+                    <input type="password" id="groq_key" class="form-control form-control-sm"
+                           placeholder="gsk_...  (leave blank to keep saved key)">
+                    @if(!empty($mc['ai.model.groq.key']))
+                        <div class="form-text text-success"><i class="bi bi-check-circle me-1"></i>Key saved</div>
+                    @endif
+                </div>
+            </div>
+            <div class="alert alert-info py-2 mb-0 small mt-3">
+                <i class="bi bi-info-circle me-1"></i>
+                Get a free API key at <strong>console.groq.com</strong>. No model gating — all listed models are immediately accessible on the free tier.
             </div>
         </div>
 
@@ -953,7 +979,7 @@ document.querySelectorAll('.flag-toggle').forEach(function(toggle) {
 
 // ── AI Model Provider switcher ────────────────────────────────────────────────
 (function () {
-    const LABELS = { ollama: 'Offline (Ollama)', openai: 'OpenAI', anthropic: 'Anthropic', huggingface: 'Hugging Face' };
+    const LABELS = { ollama: 'Offline (Ollama)', openai: 'OpenAI', anthropic: 'Anthropic', huggingface: 'Hugging Face', groq: 'Groq (Free)' };
     let selectedProvider = document.querySelector('.provider-tab.active')?.dataset.provider ?? 'ollama';
 
     document.querySelectorAll('.provider-tab').forEach(tab => {
@@ -987,6 +1013,8 @@ document.querySelectorAll('.flag-toggle').forEach(function(toggle) {
             hf_model:        v('hf_model'),
             hf_key:          v('hf_key'),
             hf_base_url:     v('hf_base_url'),
+            groq_model:      v('groq_model'),
+            groq_key:        v('groq_key'),
         };
 
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
@@ -1002,20 +1030,25 @@ document.querySelectorAll('.flag-toggle').forEach(function(toggle) {
             btn.disabled = false;
             if (data.ok) {
                 document.getElementById('activeProviderBadge').textContent = LABELS[data.provider] ?? data.provider;
-                status.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Saved & applied</span>';
                 // Clear key fields after save
-                ['openai_key','anthropic_key','hf_key'].forEach(id => {
+                ['openai_key','anthropic_key','hf_key','groq_key'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.value = '';
                 });
-                setTimeout(() => { status.textContent = ''; }, 4000);
+                if (data.sidecar_synced) {
+                    status.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Saved &amp; synced to AI engine</span>';
+                } else {
+                    const tip = data.sidecar_error ? ` (${data.sidecar_error})` : '';
+                    status.innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>Saved to DB — AI engine offline, changes apply on restart' + tip + '</span>';
+                }
+                setTimeout(() => { status.textContent = ''; }, 6000);
             } else {
                 status.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>' + (data.error ?? 'Error') + '</span>';
             }
         })
         .catch(() => {
             btn.disabled = false;
-            status.innerHTML = '<span class="text-danger">Network error — sidecar may be offline. Config saved to DB.</span>';
+            status.innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>Network error — config saved to DB, AI engine not reachable.</span>';
         });
     });
 })();

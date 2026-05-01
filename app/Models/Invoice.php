@@ -456,20 +456,19 @@ class Invoice extends Model
             'discount_approved_at' => null,
         ]);
 
-        AuditLog::create([
-            'user_id' => $requesterId,
-            'action' => 'discount_requested',
-            'auditable_type' => self::class,
-            'auditable_id' => $this->id,
-            'before_state' => json_encode($oldState),
-            'after_state' => json_encode([
+        AuditLog::log(
+            'discount_requested',
+            self::class,
+            $this->id,
+            $oldState,
+            [
                 'discount_amount' => $amount,
                 'discount_reason' => $reason,
                 'discount_status' => self::DISCOUNT_PENDING,
-            ]),
-            'ip_address' => request()?->ip(),
-            'created_at' => now(),
-        ]);
+            ],
+            $requesterId,
+            request()?->ip()
+        );
 
         return true;
     }
@@ -496,19 +495,18 @@ class Invoice extends Model
             'net_amount' => $this->total_amount - ($this->discount_amount ?? 0),
         ]);
 
-        AuditLog::create([
-            'user_id' => $ownerId,
-            'action' => 'discount_approved',
-            'auditable_type' => self::class,
-            'auditable_id' => $this->id,
-            'before_state' => json_encode(['discount_status' => self::DISCOUNT_PENDING]),
-            'after_state' => json_encode([
+        AuditLog::log(
+            'discount_approved',
+            self::class,
+            $this->id,
+            ['discount_status' => self::DISCOUNT_PENDING],
+            [
                 'discount_amount' => $this->discount_amount,
                 'discount_status' => self::DISCOUNT_APPROVED,
-            ]),
-            'ip_address' => request()?->ip(),
-            'created_at' => now(),
-        ]);
+            ],
+            $ownerId,
+            request()?->ip()
+        );
 
         return true;
     }
@@ -538,23 +536,22 @@ class Invoice extends Model
             'discount_approved_at' => now(),
         ]);
 
-        AuditLog::create([
-            'user_id' => $ownerId,
-            'action' => 'discount_rejected',
-            'auditable_type' => self::class,
-            'auditable_id' => $this->id,
-            'before_state' => json_encode([
+        AuditLog::log(
+            'discount_rejected',
+            self::class,
+            $this->id,
+            [
                 'discount_amount' => $rejectedAmount,
                 'discount_status' => self::DISCOUNT_PENDING,
-            ]),
-            'after_state' => json_encode([
+            ],
+            [
                 'discount_amount' => 0,
                 'discount_status' => self::DISCOUNT_REJECTED,
                 'rejection_reason' => $reason,
-            ]),
-            'ip_address' => request()?->ip(),
-            'created_at' => now(),
-        ]);
+            ],
+            $ownerId,
+            request()?->ip()
+        );
 
         return true;
     }
@@ -598,20 +595,19 @@ class Invoice extends Model
             'discount_approved_at' => now(),
         ]);
 
-        AuditLog::create([
-            'user_id' => $ownerId,
-            'action' => 'discount_applied',
-            'auditable_type' => self::class,
-            'auditable_id' => $this->id,
-            'before_state' => json_encode(['discount_amount' => $oldDiscount]),
-            'after_state' => json_encode([
+        AuditLog::log(
+            'discount_applied',
+            self::class,
+            $this->id,
+            ['discount_amount' => $oldDiscount],
+            [
                 'discount_amount' => $amount,
                 'discount_by' => $ownerId,
                 'discount_reason' => $reason,
-            ]),
-            'ip_address' => request()?->ip(),
-            'created_at' => now(),
-        ]);
+            ],
+            $ownerId,
+            request()?->ip()
+        );
 
         return true;
     }

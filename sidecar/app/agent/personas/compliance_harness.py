@@ -86,12 +86,22 @@ class ComplianceAgentHarness(PersonaHarness):
         )
         return "\n".join(parts)
 
+    _SCOPE_TOOLS = {
+        "audit_chain":  {"audit_chain_verify"},
+        "phi_access":   {"phi_access_scan"},
+        "evidence_gap": {"evidence_gap"},
+        "flag_snapshot":{"flag_snapshot"},
+        "full":         {"audit_chain_verify", "phi_access_scan", "flag_snapshot", "evidence_gap"},
+    }
+
     def build_tools(self, body: Any) -> ToolRegistry:
         registry = ToolRegistry()
-        registry.register(make_audit_chain_tool())
-        registry.register(make_phi_access_scan_tool(body.period_days))
-        registry.register(make_flag_snapshot_tool())
-        registry.register(make_evidence_gap_tool())
+        scope   = getattr(body, "scope", "full")
+        allowed = self._SCOPE_TOOLS.get(scope, self._SCOPE_TOOLS["full"])
+        if "audit_chain_verify" in allowed: registry.register(make_audit_chain_tool())
+        if "phi_access_scan"    in allowed: registry.register(make_phi_access_scan_tool(body.period_days))
+        if "flag_snapshot"      in allowed: registry.register(make_flag_snapshot_tool())
+        if "evidence_gap"       in allowed: registry.register(make_evidence_gap_tool())
         return registry
 
     def post_process(self, rationale: str, body: Any) -> dict:

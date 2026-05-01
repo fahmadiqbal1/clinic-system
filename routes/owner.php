@@ -131,14 +131,15 @@ Route::middleware('role:Owner')->group(function () {
     Route::patch('/owner/retention-policy', [RetentionPolicyController::class, 'update'])->name('owner.retention-policy.update');
 
     // Phase 8 — Administrative / Operations / Compliance AI personas (flag-gated)
+    // Rate-limited to 20 AI requests per minute per authenticated user.
     Route::get('/owner/admin-ai',           [AdminAiController::class, 'index'])->name('owner.admin-ai.index');
-    Route::post('/owner/admin-ai/analyse',  [AdminAiController::class, 'analyse'])->name('owner.admin-ai.analyse');
+    Route::post('/owner/admin-ai/analyse',  [AdminAiController::class, 'analyse'])->middleware('throttle:20,1')->name('owner.admin-ai.analyse');
 
     Route::get('/owner/ops-ai',             [OpsAiController::class, 'index'])->name('owner.ops-ai.index');
-    Route::post('/owner/ops-ai/analyse',    [OpsAiController::class, 'analyse'])->name('owner.ops-ai.analyse');
+    Route::post('/owner/ops-ai/analyse',    [OpsAiController::class, 'analyse'])->middleware('throttle:20,1')->name('owner.ops-ai.analyse');
 
     Route::get('/owner/compliance-ai',      [ComplianceAiController::class, 'index'])->name('owner.compliance-ai.index');
-    Route::post('/owner/compliance-ai/run', [ComplianceAiController::class, 'run'])->name('owner.compliance-ai.run');
+    Route::post('/owner/compliance-ai/run', [ComplianceAiController::class, 'run'])->middleware('throttle:10,1')->name('owner.compliance-ai.run');
 });
 
 // AI Assistant AJAX — accessible to any authenticated user; flag-checked per role inside controller

@@ -27,6 +27,9 @@ _DB_TO_ENV: dict[str, str] = {
     "ai.model.hf.base_url":       "HF_BASE_URL",
     "ai.model.hf.model":          "HF_MODEL",
     "ai.model.hf.key":            "HF_API_KEY",
+    # Groq
+    "ai.model.groq.model":        "GROQ_MODEL",
+    "ai.model.groq.key":          "GROQ_API_KEY",
 }
 
 
@@ -61,10 +64,12 @@ async def current_config(
         "anthropic_model": os.environ.get("ANTHROPIC_MODEL", ""),
         "hf_model":        os.environ.get("HF_MODEL", ""),
         "hf_base_url":     os.environ.get("HF_BASE_URL", ""),
+        "groq_model":      os.environ.get("GROQ_MODEL", ""),
         # keys: only report whether set, never the value
         "openai_key_set":    bool(os.environ.get("OPENAI_API_KEY")),
         "anthropic_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "hf_key_set":        bool(os.environ.get("HF_API_KEY")),
+        "groq_key_set":      bool(os.environ.get("GROQ_API_KEY")),
     }
 
 
@@ -107,13 +112,17 @@ async def reload_config(
             return {"reloaded": False, "error": str(exc),
                     "provider": os.environ.get("AI_MODEL_PROVIDER", "ollama")}
 
+        import json as _json
         for row in rows:
             env_key = _DB_TO_ENV.get(row["platform_name"])
             if not env_key:
                 continue
-            # Skip key fields in DB fallback — they are stored plaintext but we only
-            # populate them via the body.env path to keep the fast path canonical.
-            raw = (row.get("meta") or {}).get("value", "")
+            try:
+                meta_raw = row["meta"] if "meta" in row else (row.get("meta") or "{}")
+                parsed = _json.loads(meta_raw) if isinstance(meta_raw, str) else meta_raw
+                raw = parsed.get("value", "") if isinstance(parsed, dict) else ""
+            except Exception:
+                raw = ""
             if raw:
                 os.environ[env_key] = str(raw)
                 updated.append(env_key if "key" not in env_key.lower() else env_key + "=***")

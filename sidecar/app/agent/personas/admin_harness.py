@@ -88,11 +88,17 @@ class AdminAgentHarness(PersonaHarness):
 
     def build_tools(self, body: Any) -> ToolRegistry:
         registry = ToolRegistry()
-        # Always pre-fetch the four admin signals; the model uses what's relevant.
-        registry.register(make_revenue_anomaly_tool(body.period_days))
-        registry.register(make_discount_risk_tool(body.period_days))
-        registry.register(make_fbr_status_tool(body.period_days))
-        registry.register(make_payout_audit_tool(body.period_days))
+        qt = getattr(body, "query_type", "general")
+        # "general" runs all four tools; focused types run only the relevant tool(s)
+        # so the model receives targeted evidence rather than the same full set every time.
+        if qt in ("revenue_anomaly", "general"):
+            registry.register(make_revenue_anomaly_tool(body.period_days))
+        if qt in ("discount_risk", "general"):
+            registry.register(make_discount_risk_tool(body.period_days))
+        if qt in ("fbr_status", "general"):
+            registry.register(make_fbr_status_tool(body.period_days))
+        if qt in ("payout_audit", "general"):
+            registry.register(make_payout_audit_tool(body.period_days))
         return registry
 
     def post_process(self, rationale: str, body: Any) -> dict:

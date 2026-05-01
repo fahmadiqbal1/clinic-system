@@ -47,6 +47,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Fail fast on missing critical secrets before any request is served.
+        if ($this->app->isProduction()) {
+            foreach (['APP_KEY', 'CLINIC_CASE_TOKEN_SECRET', 'CLINIC_SIDECAR_JWT_SECRET'] as $key) {
+                if (empty(env($key))) {
+                    throw new \RuntimeException(
+                        "Required environment variable [{$key}] is not set. Cannot start in production mode."
+                    );
+                }
+            }
+        }
+
         // Register observers for centralized side effects
         Invoice::observe(InvoiceObserver::class);
         Patient::observe(PatientObserver::class);

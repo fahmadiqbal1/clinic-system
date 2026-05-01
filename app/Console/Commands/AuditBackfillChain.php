@@ -23,13 +23,15 @@ class AuditBackfillChain extends Command
 
         DB::table('audit_logs')->orderBy('id')->chunkById($chunk, function ($rows) use (&$prevHash, &$count, $bar) {
             foreach ($rows as $row) {
+                // Decode JSON columns so canonical matches AuditLog::canonicalJson()
+                // which receives PHP arrays at write-time.
                 $canonical = json_encode([
                     'user_id'        => $row->user_id,
                     'action'         => $row->action,
                     'auditable_type' => $row->auditable_type,
                     'auditable_id'   => $row->auditable_id,
-                    'before_state'   => $row->before_state,
-                    'after_state'    => $row->after_state,
+                    'before_state'   => is_string($row->before_state) ? json_decode($row->before_state, true) : $row->before_state,
+                    'after_state'    => is_string($row->after_state)  ? json_decode($row->after_state, true)  : $row->after_state,
                     'ip_address'     => $row->ip_address,
                     'user_agent'     => $row->user_agent ?? null,
                     'session_id'     => $row->session_id ?? null,
@@ -40,7 +42,11 @@ class AuditBackfillChain extends Command
 
                 DB::table('audit_logs')
                     ->where('id', $row->id)
-                    ->update(['prev_hash' => $prevHash, 'row_hash' => $rowHash]);
+                    ->update([
+                        'prev_hash'  => $prevHash,
+                        'row_hash'   => $rowHash,
+                        'created_at' => $row->created_at, // preserve original timestamp
+                    ]);
 
                 $prevHash = $rowHash;
                 $count++;

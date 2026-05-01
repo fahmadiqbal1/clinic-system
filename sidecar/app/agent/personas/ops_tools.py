@@ -96,19 +96,19 @@ def make_expense_category_tool(period_days: int) -> Tool:
     async def _q() -> dict:
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT category, COUNT(*) AS c "
+                "SELECT department, COUNT(*) AS c "
                 "FROM expenses "
-                "WHERE expense_date >= NOW() - INTERVAL %s DAY "
-                "GROUP BY category ORDER BY c DESC LIMIT 10",
+                "WHERE created_at >= NOW() - INTERVAL %s DAY "
+                "GROUP BY department ORDER BY c DESC LIMIT 10",
                 (period_days,),
             )
             rows = await cur.fetchall()
         if not rows:
             return {"tool": "expense_category_analysis", "answer": "No expense rows in window."}
-        summary = ", ".join(f"{r['category']}={r['c']}" for r in rows[:5])
+        summary = ", ".join(f"{r['department']}={r['c']}" for r in rows[:5])
         return {
             "tool": "expense_category_analysis",
-            "answer": f"Expense entry counts last {period_days}d: {summary}.",
+            "answer": f"Expense entry counts by department last {period_days}d: {summary}.",
         }
     return _failopen(
         "expense_category_analysis",

@@ -1,58 +1,42 @@
 #!/usr/bin/env bash
-# ============================================================
-# Aviva HealthCare — Production Deploy Script
-# Usage: bash scripts/deploy.sh [--skip-build]
-# Run from the project root directory.
-# ============================================================
-
 set -euo pipefail
 
-APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+APP_DIR="/var/www/clinic-system"
+COMPOSE="docker compose"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+
+log "=== Aviva Clinic -- Deploy starting ==="
+
 cd "$APP_DIR"
 
-echo "==> Deploying Aviva HealthCare from: $APP_DIR"
+log "Pulling latest code..."
+git pull origin master
 
-# ── 1. Pull latest code ──────────────────────────────────────
-echo "==> Pulling latest code..."
-git pull --ff-only
+log "Building application containers..."
+$COMPOSE build --no-cache app sidecar
 
-# ── 2. PHP dependencies ──────────────────────────────────────
-echo "==> Installing PHP dependencies..."
-composer install --no-dev --optimize-autoloader --no-interaction
+log "Running database migrations..."
+$COMPOSE run --rm --no-deps app php artisan migrate --force --no-interaction
 
-# ── 3. Frontend build (skip with --skip-build) ───────────────
-if [[ "${1:-}" != "--skip-build" ]]; then
-    echo "==> Installing Node dependencies and building assets..."
-    npm ci
-    npm run build
-fi
+log "Starting all services..."
+$COMPOSE up -d --remove-orphans
 
-# ── 4. Database migrations ───────────────────────────────────
-echo "==> Running database migrations..."
-php artisan migrate --force
+log "Waiting for app to be healthy..."
+sleep 5
 
-# ── 5. Clear and rebuild caches ──────────────────────────────
-echo "==> Caching config, routes, and views..."
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
-php artisan event:cache
+log "Warming caches..."
+$COMPOSE exec -T app php artisan config:cache
+$COMPOSE exec -T app php artisan route:cache
+$COMPOSE exec -T app php artisan view:cache
+$COMPOSE exec -T app php artisan event:cache
+$COMPOSE exec -T app php artisan optimize
 
-# ── 6. Storage link ──────────────────────────────────────────
-php artisan storage:link --quiet || true
+log "Verifying audit chain integrity..."
+$COMPOSE exec -T app php artisan audit:verify-chain
 
-# ── 7. Restart queue workers ─────────────────────────────────
-echo "==> Restarting queue workers..."
-php artisan queue:restart
+log "Restarting queue workers..."
+$COMPOSE restart queue
 
-# ── 8. Health check ──────────────────────────────────────────
-APP_URL=$(php artisan tinker --execute="echo config('app.url');" 2>/dev/null | tail -1)
-echo "==> Health check: $APP_URL/up"
-HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$APP_URL/up" || echo "000")
-
-if [[ "$HTTP_STATUS" == "200" ]]; then
-    echo "==> Deploy complete. App is healthy (HTTP $HTTP_STATUS)."
-else
-    echo "==> WARNING: Health check returned HTTP $HTTP_STATUS. Check logs."
-    exit 1
-fi
+log "=== Deploy complete at $(date) ==="
+$COMPOSE ps

@@ -30,7 +30,7 @@ class AdminAiController extends Controller
         $validated = $request->validate([
             'query_type'      => ['sometimes', 'string', 'in:revenue_anomaly,discount_risk,fbr_status,payout_audit,general'],
             'period_days'     => ['sometimes', 'integer', 'min:1', 'max:365'],
-            'custom_question' => ['sometimes', 'string', 'max:1000'],
+            'custom_question' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
 
         $payload = [
@@ -42,10 +42,11 @@ class AdminAiController extends Controller
 
         try {
             return response()->json($this->sidecar->adminAnalyse($payload));
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'error' => 'Administrative AI temporarily unavailable.',
-            ], 503);
+        } catch (\Throwable $e) {
+            $msg = str_contains($e->getMessage(), 'circuit open')
+                ? 'Administrative AI temporarily unavailable.'
+                : 'Administrative AI error: ' . $e->getMessage();
+            return response()->json(['error' => $msg], 503);
         }
     }
 }

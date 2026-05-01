@@ -82,13 +82,22 @@ class OpsAgentHarness(PersonaHarness):
         )
         return "\n".join(parts)
 
+    _DOMAIN_TOOLS = {
+        "inventory":    {"inventory_velocity", "procurement_recommendation"},
+        "procurement":  {"procurement_recommendation", "expense_category_analysis"},
+        "expense":      {"expense_category_analysis"},
+        "queue":        {"queue_health"},
+        "general":      {"inventory_velocity", "procurement_recommendation", "expense_category_analysis", "queue_health"},
+    }
+
     def build_tools(self, body: Any) -> ToolRegistry:
         registry = ToolRegistry()
-        # Always pre-fetch ops signals; model selects relevant ones.
-        registry.register(make_inventory_velocity_tool())
-        registry.register(make_procurement_recommendation_tool())
-        registry.register(make_expense_category_tool(body.period_days))
-        registry.register(make_queue_health_tool())
+        domain  = getattr(body, "domain", "general")
+        allowed = self._DOMAIN_TOOLS.get(domain, self._DOMAIN_TOOLS["general"])
+        if "inventory_velocity"           in allowed: registry.register(make_inventory_velocity_tool())
+        if "procurement_recommendation"   in allowed: registry.register(make_procurement_recommendation_tool())
+        if "expense_category_analysis"    in allowed: registry.register(make_expense_category_tool(body.period_days))
+        if "queue_health"                 in allowed: registry.register(make_queue_health_tool())
         return registry
 
     def post_process(self, rationale: str, body: Any) -> dict:

@@ -20,7 +20,7 @@ return new class extends Migration
             $table->json('before_state')->nullable(); // State before change
             $table->json('after_state')->nullable(); // State after change
             $table->string('ip_address')->nullable();
-            $table->timestamp('created_at');
+            $table->timestamp('created_at')->useCurrent(); // no ON UPDATE — hash chain depends on immutable created_at
 
             $table->index(['auditable_type', 'auditable_id']);
             $table->index(['user_id', 'created_at']);

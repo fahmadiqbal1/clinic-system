@@ -30,7 +30,7 @@ class OpsAiController extends Controller
         $validated = $request->validate([
             'domain'          => ['sometimes', 'string', 'in:inventory,procurement,expense,queue,general'],
             'period_days'     => ['sometimes', 'integer', 'min:1', 'max:365'],
-            'custom_question' => ['sometimes', 'string', 'max:1000'],
+            'custom_question' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
 
         $payload = [
@@ -42,10 +42,11 @@ class OpsAiController extends Controller
 
         try {
             return response()->json($this->sidecar->opsAnalyse($payload));
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'error' => 'Operations AI temporarily unavailable.',
-            ], 503);
+        } catch (\Throwable $e) {
+            $msg = str_contains($e->getMessage(), 'circuit open')
+                ? 'Operations AI temporarily unavailable.'
+                : 'Operations AI error: ' . $e->getMessage();
+            return response()->json(['error' => $msg], 503);
         }
     }
 }

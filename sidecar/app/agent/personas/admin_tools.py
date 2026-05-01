@@ -4,6 +4,12 @@ Administrative tool factories — read-only DB queries via clinic_ro.
 All tools fail-open: a DB outage degrades to an "insufficient data"
 finding rather than a 500. The admin harness's verification gate then
 caps confidence — owners are never silently misled.
+
+Table mapping (correct as of 2026-04):
+  revenue_anomaly  → invoices (created_at, department)
+  discount_risk    → invoices (discount_amount, discount_status)
+  fbr_status       → invoices (fbr_status column added in 2026_03_09 migration)
+  payout_audit     → invoices (department='consultation', prescribing_doctor_id)
 """
 from __future__ import annotations
 
@@ -43,30 +49,30 @@ def make_revenue_anomaly_tool(period_days: int) -> Tool:
         async with db.cursor() as cur:
             await cur.execute(
                 "SELECT DATE(created_at) AS d, COUNT(*) AS c "
-                "FROM audit_logs "
-                "WHERE action LIKE 'invoice.%' "
-                "AND created_at >= NOW() - INTERVAL %s DAY "
+                "FROM invoices "
+                "WHERE created_at >= NOW() - INTERVAL %s DAY "
                 "GROUP BY DATE(created_at) ORDER BY d",
                 (period_days,),
             )
             rows = await cur.fetchall()
         if not rows:
-            return {"tool": "revenue_anomaly", "answer": "No invoice events in window."}
+            return {"tool": "revenue_anomaly", "answer": "No invoices found in window."}
         counts = [r["c"] for r in rows]
         avg = sum(counts) / len(counts)
         last = counts[-1] if counts else 0
         delta_pct = ((last - avg) / avg * 100) if avg else 0
         verdict = "anomaly" if abs(delta_pct) >= 30 else "normal"
+        total = sum(counts)
         return {
             "tool": "revenue_anomaly",
             "answer": (
-                f"Revenue events last {period_days}d: avg={avg:.1f}/day, "
-                f"latest={last}, Δ={delta_pct:+.1f}% → {verdict}."
+                f"Invoice activity last {period_days}d: {total} total, avg={avg:.1f}/day, "
+                f"latest day={last}, Δ={delta_pct:+.1f}% → {verdict}."
             ),
         }
     return _make_failopen_tool(
         "revenue_anomaly",
-        "Compares latest day's revenue events to the period average.",
+        "Compares latest day's invoice volume to the period average.",
         _query,
     )
 
@@ -75,29 +81,40 @@ def make_discount_risk_tool(period_days: int) -> Tool:
     async def _query() -> dict:
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT user_id, COUNT(*) AS c "
-                "FROM audit_logs "
-                "WHERE action = 'invoice.discount.requested' "
+                "SELECT discount_status, COUNT(*) AS c "
+                "FROM invoices "
+                "WHERE discount_amount > 0 "
                 "AND created_at >= NOW() - INTERVAL %s DAY "
-                "GROUP BY user_id "
-                "ORDER BY c DESC LIMIT 5",
+                "GROUP BY discount_status ORDER BY c DESC",
                 (period_days,),
             )
-            rows = await cur.fetchall()
-        if not rows:
-            return {"tool": "discount_risk", "answer": "No discount requests in window."}
-        top = rows[0]
-        flagged = "elevated" if top["c"] >= 10 else "normal"
+            status_rows = await cur.fetchall()
+            await cur.execute(
+                "SELECT COUNT(*) AS total FROM invoices "
+                "WHERE created_at >= NOW() - INTERVAL %s DAY",
+                (period_days,),
+            )
+            total_row = await cur.fetchone()
+        total_invoices = (total_row or {}).get("total", 0)
+        if not status_rows:
+            return {
+                "tool": "discount_risk",
+                "answer": f"No discounted invoices in last {period_days}d (total invoices: {total_invoices}).",
+            }
+        discounted = sum(r["c"] for r in status_rows)
+        rate = (discounted / total_invoices * 100) if total_invoices else 0
+        breakdown = ", ".join(f"{r['discount_status'] or 'unset'}={r['c']}" for r in status_rows)
+        flagged = "elevated" if rate >= 20 else "normal"
         return {
             "tool": "discount_risk",
             "answer": (
-                f"Top requester user_id={top['user_id']} with {top['c']} discount "
-                f"requests in {period_days}d → {flagged} concentration."
+                f"Discount activity last {period_days}d: {discounted}/{total_invoices} invoices "
+                f"({rate:.1f}%) discounted → {flagged}. Breakdown: {breakdown}."
             ),
         }
     return _make_failopen_tool(
         "discount_risk",
-        "Identifies discount-request concentration by staff member.",
+        "Reports discount rate and status breakdown from invoices.",
         _query,
     )
 
@@ -106,25 +123,28 @@ def make_fbr_status_tool(period_days: int) -> Tool:
     async def _query() -> dict:
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT action, COUNT(*) AS c "
-                "FROM audit_logs "
-                "WHERE action LIKE 'fbr.%' "
-                "AND created_at >= NOW() - INTERVAL %s DAY "
-                "GROUP BY action",
+                "SELECT COALESCE(fbr_status, 'not_submitted') AS fbr_status, COUNT(*) AS c "
+                "FROM invoices "
+                "WHERE created_at >= NOW() - INTERVAL %s DAY "
+                "GROUP BY fbr_status ORDER BY c DESC",
                 (period_days,),
             )
             rows = await cur.fetchall()
         if not rows:
-            return {"tool": "fbr_status", "answer": "No FBR events in window."}
-        succ = sum(r["c"] for r in rows if "success" in r["action"])
-        fail = sum(r["c"] for r in rows if "fail" in r["action"] or "error" in r["action"])
+            return {"tool": "fbr_status", "answer": "No invoices in window for FBR analysis."}
+        submitted = sum(r["c"] for r in rows if (r["fbr_status"] or "").lower() == "submitted")
+        failed = sum(r["c"] for r in rows if (r["fbr_status"] or "").lower() in ("failed", "error"))
+        pending = sum(r["c"] for r in rows if (r["fbr_status"] or "").lower() in ("not_submitted", ""))
         return {
             "tool": "fbr_status",
-            "answer": f"FBR events last {period_days}d: success={succ}, failures={fail}.",
+            "answer": (
+                f"FBR status last {period_days}d: submitted={submitted}, "
+                f"failed={failed}, not_submitted={pending}."
+            ),
         }
     return _make_failopen_tool(
         "fbr_status",
-        "Reports recent FBR submission successes vs failures.",
+        "Reports FBR submission breakdown from invoices.fbr_status column.",
         _query,
     )
 
@@ -133,23 +153,31 @@ def make_payout_audit_tool(period_days: int) -> Tool:
     async def _query() -> dict:
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT user_id, COUNT(*) AS consultations "
-                "FROM audit_logs "
-                "WHERE action = 'consultation.completed' "
+                "SELECT prescribing_doctor_id AS user_id, COUNT(*) AS consultations "
+                "FROM invoices "
+                "WHERE department = 'consultation' "
                 "AND created_at >= NOW() - INTERVAL %s DAY "
-                "GROUP BY user_id ORDER BY consultations DESC LIMIT 10",
+                "GROUP BY prescribing_doctor_id ORDER BY consultations DESC LIMIT 10",
                 (period_days,),
             )
             rows = await cur.fetchall()
         if not rows:
-            return {"tool": "payout_audit", "answer": "No consultation events in window."}
-        summary = ", ".join(f"u{r['user_id']}={r['consultations']}" for r in rows[:5])
+            return {"tool": "payout_audit", "answer": "No consultation invoices in window."}
+        summary = ", ".join(
+            f"u{r['user_id']}={r['consultations']}"
+            for r in rows[:5]
+            if r.get("user_id") is not None
+        )
+        total = sum(r["consultations"] for r in rows)
         return {
             "tool": "payout_audit",
-            "answer": f"Top staff consultation counts last {period_days}d: {summary}.",
+            "answer": (
+                f"Consultation invoices last {period_days}d: {total} total. "
+                f"Top doctors: {summary}."
+            ),
         }
     return _make_failopen_tool(
         "payout_audit",
-        "Aggregates per-staff consultation counts for payout cross-check.",
+        "Counts consultation invoices per doctor for payout cross-check.",
         _query,
     )

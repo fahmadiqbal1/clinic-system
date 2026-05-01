@@ -8,7 +8,8 @@ Supported providers (AI_MODEL_PROVIDER):
   "ollama"       — local Ollama  (OLLAMA_URL + OLLAMA_MODEL)
   "openai"       — OpenAI API    (OPENAI_BASE_URL optional, OPENAI_MODEL, OPENAI_API_KEY)
   "anthropic"    — Anthropic API (ANTHROPIC_MODEL, ANTHROPIC_API_KEY)
-  "huggingface"  — HF Inference  (HF_BASE_URL, HF_MODEL, HF_API_KEY)
+  "huggingface"  — HF Inference  (HF_MODEL, HF_API_KEY; HF_BASE_URL optional for dedicated endpoints)
+  "groq"         — Groq API      (GROQ_MODEL, GROQ_API_KEY) — free tier, OpenAI-compatible
 
 All *_MODEL and *_BASE_URL vars are set from the UI via POST /v1/config/reload.
 No model name or URL is ever hardcoded.
@@ -46,6 +47,8 @@ async def call_model(
         return await _call_anthropic(messages)
     if provider == "huggingface":
         return await _call_huggingface(messages)
+    if provider == "groq":
+        return await _call_groq(messages)
     # default: ollama — env vars override whatever harness passed in
     url   = _e("OLLAMA_URL",   ollama_url)
     model = _e("OLLAMA_MODEL", ollama_model)
@@ -63,7 +66,7 @@ async def _call_ollama(messages: list[dict], url: str, model: str, timeout_s: fl
     async with httpx.AsyncClient(timeout=timeout_s) as client:
         resp = await client.post(
             f"{url.rstrip('/')}/v1/chat/completions",
-            json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.3},
+            json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.1},
             headers={"bypass-tunnel-reminder": "true"},
         )
     if resp.status_code != 200:
@@ -87,7 +90,7 @@ async def _call_openai(messages: list[dict]) -> str:
         resp = await client.post(
             f"{base}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.3},
+            json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.1},
         )
     if resp.status_code != 200:
         raise RuntimeError(f"OpenAI {resp.status_code}: {resp.text[:300]}")
@@ -116,7 +119,7 @@ async def _call_anthropic(messages: list[dict]) -> str:
     body: dict[str, Any] = {
         "model": model,
         "max_tokens": 2048,
-        "temperature": 0.3,
+        "temperature": 0.1,
         "messages": user_messages,
     }
     if system_content:
@@ -139,19 +142,48 @@ async def _call_anthropic(messages: list[dict]) -> str:
 async def _call_huggingface(messages: list[dict]) -> str:
     api_key = _e("HF_API_KEY")
     model   = _e("HF_MODEL")
-    base    = _e("HF_BASE_URL", "https://api-inference.huggingface.co/v1").rstrip("/")
 
     if not api_key:
         raise RuntimeError("Hugging Face selected but HF_API_KEY is not set")
     if not model:
         raise RuntimeError("Hugging Face selected but HF_MODEL is not set — enter a model name (e.g. mistralai/Mistral-7B-Instruct-v0.3) in Platform Settings")
 
+    # Serverless Inference API: model embedded in path.
+    # Dedicated Endpoint: custom HF_BASE_URL provided — use it directly.
+    custom_base = _e("HF_BASE_URL", "").rstrip("/")
+    default_base = "https://api-inference.huggingface.co/v1"
+    if custom_base and custom_base != default_base:
+        url = f"{custom_base}/v1/chat/completions"
+    else:
+        url = f"https://api-inference.huggingface.co/models/{model}/v1/chat/completions"
     async with httpx.AsyncClient(timeout=ONLINE_TIMEOUT_S) as client:
         resp = await client.post(
-            f"{base}/chat/completions",
+            url,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.3},
+            json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.1},
         )
     if resp.status_code != 200:
         raise RuntimeError(f"HuggingFace {resp.status_code}: {resp.text[:300]}")
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+# ── Groq (OpenAI-compatible, free tier) ───────────────────────────────────────
+
+async def _call_groq(messages: list[dict]) -> str:
+    api_key = _e("GROQ_API_KEY")
+    model   = _e("GROQ_MODEL")
+
+    if not api_key:
+        raise RuntimeError("Groq selected but GROQ_API_KEY is not set")
+    if not model:
+        raise RuntimeError("Groq selected but GROQ_MODEL is not set — enter a model name (e.g. llama-3.1-8b-instant) in Platform Settings")
+
+    async with httpx.AsyncClient(timeout=ONLINE_TIMEOUT_S) as client:
+        resp = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": model, "messages": messages, "max_tokens": 2048, "temperature": 0.1},
+        )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Groq {resp.status_code}: {resp.text[:300]}")
     return resp.json()["choices"][0]["message"]["content"]

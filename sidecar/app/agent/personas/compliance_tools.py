@@ -104,19 +104,30 @@ def make_phi_access_scan_tool(period_days: int) -> Tool:
 
 def make_flag_snapshot_tool() -> Tool:
     async def _q() -> dict:
+        import json as _json
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT `key`, value FROM platform_settings "
-                "WHERE provider = 'feature_flag' ORDER BY `key`"
+                "SELECT platform_name, meta FROM platform_settings "
+                "WHERE provider = 'feature_flag' ORDER BY platform_name"
             )
             rows = await cur.fetchall()
         if not rows:
             return {"tool": "flag_snapshot", "answer": "No feature flags found."}
-        on = [r["key"] for r in rows if str(r.get("value", "")).lower() in ("1", "true", "on")]
-        off = [r["key"] for r in rows if r["key"] not in on]
+        on: list[str] = []
+        off: list[str] = []
+        for r in rows:
+            try:
+                meta = _json.loads(r["meta"]) if isinstance(r["meta"], str) else (r["meta"] or {})
+                enabled = bool(meta.get("value", False)) if isinstance(meta, dict) else False
+            except Exception:
+                enabled = False
+            (on if enabled else off).append(r["platform_name"])
         return {
             "tool": "flag_snapshot",
-            "answer": f"Feature flags ON: {len(on)} ({', '.join(on[:6])}{'…' if len(on)>6 else ''}); OFF: {len(off)}.",
+            "answer": (
+                f"Feature flags ON ({len(on)}): {', '.join(on[:8])}{'…' if len(on) > 8 else ''}; "
+                f"OFF ({len(off)})."
+            ),
         }
     return _failopen(
         "flag_snapshot",

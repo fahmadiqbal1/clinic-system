@@ -7,6 +7,7 @@ use App\Models\PlatformSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\View\View;
 
@@ -99,7 +100,7 @@ class PlatformSettingsController extends Controller
     public function saveModelConfig(Request $request): JsonResponse
     {
         $v = $request->validate([
-            'provider'           => ['required', 'in:ollama,openai,anthropic,huggingface'],
+            'provider'           => ['required', 'in:ollama,openai,anthropic,huggingface,groq'],
             // Ollama
             'ollama_url'         => ['nullable', 'string', 'max:300'],
             'ollama_model'       => ['nullable', 'string', 'max:200'],
@@ -114,6 +115,9 @@ class PlatformSettingsController extends Controller
             'hf_base_url'        => ['nullable', 'url', 'max:300'],
             'hf_model'           => ['nullable', 'string', 'max:200'],
             'hf_key'             => ['nullable', 'string', 'max:300'],
+            // Groq
+            'groq_model'         => ['nullable', 'string', 'max:200'],
+            'groq_key'           => ['nullable', 'string', 'max:300'],
         ]);
 
         // Always save active provider
@@ -128,6 +132,7 @@ class PlatformSettingsController extends Controller
             'ai.model.anthropic.model' => $v['anthropic_model']  ?? null,
             'ai.model.hf.base_url'     => $v['hf_base_url']      ?? null,
             'ai.model.hf.model'        => $v['hf_model']         ?? null,
+            'ai.model.groq.model'      => $v['groq_model']       ?? null,
         ];
         foreach ($plain as $key => $value) {
             if (!empty($value)) {
@@ -141,6 +146,7 @@ class PlatformSettingsController extends Controller
             'ai.model.openai.key'     => $v['openai_key']    ?? null,
             'ai.model.anthropic.key'  => $v['anthropic_key'] ?? null,
             'ai.model.hf.key'         => $v['hf_key']        ?? null,
+            'ai.model.groq.key'       => $v['groq_key']      ?? null,
         ];
         foreach ($keys as $settingKey => $rawKey) {
             if (!empty($rawKey)) {
@@ -151,20 +157,32 @@ class PlatformSettingsController extends Controller
         // Sync medgemma row so the status badge and test logic have a consistent record
         $this->syncMedgemmaRow($v);
 
-        // Hot-swap sidecar — pass all current config (including plaintext keys) directly in the
-        // request body so the sidecar never needs to decrypt anything from DB.
+        // Hot-swap sidecar — read the complete saved config from DB (so previously-saved keys
+        // that were left blank in this form are still included in the payload).
+        $sidecarSynced = false;
+        $sidecarError  = null;
         try {
             $sidecarUrl = config('services.sidecar.url', env('CLINIC_SIDECAR_URL', 'http://localhost:8001'));
-
-            $reloadPayload = $this->buildReloadPayload($v);
-
-            Http::withToken($this->mintSidecarJwt())->timeout(5)
-                ->post($sidecarUrl . '/v1/config/reload', $reloadPayload);
-        } catch (\Exception) {
-            // Non-fatal — sidecar picks up changes on next restart
+            $reloadResp = Http::withToken($this->mintSidecarJwt())->timeout(5)
+                ->post($sidecarUrl . '/v1/config/reload', $this->buildReloadPayloadFromDb());
+            if ($reloadResp->successful()) {
+                $sidecarSynced = true;
+                // Unblock any queued jobs that stalled while the circuit breaker was open.
+                Cache::forget('ai_sidecar:cb_failures');
+                Cache::forget('ai_sidecar:cb_open');
+            } else {
+                $sidecarError = "Sidecar replied HTTP {$reloadResp->status()}";
+            }
+        } catch (\Exception $e) {
+            $sidecarError = $e->getMessage();
         }
 
-        return response()->json(['ok' => true, 'provider' => $v['provider']]);
+        return response()->json([
+            'ok'             => true,
+            'provider'       => $v['provider'],
+            'sidecar_synced' => $sidecarSynced,
+            'sidecar_error'  => $sidecarError,
+        ]);
     }
 
     /**
@@ -188,6 +206,7 @@ class PlatformSettingsController extends Controller
                 'openai'      => $this->pingOpenAI($mc),
                 'anthropic'   => $this->pingAnthropic($mc),
                 'huggingface' => $this->pingHuggingFace($mc),
+                'groq'        => $this->pingGroq($mc),
                 default       => throw new \RuntimeException("Unknown provider: {$provider}"),
             };
 
@@ -260,18 +279,52 @@ class PlatformSettingsController extends Controller
 
     private function pingHuggingFace(\Illuminate\Support\Collection $mc): void
     {
-        $key   = $mc['ai.model.hf.key']      ?? '';
-        $model = $mc['ai.model.hf.model']    ?? '';
-        $base  = rtrim($mc['ai.model.hf.base_url'] ?? 'https://api-inference.huggingface.co/v1', '/');
+        $key      = $mc['ai.model.hf.key']      ?? '';
+        $model    = $mc['ai.model.hf.model']    ?? '';
+        $customBase = rtrim($mc['ai.model.hf.base_url'] ?? '', '/');
+        $defaultBase = 'https://api-inference.huggingface.co/v1';
 
         if (!$key)   { throw new \RuntimeException('No Hugging Face API key configured.'); }
         if (!$model) { throw new \RuntimeException('No Hugging Face model ID configured.'); }
 
+        // Serverless Inference API: model embedded in path.
+        // Dedicated Endpoint: custom base URL provided — use it directly.
+        $url = ($customBase && $customBase !== $defaultBase)
+            ? "{$customBase}/v1/chat/completions"
+            : "https://api-inference.huggingface.co/models/{$model}/v1/chat/completions";
+
         $resp = Http::withHeaders(['Authorization' => "Bearer {$key}"])->timeout(30)
-            ->post("{$base}/chat/completions", ['model' => $model, 'messages' => [['role' => 'user', 'content' => 'Hi']], 'max_tokens' => 1]);
+            ->post($url, ['model' => $model, 'messages' => [['role' => 'user', 'content' => 'Hi']], 'max_tokens' => 1]);
+
+        if ($resp->status() === 404) {
+            throw new \RuntimeException(
+                "Model not accessible on HuggingFace serverless inference. " .
+                "Either accept the model's license at huggingface.co/{$model} " .
+                "or use a non-gated model such as HuggingFaceH4/zephyr-7b-beta."
+            );
+        }
+        if (!$resp->successful()) {
+            throw new \RuntimeException("Hugging Face replied with HTTP {$resp->status()}: " . mb_substr($resp->body(), 0, 200));
+        }
+    }
+
+    private function pingGroq(\Illuminate\Support\Collection $mc): void
+    {
+        $key   = $mc['ai.model.groq.key']   ?? '';
+        $model = $mc['ai.model.groq.model'] ?? '';
+
+        if (!$key)   { throw new \RuntimeException('No Groq API key configured.'); }
+        if (!$model) { throw new \RuntimeException('No Groq model ID configured.'); }
+
+        $resp = Http::withHeaders(['Authorization' => "Bearer {$key}"])->timeout(30)
+            ->post('https://api.groq.com/openai/v1/chat/completions', [
+                'model'      => $model,
+                'messages'   => [['role' => 'user', 'content' => 'Hi']],
+                'max_tokens' => 1,
+            ]);
 
         if (!$resp->successful()) {
-            throw new \RuntimeException("Hugging Face replied with HTTP {$resp->status()}: " . mb_substr($resp->body(), 0, 300));
+            throw new \RuntimeException("Groq replied with HTTP {$resp->status()}: " . mb_substr($resp->body(), 0, 200));
         }
     }
 
@@ -298,6 +351,12 @@ class PlatformSettingsController extends Controller
                 'api_url'  => $v['hf_base_url'] ?? 'https://api-inference.huggingface.co/v1',
                 ...(!empty($v['hf_key']) ? ['api_key' => $v['hf_key']] : []),
             ],
+            'groq' => $data += [
+                'provider' => 'huggingface',  // treated as online provider for isReady() purposes
+                'model'    => $v['groq_model'] ?? $medgemma->model,
+                'api_url'  => 'https://api.groq.com/openai/v1',
+                ...(!empty($v['groq_key']) ? ['api_key' => $v['groq_key']] : []),
+            ],
             // Anthropic and OpenAI: mark as huggingface provider so isReady() won't block
             // the PHP fallback path; actual calls go through sidecar model_provider.py
             default => $data += ['provider' => 'huggingface', 'model' => $v[$provider . '_model'] ?? $medgemma->model],
@@ -307,29 +366,39 @@ class PlatformSettingsController extends Controller
     }
 
     /**
-     * Build the env-var payload sent to /v1/config/reload.
-     * All values are plaintext — the sidecar sets them directly into os.environ.
+     * Build the env-var payload sent to /v1/config/reload by reading the COMPLETE
+     * saved config from DB. This ensures API keys saved in previous sessions (and not
+     * re-typed in the current form submission) are still included in the reload call.
+     * DB is the single source of truth for the full pipeline.
      */
-    private function buildReloadPayload(array $v): array
+    private function buildReloadPayloadFromDb(): array
     {
-        $env = ['AI_MODEL_PROVIDER' => $v['provider']];
+        $mc = PlatformSetting::where('provider', 'model_config')
+            ->pluck('meta', 'platform_name')
+            ->map(fn($m) => is_array($m) ? ($m['value'] ?? '') : (string) $m);
 
-        $map = [
-            'OLLAMA_URL'      => $v['ollama_url']      ?? null,
-            'OLLAMA_MODEL'    => $v['ollama_model']     ?? null,
-            'OPENAI_BASE_URL' => $v['openai_base_url']  ?? null,
-            'OPENAI_MODEL'    => $v['openai_model']     ?? null,
-            'OPENAI_API_KEY'  => $v['openai_key']       ?? null,
-            'ANTHROPIC_MODEL' => $v['anthropic_model']  ?? null,
-            'ANTHROPIC_API_KEY' => $v['anthropic_key']  ?? null,
-            'HF_BASE_URL'     => $v['hf_base_url']      ?? null,
-            'HF_MODEL'        => $v['hf_model']         ?? null,
-            'HF_API_KEY'      => $v['hf_key']           ?? null,
+        // Must mirror _DB_TO_ENV in sidecar/app/routes/health.py exactly.
+        $dbToEnv = [
+            'ai.model.provider'        => 'AI_MODEL_PROVIDER',
+            'ai.model.ollama.url'      => 'OLLAMA_URL',
+            'ai.model.ollama.model'    => 'OLLAMA_MODEL',
+            'ai.model.openai.base_url' => 'OPENAI_BASE_URL',
+            'ai.model.openai.model'    => 'OPENAI_MODEL',
+            'ai.model.openai.key'      => 'OPENAI_API_KEY',
+            'ai.model.anthropic.model' => 'ANTHROPIC_MODEL',
+            'ai.model.anthropic.key'   => 'ANTHROPIC_API_KEY',
+            'ai.model.hf.base_url'     => 'HF_BASE_URL',
+            'ai.model.hf.model'        => 'HF_MODEL',
+            'ai.model.hf.key'          => 'HF_API_KEY',
+            'ai.model.groq.model'      => 'GROQ_MODEL',
+            'ai.model.groq.key'        => 'GROQ_API_KEY',
         ];
 
-        foreach ($map as $envKey => $value) {
-            if (!empty($value)) {
-                $env[$envKey] = $value;
+        $env = [];
+        foreach ($dbToEnv as $dbKey => $envKey) {
+            $val = $mc[$dbKey] ?? '';
+            if ($val !== '') {
+                $env[$envKey] = $val;
             }
         }
 

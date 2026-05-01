@@ -376,22 +376,21 @@ class FinancialDistributionService
             $this->storeDistributionSnapshot($freshInvoice, $currentEntries);
 
             // Audit log
-            AuditLog::create([
-                'user_id' => $performerId,
-                'action' => 'performer_commission_added',
-                'auditable_type' => Invoice::class,
-                'auditable_id' => $invoice->id,
-                'before_state' => null,
-                'after_state' => json_encode([
+            AuditLog::log(
+                'performer_commission_added',
+                Invoice::class,
+                $invoice->id,
+                null,
+                [
                     'performer_id' => $performerId,
                     'role' => $roleLabel,
                     'percentage' => $performerPct,
                     'amount' => $commissionAmount,
                     'department' => $freshInvoice->department,
-                ]),
-                'ip_address' => request()?->ip(),
-                'created_at' => now(),
-            ]);
+                ],
+                $performerId,
+                request()?->ip()
+            );
         });
     }
 
@@ -445,22 +444,21 @@ class FinancialDistributionService
         }
 
         // Audit log
-        AuditLog::create([
-            'user_id' => $invoice->paid_by,
-            'action' => 'commission_distributed',
-            'auditable_type' => Invoice::class,
-            'auditable_id' => $invoice->id,
-            'before_state' => null,
-            'after_state' => json_encode([
+        AuditLog::log(
+            'commission_distributed',
+            Invoice::class,
+            $invoice->id,
+            null,
+            [
                 'invoice_id' => $invoice->id,
                 'department' => $invoice->department,
                 'effective_revenue' => $invoice->effective_revenue,
                 'profit' => $invoice->profit,
                 'performed_by' => $invoice->performed_by_user_id,
                 'entries_count' => count($entries),
-            ]),
-            'ip_address' => request()?->ip(),
-            'created_at' => now(),
-        ]);
+            ],
+            $invoice->paid_by,
+            request()?->ip()
+        );
     }
 }

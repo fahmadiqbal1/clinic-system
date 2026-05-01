@@ -34,13 +34,16 @@ class AuditVerifyChain extends Command
             }
 
             foreach ($rows as $row) {
+                // Decode JSON columns: DB::table() returns raw strings, but
+                // AuditLog::canonicalJson() was called with PHP arrays at write time.
+                // json_decode() normalises both to the same structure before re-encoding.
                 $canonical = json_encode([
                     'user_id'        => $row->user_id,
                     'action'         => $row->action,
                     'auditable_type' => $row->auditable_type,
                     'auditable_id'   => $row->auditable_id,
-                    'before_state'   => $row->before_state,
-                    'after_state'    => $row->after_state,
+                    'before_state'   => is_string($row->before_state) ? json_decode($row->before_state, true) : $row->before_state,
+                    'after_state'    => is_string($row->after_state)  ? json_decode($row->after_state, true)  : $row->after_state,
                     'ip_address'     => $row->ip_address,
                     'user_agent'     => $row->user_agent ?? null,
                     'session_id'     => $row->session_id ?? null,

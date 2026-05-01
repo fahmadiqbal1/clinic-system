@@ -94,7 +94,7 @@ def test_context_manager_builds_system_prompt(valid_body):
     cm = ContextManager()
     ctx = cm.build(valid_body)
     assert ctx.messages[0]["role"] == "system"
-    assert "MedGemma" in ctx.messages[0]["content"]
+    assert "senior clinician" in ctx.messages[0]["content"]  # Phase 8A: model-agnostic prompt
     assert "## CONFIDENCE" in ctx.messages[0]["content"]
 
 

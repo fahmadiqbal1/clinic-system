@@ -32,7 +32,7 @@ class ComplianceAiController extends Controller
         $validated = $request->validate([
             'scope'           => ['sometimes', 'string', 'in:audit_chain,phi_access,evidence_gap,flag_snapshot,full'],
             'period_days'     => ['sometimes', 'integer', 'min:1', 'max:365'],
-            'custom_question' => ['sometimes', 'string', 'max:1000'],
+            'custom_question' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
 
         $payload = [
@@ -44,10 +44,11 @@ class ComplianceAiController extends Controller
 
         try {
             $result = $this->sidecar->complianceAnalyse($payload);
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'error' => 'Compliance AI temporarily unavailable.',
-            ], 503);
+        } catch (\Throwable $e) {
+            $msg = str_contains($e->getMessage(), 'circuit open')
+                ? 'Compliance AI temporarily unavailable.'
+                : 'Compliance AI error: ' . $e->getMessage();
+            return response()->json(['error' => $msg], 503);
         }
 
         // Hard-rule escalation: any escalation_pending flag persists to audit-trail.
