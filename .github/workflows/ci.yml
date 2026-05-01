@@ -199,11 +199,13 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    continue-on-error: true
     environment: production
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
 
     steps:
       - name: Deploy via SSH
+        if: env.VPS_HOST != ''
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
