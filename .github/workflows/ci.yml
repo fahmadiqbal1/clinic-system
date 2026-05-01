@@ -58,7 +58,7 @@ jobs:
           restore-keys: ${{ runner.os }}-composer-
 
       - name: Install PHP dependencies
-        run: composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction
+        run: composer install --optimize-autoloader --prefer-dist --no-interaction
         env:
           APP_ENV: testing
           APP_KEY: base64:ci-placeholder-key-not-used-in-production==
