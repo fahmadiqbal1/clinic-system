@@ -98,7 +98,7 @@ jobs:
           REDIS_PASSWORD: ""
 
       - name: Run PHP tests
-        run: php artisan test --parallel --stop-on-failure
+        run: php artisan test --stop-on-failure
         env:
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
