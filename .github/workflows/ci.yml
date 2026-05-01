@@ -59,6 +59,9 @@ jobs:
 
       - name: Install PHP dependencies
         run: composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:ci-placeholder-key-not-used-in-production==
 
       - name: Setup test environment
         run: |
