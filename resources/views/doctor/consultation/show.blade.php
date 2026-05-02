@@ -129,142 +129,13 @@
     </div>
     @endif
 
-    {{-- Consultation Notes --}}
-    <div class="card mb-4 fade-in delay-2">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-pencil-square me-2" style="color:var(--accent-warning);"></i>Consultation Notes</span>
-            @if($patient->status === 'with_doctor')
-                <button type="button" id="soapToggle" class="btn btn-outline-secondary btn-sm">
-                    <i class="bi bi-layout-text-sidebar me-1"></i>SOAP Template
-                </button>
-            @endif
-        </div>
-        <div class="card-body">
-            @if($patient->status === 'with_doctor')
-                <div id="soapPanel" class="mb-3 p-3 rounded" style="display:none; background:var(--glass-bg); border:1px solid var(--glass-border);">
-                    <p class="small fw-semibold mb-2" style="color:var(--text-muted);">Click a section to insert at cursor position:</p>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm soap-insert" data-text="S - Subjective:&#10;Chief Complaint: &#10;History of Present Illness: &#10;&#10;">Subjective (S)</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm soap-insert" data-text="O - Objective:&#10;Vital Signs: BP:  / , HR:  bpm, Temp:  °C, SpO₂:  %&#10;Physical Exam: &#10;&#10;">Objective (O)</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm soap-insert" data-text="A - Assessment:&#10;Diagnosis: &#10;Differential Diagnoses: &#10;&#10;">Assessment (A)</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm soap-insert" data-text="P - Plan:&#10;Investigations: &#10;Treatment: &#10;Follow-up: &#10;&#10;">Plan (P)</button>
-                        <button type="button" class="btn btn-outline-info btn-sm soap-insert" data-text="S - Subjective:&#10;Chief Complaint: &#10;History of Present Illness: &#10;&#10;O - Objective:&#10;Vital Signs: BP:  / , HR:  bpm, Temp:  °C, SpO₂:  %&#10;Physical Exam: &#10;&#10;A - Assessment:&#10;Diagnosis: &#10;Differential Diagnoses: &#10;&#10;P - Plan:&#10;Investigations: &#10;Treatment: &#10;Follow-up: &#10;&#10;">Full SOAP</button>
-                    </div>
-                </div>
-                <form action="{{ route('doctor.consultation.save-notes', $patient) }}" method="POST">
-                    @csrf
-                    <div class="mb-3">
-                        <div class="d-flex align-items-center gap-2 mb-1">
-                            <small class="text-muted">Consultation Notes</small>
-                            <button type="button" id="sttBtn" class="btn btn-sm btn-outline-secondary ms-auto" title="Dictate notes (speech to text)" style="display:none;">
-                                <i class="bi bi-mic" id="sttIcon"></i> <span id="sttLabel">Dictate</span>
-                            </button>
-                            <span id="sttStatus" class="badge bg-danger" style="display:none; font-size:0.7rem;">● REC</span>
-                        </div>
-                        <textarea id="consultationNotesTA" name="consultation_notes" class="form-control" rows="8" placeholder="Enter consultation notes, or click Dictate to speak..." required minlength="3">{{ old('consultation_notes', $patient->consultation_notes) }}</textarea>
-                        @error('consultation_notes')
-                            <div class="invalid-feedback d-block">{{ $message }}</div>
-                        @enderror
-                        <small class="text-muted mt-1 d-block" id="sttHint" style="display:none!important;"></small>
-                    </div>
-                    <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Save Notes</button>
-                </form>
-
-                {{-- Speech-to-Text via Web Speech API (Chrome/Edge) --}}
-                <script>
-                (function() {
-                    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                    if (!SpeechRecognition) return; // Not supported — button stays hidden
-
-                    var btn = document.getElementById('sttBtn');
-                    var icon = document.getElementById('sttIcon');
-                    var label = document.getElementById('sttLabel');
-                    var status = document.getElementById('sttStatus');
-                    var ta = document.getElementById('consultationNotesTA');
-                    if (btn) btn.style.display = '';
-
-                    var recognition = new SpeechRecognition();
-                    recognition.continuous = true;
-                    recognition.interimResults = true;
-                    recognition.lang = 'en-US';
-
-                    var isListening = false;
-                    var interimSpan = '';
-
-                    recognition.onresult = function(event) {
-                        var interim = '';
-                        var finalText = '';
-                        for (var i = event.resultIndex; i < event.results.length; i++) {
-                            if (event.results[i].isFinal) {
-                                finalText += event.results[i][0].transcript;
-                            } else {
-                                interim += event.results[i][0].transcript;
-                            }
-                        }
-                        if (finalText) {
-                            // Append final transcript to textarea with a space
-                            var cur = ta.value;
-                            ta.value = cur + (cur && !cur.endsWith(' ') && !cur.endsWith('\n') ? ' ' : '') + finalText;
-                        }
-                        // Show interim result as placeholder hint
-                        status.textContent = interim ? ('● ' + interim.substring(0, 40) + (interim.length > 40 ? '…' : '')) : '● REC';
-                    };
-
-                    recognition.onerror = function(event) {
-                        if (event.error === 'no-speech') return;
-                        isListening = false;
-                        setIdle();
-                        if (event.error === 'not-allowed') {
-                            alert('Microphone access denied. Please allow microphone permission to use dictation.');
-                        }
-                    };
-
-                    recognition.onend = function() {
-                        if (isListening) {
-                            // Auto-restart for continuous dictation
-                            try { recognition.start(); } catch(e) {}
-                        } else {
-                            setIdle();
-                        }
-                    };
-
-                    function setIdle() {
-                        icon.className = 'bi bi-mic';
-                        label.textContent = 'Dictate';
-                        status.style.display = 'none';
-                        btn.classList.remove('btn-danger');
-                        btn.classList.add('btn-outline-secondary');
-                    }
-
-                    function setRecording() {
-                        icon.className = 'bi bi-mic-fill';
-                        label.textContent = 'Stop';
-                        status.style.display = '';
-                        status.textContent = '● REC';
-                        btn.classList.remove('btn-outline-secondary');
-                        btn.classList.add('btn-danger');
-                    }
-
-                    btn.addEventListener('click', function() {
-                        if (isListening) {
-                            isListening = false;
-                            recognition.stop();
-                            setIdle();
-                        } else {
-                            isListening = true;
-                            setRecording();
-                            recognition.start();
-                        }
-                    });
-                })();
-                </script>
-            @else
-                <div class="p-3 rounded" style="background:var(--glass-bg); border:1px solid var(--glass-border);">
-                    {!! nl2br(e($patient->consultation_notes ?? 'No notes recorded.')) !!}
-                </div>
-            @endif
-        </div>
-    </div>
+    {{-- Consultation Notes — SOAP Chip Builder --}}
+    @include('components.soap-chip-builder', [
+        'patient'      => $patient,
+        'latestVitals' => $latestVitals,
+        'keywords'     => $soapKeywords,
+        'aiEnabled'    => $aiEnabled,
+    ])
 
     {{-- Create Invoice — Catalog Picker --}}
     @if($patient->status === 'with_doctor')
@@ -547,9 +418,9 @@
                                 </td>
                                 <td>
                                     @if($inv->department === 'lab' && $inv->lab_results)
-                                        <span class="text-success"><i class="bi bi-table me-1"></i>Results ready</span>
+                                        <a href="{{ route('doctor.results.show', $inv) }}" class="text-success text-decoration-none"><i class="bi bi-table me-1"></i>Results ready</a>
                                     @elseif($inv->department === 'radiology' && $inv->report_text)
-                                        <span class="text-success"><i class="bi bi-file-earmark-medical me-1"></i>Report ready</span>
+                                        <a href="{{ route('doctor.results.show', $inv) }}" class="text-success text-decoration-none"><i class="bi bi-file-earmark-medical me-1"></i>Report ready</a>
                                     @else
                                         <span style="color:var(--text-muted);"><i class="bi bi-hourglass-split me-1"></i>Pending</span>
                                     @endif

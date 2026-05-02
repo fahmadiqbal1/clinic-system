@@ -21,14 +21,14 @@ Route::middleware('role:Radiology')->group(function () {
         ->middleware('verified')
         ->name('radiology.dashboard');
 
-    // Invoice Work Queue
-    Route::get('/radiology/invoices', [RadiologyInvoiceController::class, 'index'])->name('radiology.invoices.index');
-    Route::get('/radiology/invoices/{invoice}', [RadiologyInvoiceController::class, 'show'])->name('radiology.invoices.show');
-    Route::post('/radiology/invoices/{invoice}/start-work', [RadiologyInvoiceController::class, 'startWork'])->name('radiology.invoices.start-work');
-    Route::post('/radiology/invoices/{invoice}/save-report', [RadiologyInvoiceController::class, 'saveReport'])->name('radiology.invoices.save-report');
-    Route::post('/radiology/invoices/{invoice}/upload-images', [RadiologyInvoiceController::class, 'uploadImages'])->name('radiology.invoices.upload-images');
-    Route::delete('/radiology/invoices/{invoice}/delete-image/{index}', [RadiologyInvoiceController::class, 'deleteImage'])->name('radiology.invoices.delete-image');
-    Route::post('/radiology/invoices/{invoice}/complete', [RadiologyInvoiceController::class, 'markComplete'])->name('radiology.invoices.mark-complete');
+    // Imaging Work Queue
+    Route::get('/radiology/results', [RadiologyInvoiceController::class, 'index'])->name('radiology.invoices.index');
+    Route::get('/radiology/results/{invoice}', [RadiologyInvoiceController::class, 'show'])->name('radiology.invoices.show');
+    Route::post('/radiology/results/{invoice}/start-work', [RadiologyInvoiceController::class, 'startWork'])->name('radiology.invoices.start-work');
+    Route::post('/radiology/results/{invoice}/save-report', [RadiologyInvoiceController::class, 'saveReport'])->name('radiology.invoices.save-report');
+    Route::post('/radiology/results/{invoice}/upload-images', [RadiologyInvoiceController::class, 'uploadImages'])->name('radiology.invoices.upload-images');
+    Route::delete('/radiology/results/{invoice}/delete-image/{index}', [RadiologyInvoiceController::class, 'deleteImage'])->name('radiology.invoices.delete-image');
+    Route::post('/radiology/results/{invoice}/complete', [RadiologyInvoiceController::class, 'markComplete'])->name('radiology.invoices.mark-complete');
 });
 
 // Radiology + Owner shared routes

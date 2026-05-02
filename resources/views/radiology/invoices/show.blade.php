@@ -17,7 +17,60 @@
         <div class="d-flex gap-2 no-print">
             <a href="{{ route('invoices.pdf', $invoice) }}" class="btn btn-outline-success btn-sm" data-no-disable="true"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF</a>
             <button onclick="window.print()" class="btn btn-outline-info btn-sm" data-no-disable="true"><i class="bi bi-printer me-1"></i>Print</button>
+            <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#referExternalModal"><i class="bi bi-arrow-right-circle me-1"></i>Refer to External</button>
             <a href="{{ route('radiology.invoices.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Orders</a>
+        </div>
+    </div>
+
+    {{-- External Referral Modal --}}
+    @php $externalLabs = \App\Models\ExternalLab::where('is_active', true)->orderBy('name')->get(); @endphp
+    <div class="modal fade" id="referExternalModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST" action="{{ route('external-referrals.store') }}">
+                    @csrf
+                    <input type="hidden" name="patient_id" value="{{ $invoice->patient_id }}">
+                    <input type="hidden" name="invoice_id" value="{{ $invoice->id }}">
+                    <input type="hidden" name="department" value="radiology">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-arrow-right-circle me-2" style="color:var(--accent-warning);"></i>Refer to External Centre</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        @if($externalLabs->isEmpty())
+                            <div class="alert alert-warning mb-0">No external labs configured. Ask the owner to add MOU partner labs first.</div>
+                        @else
+                        <div class="mb-3">
+                            <label class="form-label">External Centre <span class="text-danger">*</span></label>
+                            <select name="external_lab_id" class="form-select" required>
+                                <option value="">Select centre...</option>
+                                @foreach($externalLabs as $lab)
+                                    <option value="{{ $lab->id }}">{{ $lab->name }}{{ $lab->city ? ' — '.$lab->city : '' }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Study / Service <span class="text-danger">*</span></label>
+                            <input type="text" name="test_name" class="form-control" value="{{ $invoice->service_name }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Reason for Referral</label>
+                            <input type="text" name="reason" class="form-control" placeholder="e.g. MRI not available in-house, CT scanner under maintenance">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label">Clinical Notes</label>
+                            <textarea name="clinical_notes" class="form-control" rows="3" placeholder="Clinical background for the imaging centre..."></textarea>
+                        </div>
+                        @endif
+                    </div>
+                    @if(!$externalLabs->isEmpty())
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-warning"><i class="bi bi-send me-1"></i>Submit for Approval</button>
+                    </div>
+                    @endif
+                </form>
+            </div>
         </div>
     </div>
 
@@ -86,9 +139,31 @@
         <div class="card-body">
             <form action="{{ route('radiology.invoices.save-report', $invoice) }}" method="POST">
                 @csrf
-                <div class="mb-3">
-                    <label for="report" class="form-label">Report Text</label>
-                    <textarea name="report" id="report" class="form-control" rows="5" placeholder="Enter radiology report findings...">{{ $invoice->report_text }}</textarea>
+                <div class="mb-2">
+                    <label class="form-label d-flex align-items-center gap-2">
+                        Report Text
+                        <button type="button" id="radSttBtn" class="btn btn-sm btn-outline-secondary ms-auto" style="display:none;" title="Dictate report">
+                            <i class="bi bi-mic" id="radSttIcon"></i> <span id="radSttLabel">Dictate</span>
+                        </button>
+                        <span id="radSttStatus" class="badge bg-danger" style="display:none; font-size:0.7rem;">● REC</span>
+                    </label>
+                    {{-- Template chips grouped by modality --}}
+                    <div class="d-flex flex-wrap gap-1 mb-2">
+                        <small class="text-muted w-100">Insert template:</small>
+                        @foreach([
+                            'No acute cardiopulmonary process. Lungs clear bilaterally. Heart size normal.' => 'CXR Normal',
+                            'Bilateral lung fields clear. No pleural effusion or pneumothorax.' => 'CXR Clear',
+                            'Cardiomegaly noted. Recommend echocardiography for further evaluation.' => 'Cardiomegaly',
+                            'No fracture or dislocation identified. Bone density appears normal.' => 'No Fracture',
+                            'No acute intracranial abnormality identified on this study.' => 'CT Head Normal',
+                            'No free fluid or free air identified in the abdomen.' => 'Abdomen Normal',
+                            'Soft tissue swelling noted. No underlying bony injury identified.' => 'Soft Tissue',
+                            'Study technically limited due to patient movement. Repeat may be required.' => 'Limited Study',
+                        ] as $text => $label)
+                        <button type="button" class="btn btn-xs btn-outline-secondary rad-template-btn" data-text="{{ $text }}">{{ $label }}</button>
+                        @endforeach
+                    </div>
+                    <textarea name="report" id="report" class="form-control" rows="5" placeholder="Enter radiology report findings…">{{ $invoice->report_text }}</textarea>
                 </div>
                 <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Save Report</button>
             </form>
@@ -138,16 +213,31 @@
 
             {{-- Upload form (only when actively working) --}}
             @if($invoice->status === 'in_progress' || ($invoice->status === 'paid' && $invoice->performed_by_user_id && !$invoice->isWorkCompleted()))
-                <form action="{{ route('radiology.invoices.upload-images', $invoice) }}" method="POST" enctype="multipart/form-data">
+                <form action="{{ route('radiology.invoices.upload-images', $invoice) }}" method="POST" enctype="multipart/form-data" id="radUploadForm">
                     @csrf
                     <div class="mb-3">
                         <label for="images" class="form-label">Upload Images (JPG, PNG, PDF — max 10MB each)</label>
-                        <input type="file" name="images[]" id="images" class="form-control" multiple accept=".jpg,.jpeg,.png,.pdf" required>
+                        {{-- Drag-drop zone --}}
+                        <div id="radDropZone"
+                             class="rounded p-4 text-center mb-2"
+                             style="border:2px dashed var(--glass-border); cursor:pointer; transition:border-color 0.2s;"
+                             ondragover="event.preventDefault(); this.style.borderColor='var(--accent-primary)';"
+                             ondragleave="this.style.borderColor='var(--glass-border)';"
+                             ondrop="radHandleDrop(event);">
+                            <i class="bi bi-cloud-upload" style="font-size:2rem; color:var(--text-muted);"></i>
+                            <p class="mb-1 mt-1" style="color:var(--text-muted);">Drag & drop files here, or <span style="color:var(--accent-primary); cursor:pointer;" onclick="document.getElementById('images').click()">browse</span></p>
+                            <small style="color:var(--text-muted);">JPG, PNG, PDF — max 10MB each</small>
+                        </div>
+                        <input type="file" name="images[]" id="images" class="form-control d-none" multiple accept=".jpg,.jpeg,.png,.pdf">
+                        {{-- Preview --}}
+                        <div id="radFilePreview" class="d-flex flex-wrap gap-2 mt-2"></div>
                         @error('images.*')
                             <div class="invalid-feedback d-block">{{ $message }}</div>
                         @enderror
                     </div>
-                    <button type="submit" class="btn btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload Images</button>
+                    <button type="submit" class="btn btn-primary" id="radUploadBtn" disabled>
+                        <i class="bi bi-cloud-upload me-1"></i>Upload <span id="radUploadCount"></span>
+                    </button>
                 </form>
             @endif
         </div>
@@ -184,17 +274,62 @@
             </div>
         @endif
         @if($invoice->status === 'paid' && !$invoice->performed_by_user_id)
-            <form action="{{ route('radiology.invoices.start-work', $invoice) }}" method="POST">
-                @csrf
-                <button type="submit" class="btn btn-primary" onclick="return confirm('Start work on this imaging order?')"><i class="bi bi-play-circle me-1"></i>Start Work</button>
-            </form>
+            <form id="radStartWorkForm" action="{{ route('radiology.invoices.start-work', $invoice) }}" method="POST">@csrf</form>
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#radStartModal">
+                <i class="bi bi-play-circle me-1"></i>Start Work
+            </button>
         @endif
         @if($invoice->status === 'paid' && $invoice->performed_by_user_id && $invoice->report_text && !$invoice->isWorkCompleted())
-            <form action="{{ route('radiology.invoices.mark-complete', $invoice) }}" method="POST">
-                @csrf
-                <button type="submit" class="btn btn-success" onclick="return confirm('Mark this imaging order as completed?')"><i class="bi bi-check-circle me-1"></i>Mark as Completed</button>
-            </form>
+            <form id="radCompleteForm" action="{{ route('radiology.invoices.mark-complete', $invoice) }}" method="POST">@csrf</form>
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#radCompleteModal">
+                <i class="bi bi-check-circle me-1"></i>Mark as Completed
+            </button>
         @endif
+    </div>
+
+    {{-- Start Work modal --}}
+    <div class="modal fade" id="radStartModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-play-circle me-2" style="color:var(--accent-primary);"></i>Start Imaging Work</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1">You are about to begin work on:</p>
+                    <p class="fw-semibold mb-0">{{ $invoice->service_name }} — Patient: {{ $invoice->patient?->full_name ?? 'N/A' }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="document.getElementById('radStartWorkForm').submit()"><i class="bi bi-play-circle me-1"></i>Start Work</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Mark Complete modal --}}
+    <div class="modal fade" id="radCompleteModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-color:rgba(var(--accent-success-rgb),0.5);">
+                <div class="modal-header" style="background:rgba(var(--accent-success-rgb),0.1);">
+                    <h5 class="modal-title"><i class="bi bi-check-circle me-2" style="color:var(--accent-success);"></i>Complete Imaging Order</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Before marking complete, confirm:</p>
+                    <ul class="mb-0">
+                        <li>All required views / images have been captured and uploaded</li>
+                        <li>Report text has been written and saved</li>
+                        <li>Patient identity has been verified</li>
+                        <li>Image quality is acceptable — no retakes required</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Go Back</button>
+                    <button type="button" class="btn btn-success" onclick="document.getElementById('radCompleteForm').submit()"><i class="bi bi-check-circle me-1"></i>Confirm Complete</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     {{-- Discount --}}
@@ -280,6 +415,88 @@
 </div>
 
 @push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    // ── Report template chips ───────────────────────────────────────────────
+    document.querySelectorAll('.rad-template-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var ta = document.getElementById('report');
+            if (!ta) return;
+            var cur = ta.value.trim();
+            ta.value = cur ? (cur + '\n' + btn.dataset.text) : btn.dataset.text;
+        });
+    });
+
+    // ── STT for radiology report ────────────────────────────────────────────
+    (function () {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) return;
+        var btn  = document.getElementById('radSttBtn');
+        var icon = document.getElementById('radSttIcon');
+        var lbl  = document.getElementById('radSttLabel');
+        var stat = document.getElementById('radSttStatus');
+        var ta   = document.getElementById('report');
+        if (!btn || !ta) return;
+        btn.style.display = '';
+        var rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US';
+        var listening = false;
+        rec.onresult = function (e) {
+            var interim = '', final = '';
+            for (var i = e.resultIndex; i < e.results.length; i++) {
+                if (e.results[i].isFinal) final += e.results[i][0].transcript;
+                else interim += e.results[i][0].transcript;
+            }
+            if (final) { var c = ta.value; ta.value = c + (c && !c.endsWith(' ') && !c.endsWith('\n') ? ' ' : '') + final; }
+            stat.textContent = interim ? ('● ' + interim.substring(0, 40) + (interim.length > 40 ? '…' : '')) : '● REC';
+        };
+        rec.onerror = function (e) { if (e.error === 'no-speech') return; listening = false; setIdle(); if (e.error === 'not-allowed') alert('Microphone access denied.'); };
+        rec.onend   = function () { if (listening) { try { rec.start(); } catch(e) {} } else setIdle(); };
+        function setIdle()      { icon.className = 'bi bi-mic'; lbl.textContent = 'Dictate'; stat.style.display = 'none'; btn.classList.remove('btn-danger'); btn.classList.add('btn-outline-secondary'); }
+        function setRecording() { icon.className = 'bi bi-mic-fill'; lbl.textContent = 'Stop'; stat.style.display = ''; stat.textContent = '● REC'; btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-danger'); }
+        btn.addEventListener('click', function () {
+            if (listening) { listening = false; rec.stop(); } else { listening = true; setRecording(); try { rec.start(); } catch(e) {} }
+        });
+    }());
+
+    // ── Drag-drop image upload ──────────────────────────────────────────────
+    var fileInput = document.getElementById('images');
+    if (fileInput) {
+        fileInput.addEventListener('change', function () { updateRadPreview(this.files); });
+    }
+
+});
+
+function radHandleDrop(e) {
+    e.preventDefault();
+    document.getElementById('radDropZone').style.borderColor = 'var(--glass-border)';
+    var files = e.dataTransfer.files;
+    var dt = new DataTransfer();
+    Array.from(files).forEach(function (f) { dt.items.add(f); });
+    var inp = document.getElementById('images');
+    inp.files = dt.files;
+    updateRadPreview(inp.files);
+}
+
+function updateRadPreview(files) {
+    var preview = document.getElementById('radFilePreview');
+    var btn     = document.getElementById('radUploadBtn');
+    var cnt     = document.getElementById('radUploadCount');
+    if (!preview) return;
+    preview.innerHTML = '';
+    Array.from(files).forEach(function (f) {
+        var chip = document.createElement('span');
+        chip.className = 'badge-glass d-flex align-items-center gap-1 px-2 py-1';
+        chip.style.cssText = 'background:rgba(var(--accent-info-rgb),0.12);color:var(--accent-info);font-size:0.78rem;';
+        chip.innerHTML = '<i class="bi ' + (f.type === 'application/pdf' ? 'bi-file-earmark-pdf' : 'bi-image') + '"></i> ' + f.name;
+        preview.appendChild(chip);
+    });
+    if (btn) {
+        btn.disabled = files.length === 0;
+        if (cnt) cnt.textContent = files.length > 0 ? files.length + ' file' + (files.length > 1 ? 's' : '') : '';
+    }
+}
+</script>
 <script>
 (function () {
     const lb = document.getElementById('lightbox');

@@ -58,9 +58,9 @@ class TriageController extends Controller
             'chief_complaint' => 'nullable|string|max:500',
             'priority' => 'nullable|string|in:low,normal,high,urgent,critical,emergency',
             'notes' => 'nullable|string',
+            'send_to_doctor' => 'nullable|in:0,1',
         ]);
 
-        // Save vital signs to TriageVital model
         TriageVital::create([
             'patient_id' => $patient->id,
             'blood_pressure' => $validated['blood_pressure'] ?? null,
@@ -76,13 +76,23 @@ class TriageController extends Controller
             'recorded_by' => Auth::id(),
         ]);
 
-        // Update patient status and timestamp
+        $sendNow = ($validated['send_to_doctor'] ?? '0') === '1';
+
+        if ($sendNow) {
+            $patient->update([
+                'status' => 'with_doctor',
+                'triage_started_at' => $patient->triage_started_at ?? now(),
+                'doctor_started_at' => now(),
+            ]);
+            return redirect()->route('triage.patients.index')->with('success', 'Vitals recorded and patient sent to doctor.');
+        }
+
         $patient->update([
             'status' => 'triage',
             'triage_started_at' => now(),
         ]);
 
-        return redirect()->route('triage.patients.index')->with('success', 'Vitals recorded and patient moved to triage.');
+        return redirect()->route('triage.patients.index')->with('success', 'Vitals recorded. Patient is in triage queue.');
     }
 
     /**

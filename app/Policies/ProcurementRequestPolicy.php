@@ -81,7 +81,7 @@ class ProcurementRequestPolicy
             return false;
         }
 
-        // Staff and Owner can receive
-        return $user->hasAnyRole(['Owner', 'Pharmacy', 'Laboratory', 'Radiology', 'Receptionist']);
+        // Department staff records receipt — owner approves, staff receives
+        return $user->hasAnyRole(['Pharmacy', 'Laboratory', 'Radiology', 'Receptionist']);
     }
 }

@@ -10,6 +10,7 @@
 use App\Http\Controllers\Pharmacy\PharmacyDashboardController;
 use App\Http\Controllers\Pharmacy\InvoiceController as PharmacyInvoiceController;
 use App\Http\Controllers\Pharmacy\PrescriptionQueueController;
+use App\Http\Controllers\Pharmacy\PriceListController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('role:Pharmacy')->group(function () {
@@ -26,6 +27,10 @@ Route::middleware('role:Pharmacy')->group(function () {
     Route::post('/pharmacy/invoices/{invoice}/complete', [PharmacyInvoiceController::class, 'markComplete'])->name('pharmacy.invoices.mark-complete');
     Route::post('/pharmacy/invoices/{invoice}/pay', [PharmacyInvoiceController::class, 'markPaid'])->name('pharmacy.invoices.mark-paid');
     Route::post('/pharmacy/invoices/{invoice}/cancel', [PharmacyInvoiceController::class, 'cancel'])->name('pharmacy.invoices.cancel');
+
+    // Price List Upload (sends to owner for approval)
+    Route::get('/pharmacy/price-list/upload', [PriceListController::class, 'create'])->name('pharmacy.price-list.upload');
+    Route::post('/pharmacy/price-list/upload', [PriceListController::class, 'store'])->name('pharmacy.price-list.store');
 
     // Prescription Queue
     Route::get('/pharmacy/prescriptions', [PrescriptionQueueController::class, 'index'])->name('pharmacy.prescriptions.index');

@@ -11,9 +11,11 @@ class ProcurementStatusUpdated extends Notification
     use Queueable;
 
     // Possible events
-    const EVENT_APPROVED = 'approved';
-    const EVENT_REJECTED = 'rejected';
-    const EVENT_RECEIVED = 'received';
+    const EVENT_APPROVED        = 'approved';
+    const EVENT_REJECTED        = 'rejected';
+    const EVENT_RECEIVED        = 'received';
+    const EVENT_OWNER_ADVISORY  = 'owner_advisory';
+    const EVENT_RECEIPT_OVERDUE = 'receipt_overdue';
 
     public function __construct(
         public ProcurementRequest $procurement,
@@ -54,6 +56,22 @@ class ProcurementStatusUpdated extends Notification
                 'icon' => 'bi-box-seam',
                 'url' => "/procurement/{$this->procurement->id}",
                 'color' => 'info',
+                'assigned_at' => now()->toIso8601String(),
+            ],
+            self::EVENT_OWNER_ADVISORY => [
+                'title' => "Procurement AI Notice — {$deptLabel}",
+                'message' => $this->reason ?? "AI action taken on procurement #{$this->procurement->id}.",
+                'icon' => 'bi-robot',
+                'url' => "/procurement/{$this->procurement->id}",
+                'color' => 'warning',
+                'assigned_at' => now()->toIso8601String(),
+            ],
+            self::EVENT_RECEIPT_OVERDUE => [
+                'title' => "Receipt Overdue — {$deptLabel}",
+                'message' => $this->reason ?? "Procurement #{$this->procurement->id} receipt is past the 48-hour deadline.",
+                'icon' => 'bi-clock-history',
+                'url' => "/procurement/{$this->procurement->id}",
+                'color' => 'danger',
                 'assigned_at' => now()->toIso8601String(),
             ],
             default => [

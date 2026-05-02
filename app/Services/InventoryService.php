@@ -54,10 +54,11 @@ class InventoryService
                 $newAvg = $unitCost;
             }
 
-            // Update WAC on inventory item
+            // Update WAC on inventory item; track last inbound timestamp for stale-item detection
             $lockedItem->update([
                 'weighted_avg_cost' => round($newAvg, 2),
-                'purchase_price' => $unitCost, // Also update latest purchase price
+                'purchase_price'    => $unitCost,
+                'last_stocked_at'   => now(),
             ]);
 
             return StockMovement::create([

@@ -125,25 +125,36 @@
 
     {{-- Additional Metrics --}}
     <div class="row g-3 mb-4">
-        <div class="col-md-4 fade-in delay-5">
-            <div class="glass-card p-3 hover-lift">
+        <div class="col-md-3 fade-in delay-5">
+            <a href="{{ route('dashboard.low-stock-alerts') }}" class="text-decoration-none">
+            <div class="glass-card p-3 hover-lift" style="{{ $out_of_stock_count > 0 ? 'border-left:3px solid var(--accent-danger);' : '' }}">
                 <div class="d-flex align-items-center gap-3">
-                    <div class="stat-icon stat-icon-danger">
-                        <i class="bi bi-box-seam"></i>
-                    </div>
+                    <div class="stat-icon stat-icon-danger"><i class="bi bi-box-seam"></i></div>
                     <div>
-                        <div class="text-muted small">Low Stock Items</div>
-                        <div class="stat-value glow-danger">{{ $low_stock_count }}</div>
+                        <div class="text-muted small">Out of Stock</div>
+                        <div class="stat-value glow-danger">{{ $out_of_stock_count }}</div>
                     </div>
                 </div>
             </div>
+            </a>
         </div>
-        <div class="col-md-4 fade-in delay-6">
+        <div class="col-md-3 fade-in delay-6">
+            <a href="{{ route('dashboard.low-stock-alerts') }}" class="text-decoration-none">
+            <div class="glass-card p-3 hover-lift" style="{{ $low_stock_count > 0 ? 'border-left:3px solid var(--accent-warning);' : '' }}">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stat-icon stat-icon-warning"><i class="bi bi-exclamation-triangle"></i></div>
+                    <div>
+                        <div class="text-muted small">Low Stock</div>
+                        <div class="stat-value glow-warning">{{ $low_stock_count }}</div>
+                    </div>
+                </div>
+            </div>
+            </a>
+        </div>
+        <div class="col-md-3 fade-in delay-6">
             <div class="glass-card p-3 hover-lift">
                 <div class="d-flex align-items-center gap-3">
-                    <div class="stat-icon stat-icon-warning">
-                        <i class="bi bi-wallet2"></i>
-                    </div>
+                    <div class="stat-icon stat-icon-warning"><i class="bi bi-wallet2"></i></div>
                     <div>
                         <div class="text-muted small">Pending Payouts ({{ $pending_payout_count }})</div>
                         <div class="stat-value glow-warning">{{ number_format($pending_payout_total, 2) }}</div>
@@ -151,28 +162,59 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4 fade-in delay-7">
+        <div class="col-md-3 fade-in delay-7">
+            @if($overdue_receipts_count > 0)
+            <a href="{{ route('procurement.index') }}" class="text-decoration-none">
+            <div class="glass-card p-3 hover-lift" style="border-left:3px solid var(--accent-danger);">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stat-icon stat-icon-danger"><i class="bi bi-clock-history"></i></div>
+                    <div>
+                        <div class="text-muted small">Overdue Receipts</div>
+                        <div class="stat-value glow-danger">{{ $overdue_receipts_count }}</div>
+                    </div>
+                </div>
+            </div>
+            </a>
+            @else
             <div class="glass-card p-3 hover-lift">
                 <div class="d-flex align-items-center gap-3">
-                    <div class="stat-icon stat-icon-info">
-                        <i class="bi bi-percent"></i>
-                    </div>
+                    <div class="stat-icon stat-icon-info"><i class="bi bi-percent"></i></div>
                     <div>
                         <div class="text-muted small">Pending Discounts</div>
                         <div class="stat-value">{{ $pending_discount_count }}</div>
                     </div>
                 </div>
             </div>
+            @endif
         </div>
     </div>
+
+    {{-- Procurement Summary --}}
+    @if($pending_procurement_count > 0)
+    <div class="glass-card p-4 mb-4 fade-in delay-6" style="border-left:3px solid var(--accent-warning);">
+        <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-3">
+                <div class="stat-icon stat-icon-warning"><i class="bi bi-cart-check"></i></div>
+                <div>
+                    <div class="fw-semibold" style="color:var(--text-primary);">{{ $pending_procurement_count }} Procurement Request{{ $pending_procurement_count !== 1 ? 's' : '' }} Awaiting Approval</div>
+                    <div class="text-muted small">Purchase orders, service requests, price changes pending your review</div>
+                </div>
+            </div>
+            <a href="{{ route('procurement.index') }}" class="btn btn-warning btn-sm"><i class="bi bi-clipboard-check me-1"></i>Review Now</a>
+        </div>
+    </div>
+    @endif
 
     {{-- Pending Tasks --}}
     @php
         $tasks = collect();
+        if ($pending_procurement_count > 0) $tasks->push(['label' => 'Procurement requests awaiting approval', 'count' => $pending_procurement_count, 'icon' => 'bi-cart3', 'color' => 'warning', 'url' => route('procurement.index')]);
         if ($pending_discount_count > 0) $tasks->push(['label' => 'Discount requests awaiting approval', 'count' => $pending_discount_count, 'icon' => 'bi-percent', 'color' => 'warning', 'url' => route('owner.discount-approvals.index')]);
         if ($pending_payout_count > 0) $tasks->push(['label' => 'Doctor payouts pending', 'count' => $pending_payout_count, 'icon' => 'bi-wallet2', 'color' => 'info', 'url' => route('reception.payouts.index')]);
         if ($unpaid_invoices_count > 0) $tasks->push(['label' => 'Unpaid invoices across system', 'count' => $unpaid_invoices_count, 'icon' => 'bi-receipt', 'color' => 'primary', 'url' => '#']);
-        if ($low_stock_count > 0) $tasks->push(['label' => 'Low stock items need attention', 'count' => $low_stock_count, 'icon' => 'bi-exclamation-triangle', 'color' => 'danger', 'url' => route('dashboard.low-stock-alerts')]);
+        if ($out_of_stock_count > 0) $tasks->push(['label' => 'Items out of stock — auto-order may be in progress', 'count' => $out_of_stock_count, 'icon' => 'bi-box-seam', 'color' => 'danger', 'url' => route('dashboard.low-stock-alerts')]);
+        if ($low_stock_count > 0) $tasks->push(['label' => 'Low stock items approaching minimum', 'count' => $low_stock_count, 'icon' => 'bi-exclamation-triangle', 'color' => 'warning', 'url' => route('dashboard.low-stock-alerts')]);
+        if (!empty($overdue_receipts_count) && $overdue_receipts_count > 0) $tasks->push(['label' => 'Inventory receipts overdue (>48h past approval)', 'count' => $overdue_receipts_count, 'icon' => 'bi-clock-history', 'color' => 'danger', 'url' => route('procurement.index')]);
     @endphp
     @if($tasks->count() > 0)
     <div class="glass-card p-4 mb-4 fade-in delay-5">

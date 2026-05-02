@@ -5,13 +5,21 @@
 <div class="fade-in">
     <div class="page-header">
         <div>
-            <h1 class="page-title"><i class="bi bi-receipt me-2"></i>My Invoices</h1>
-            <p class="page-subtitle">Invoices attributed to you as prescribing doctor</p>
+            @if($resultsReady ?? false)
+                <h1 class="page-title"><i class="bi bi-file-earmark-check me-2" style="color:var(--accent-success);"></i>Lab & Radiology Results Ready</h1>
+                <p class="page-subtitle">Completed lab and radiology reports for your patients — click any row to view results</p>
+            @else
+                <h1 class="page-title"><i class="bi bi-receipt me-2"></i>My Invoices</h1>
+                <p class="page-subtitle">Invoices attributed to you as prescribing doctor</p>
+            @endif
         </div>
+        @if($resultsReady ?? false)
+            <a href="{{ route('doctor.invoices.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x me-1"></i>Clear filter</a>
+        @endif
     </div>
 
-    {{-- Filters --}}
-    <div class="glass-card mb-4">
+    {{-- Filters (hidden in results-ready mode) --}}
+    <div class="glass-card mb-4 {{ ($resultsReady ?? false) ? 'd-none' : '' }}">
         <form method="GET" action="{{ route('doctor.invoices.index') }}" class="row g-2 align-items-end">
             <div class="col-md-2">
                 <label class="form-label small mb-1">Status</label>

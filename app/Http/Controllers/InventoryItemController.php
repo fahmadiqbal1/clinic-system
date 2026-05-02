@@ -139,21 +139,28 @@ class InventoryItemController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'department' => ['required', 'string', 'in:pharmacy,laboratory,radiology'],
-            'chemical_formula' => ['nullable', 'string', 'max:255'],
-            'sku' => ['nullable', 'string', 'max:100', 'unique:inventory_items,sku'],
-            'barcode' => ['nullable', 'string', 'max:100', 'unique:inventory_items,barcode'],
-            'unit' => ['required', 'string', 'max:50'],
-            'minimum_stock_level' => ['required', 'integer', 'min:0'],
-            'purchase_price' => ['required', 'numeric', 'min:0'],
-            'selling_price' => ['required', 'numeric', 'min:0'],
+            'name'                 => ['required', 'string', 'max:255'],
+            'manufacturer'         => ['nullable', 'string', 'max:255'],
+            'manufacturer_tag'     => ['nullable', 'string', 'max:8'],
+            'department'           => ['required', 'string', 'in:pharmacy,laboratory,radiology'],
+            'chemical_formula'     => ['nullable', 'string', 'max:255'],
+            'sku'                  => ['nullable', 'string', 'max:100', 'unique:inventory_items,sku'],
+            'barcode'              => ['nullable', 'string', 'max:100', 'unique:inventory_items,barcode'],
+            'unit'                 => ['required', 'string', 'max:50'],
+            'minimum_stock_level'  => ['required', 'integer', 'min:0'],
+            'purchase_price'       => ['required', 'numeric', 'min:0'],
+            'selling_price'        => ['required', 'numeric', 'min:0'],
             'requires_prescription' => ['boolean'],
-            'is_active' => ['boolean'],
+            'is_active'            => ['boolean'],
         ]);
 
         $validated['requires_prescription'] = $request->has('requires_prescription');
         $validated['is_active'] = $request->has('is_active') || !$request->exists('is_active');
+
+        // Auto-derive manufacturer_tag if manufacturer supplied but tag not
+        if (!empty($validated['manufacturer']) && empty($validated['manufacturer_tag'])) {
+            $validated['manufacturer_tag'] = InventoryItem::deriveManufacturerTag($validated['manufacturer']);
+        }
 
         // Force department for dept-specific roles
         $userDepartment = DepartmentScope::resolveForUser(Auth::user());
@@ -208,18 +215,24 @@ class InventoryItemController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'department' => ['required', 'string', 'in:pharmacy,laboratory,radiology'],
-            'chemical_formula' => ['nullable', 'string', 'max:255'],
-            'sku' => ['nullable', 'string', 'max:100', 'unique:inventory_items,sku,' . $inventoryItem->id],
-            'barcode' => ['nullable', 'string', 'max:100', 'unique:inventory_items,barcode,' . $inventoryItem->id],
-            'unit' => ['required', 'string', 'max:50'],
-            'minimum_stock_level' => ['required', 'integer', 'min:0'],
-            'purchase_price' => ['required', 'numeric', 'min:0'],
-            'selling_price' => ['required', 'numeric', 'min:0'],
+            'name'                 => ['required', 'string', 'max:255'],
+            'manufacturer'         => ['nullable', 'string', 'max:255'],
+            'manufacturer_tag'     => ['nullable', 'string', 'max:8'],
+            'department'           => ['required', 'string', 'in:pharmacy,laboratory,radiology'],
+            'chemical_formula'     => ['nullable', 'string', 'max:255'],
+            'sku'                  => ['nullable', 'string', 'max:100', 'unique:inventory_items,sku,' . $inventoryItem->id],
+            'barcode'              => ['nullable', 'string', 'max:100', 'unique:inventory_items,barcode,' . $inventoryItem->id],
+            'unit'                 => ['required', 'string', 'max:50'],
+            'minimum_stock_level'  => ['required', 'integer', 'min:0'],
+            'purchase_price'       => ['required', 'numeric', 'min:0'],
+            'selling_price'        => ['required', 'numeric', 'min:0'],
             'requires_prescription' => ['boolean'],
-            'is_active' => ['boolean'],
+            'is_active'            => ['boolean'],
         ]);
+
+        if (!empty($validated['manufacturer']) && empty($validated['manufacturer_tag'])) {
+            $validated['manufacturer_tag'] = InventoryItem::deriveManufacturerTag($validated['manufacturer']);
+        }
 
         $validated['requires_prescription'] = $request->has('requires_prescription');
         $validated['is_active'] = $request->has('is_active');

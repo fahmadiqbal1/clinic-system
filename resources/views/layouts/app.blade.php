@@ -61,6 +61,8 @@
                             <li class="nav-item"><a class="nav-link" href="{{ route('owner.expenses.index') }}">Expenses</a></li>
                             <li class="nav-item"><a class="nav-link" href="{{ route('owner.payouts.index') }}">Payouts</a></li>
                             <li class="nav-item"><a class="nav-link" href="{{ route('contracts.index') }}">Contracts</a></li>
+                            <li class="nav-item"><a class="nav-link" href="{{ route('procurement.index') }}">Procurement</a></li>
+                            <li class="nav-item"><a class="nav-link" href="{{ route('owner.vendors.index') }}">Vendors</a></li>
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"><i class="bi bi-wallet2 me-1"></i>Finance</a>
                                 <ul class="dropdown-menu">

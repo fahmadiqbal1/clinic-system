@@ -113,6 +113,12 @@ class ServiceCatalogController extends Controller
         ]);
 
         $validated['is_active'] = $request->has('is_active');
+
+        // Keep existing code when field is left blank on edit
+        if (empty($validated['code'])) {
+            $validated['code'] = $serviceCatalog->code;
+        }
+
         $serviceCatalog->update($validated);
 
         return redirect()->route('owner.service-catalog.index')

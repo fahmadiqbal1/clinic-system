@@ -16,9 +16,11 @@ use App\Http\Controllers\Doctor\IndependentDoctorDashboardController;
 use App\Http\Controllers\Doctor\PatientController;
 use App\Http\Controllers\Doctor\ConsultationController;
 use App\Http\Controllers\Doctor\InvoiceController as DoctorInvoiceController;
+use App\Http\Controllers\Doctor\ResultsController as DoctorResultsController;
 use App\Http\Controllers\Doctor\PrescriptionController;
 use App\Http\Controllers\Doctor\ReferralPatientController;
 use App\Http\Controllers\Doctor\AppointmentController as DoctorAppointmentController;
+use App\Http\Controllers\Doctor\SoapKeywordController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('role:Doctor')->group(function () {
@@ -41,12 +43,21 @@ Route::middleware('role:Doctor')->group(function () {
     Route::get('/doctor/invoices', [DoctorInvoiceController::class, 'index'])->name('doctor.invoices.index');
     Route::get('/doctor/invoices/{invoice}', [DoctorInvoiceController::class, 'show'])->name('doctor.invoices.show');
 
+    // ─── Clinical Results (lab + radiology, no financial framing) ────────────
+    Route::get('/doctor/results', [DoctorResultsController::class, 'index'])->name('doctor.results.index');
+    Route::get('/doctor/results/{invoice}', [DoctorResultsController::class, 'show'])->name('doctor.results.show');
+
     Route::get('/doctor/prescriptions', [PrescriptionController::class, 'index'])->name('doctor.prescriptions.index');
     Route::get('/doctor/prescriptions/{patient}/create', [PrescriptionController::class, 'create'])->name('doctor.prescriptions.create');
     Route::post('/doctor/prescriptions/{patient}', [PrescriptionController::class, 'store'])->name('doctor.prescriptions.store');
 
     // ─── Appointments ────────────────────────────────────────────────────────
     Route::get('/doctor/appointments', [DoctorAppointmentController::class, 'index'])->name('doctor.appointments.index');
+
+    // ─── SOAP Keyword chips (AJAX) ────────────────────────────────────────────
+    Route::get('/doctor/soap-keywords', [SoapKeywordController::class, 'index'])->name('doctor.soap-keywords.index');
+    Route::post('/doctor/soap-keywords', [SoapKeywordController::class, 'store'])->name('doctor.soap-keywords.store');
+    Route::post('/doctor/soap-keywords/{soapKeyword}/use', [SoapKeywordController::class, 'use'])->name('doctor.soap-keywords.use');
 
     // ─── Independent Doctor routes ────────────────────────────────────────────
     // These routes are only accessible to independent doctors (is_independent = true).

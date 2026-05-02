@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\Invoice;
 use App\Models\InventoryItem;
+use App\Models\ProcurementRequest;
 use App\Services\FinancialReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -35,14 +36,39 @@ class OwnerDashboardController extends Controller
             ->where('status', Invoice::STATUS_PENDING)
             ->count();
 
-        // Count low stock items
+        // Count out-of-stock items (stock = 0)
+        $outOfStockCount = InventoryItem::where('is_active', true)
+            ->whereRaw('(
+                SELECT COALESCE(SUM(quantity), 0)
+                FROM stock_movements
+                WHERE inventory_item_id = inventory_items.id
+            ) <= 0')
+            ->count();
+
+        // Count low-stock items (0 < stock ≤ minimum_stock_level)
         $lowStockCount = InventoryItem::where('is_active', true)
             ->whereRaw('(
-                SELECT COALESCE(SUM(quantity), 0) 
-                FROM stock_movements 
+                SELECT COALESCE(SUM(quantity), 0)
+                FROM stock_movements
+                WHERE inventory_item_id = inventory_items.id
+            ) > 0')
+            ->whereRaw('(
+                SELECT COALESCE(SUM(quantity), 0)
+                FROM stock_movements
                 WHERE inventory_item_id = inventory_items.id
             ) <= minimum_stock_level')
             ->count();
+
+        // Count overdue receipts (approved inventory, past 48h deadline, not yet received)
+        $overdueReceiptsCount = ProcurementRequest::where('type', 'inventory')
+            ->where('status', 'approved')
+            ->whereNull('received_at')
+            ->whereNotNull('receipt_deadline_at')
+            ->where('receipt_deadline_at', '<', now())
+            ->count();
+
+        // Count pending procurement approvals
+        $pendingProcurementCount = ProcurementRequest::where('status', 'pending')->count();
 
         // Count pending discount requests
         $pendingDiscountCount = Invoice::where('discount_status', Invoice::DISCOUNT_PENDING)->count();
@@ -82,7 +108,10 @@ class OwnerDashboardController extends Controller
             'pending_lab_count' => $pendingLab,
             'pending_radiology_count' => $pendingRadiology,
             'pending_pharmacy_count' => $pendingPharmacy,
+            'out_of_stock_count' => $outOfStockCount,
             'low_stock_count' => $lowStockCount,
+            'overdue_receipts_count' => $overdueReceiptsCount,
+            'pending_procurement_count' => $pendingProcurementCount,
             'pending_discount_count' => $pendingDiscountCount,
             'pending_discounts' => $pendingDiscounts,
             'trend_labels' => $trendLabels,

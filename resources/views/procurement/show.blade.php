@@ -18,6 +18,35 @@
         </div>
     @endif
 
+    {{-- AI auto-approval badge --}}
+    @if($request->ai_approved_at)
+    <div class="alert alert-info py-2 fade-in" style="font-size:0.85rem;">
+        <i class="bi bi-robot me-1"></i>
+        <strong>AI Auto-Approved</strong> on {{ $request->ai_approved_at->format('M d, Y H:i') }}
+        — {{ $request->ai_approval_reason }}
+    </div>
+    @endif
+
+    {{-- Receipt overdue warning --}}
+    @if($request->status === 'approved' && $request->type === 'inventory' && $request->receipt_deadline_at && !$request->received_at)
+        @php $hoursOverdue = $request->receipt_deadline_at->isPast() ? (int) now()->diffInHours($request->receipt_deadline_at) : null; @endphp
+        @if($hoursOverdue !== null)
+        <div class="alert alert-danger py-2 fade-in" style="font-size:0.85rem;">
+            <i class="bi bi-clock-history me-1"></i>
+            <strong>Receipt Overdue</strong> — this procurement is {{ $hoursOverdue }}h past the 48-hour deadline.
+            @if(!Auth::user()->hasRole('Owner'))
+                <a href="{{ route('procurement.receive', $request) }}" class="alert-link ms-2">Record Receipt Now</a>
+            @endif
+        </div>
+        @else
+        <div class="alert alert-warning py-2 fade-in" style="font-size:0.85rem;">
+            <i class="bi bi-clock me-1"></i>
+            Receipt due by {{ $request->receipt_deadline_at->format('M d, Y H:i') }}
+            ({{ $request->receipt_deadline_at->diffForHumans() }}).
+        </div>
+        @endif
+    @endif
+
     <div class="row">
         <div class="col-md-8">
             <div class="glass-card p-4 mb-4 fade-in delay-1">
@@ -277,10 +306,11 @@
                 </div>
             @endif
 
-            {{-- Receive Action (for approved inventory procurements only, not change requests) --}}
-            @if ($request->status === 'approved' && $request->type === 'inventory')
+            {{-- Receive Action (department staff only — pharmacist/lab/radiology records receipt when stock arrives) --}}
+            @if ($request->status === 'approved' && $request->type === 'inventory' && !Auth::user()->hasRole('Owner'))
                 <div class="glass-card p-4 mb-4 fade-in delay-1" style="border-left:3px solid var(--accent-info);">
                     <h5 class="fw-bold mb-3"><i class="bi bi-box-arrow-in-down me-2" style="color:var(--accent-info);"></i>Receive Inventory</h5>
+                    <p class="small mb-3" style="color:var(--text-muted);">Upload the supplier invoice and confirm quantities received.</p>
                     <a href="{{ route('procurement.receive', $request) }}" class="btn btn-info w-100"><i class="bi bi-clipboard-check me-1"></i>Record Receipt</a>
                 </div>
             @endif

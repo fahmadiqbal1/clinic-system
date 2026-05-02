@@ -105,18 +105,89 @@
 
             {{-- Dispense Action --}}
             @if($prescription->status === 'active')
-                <div class="glass-card fade-in delay-2 text-center" style="border:1px solid rgba(var(--accent-success-rgb),0.3);">
-                    <p class="mb-3" style="color:var(--text-secondary);">Confirm that all medications have been dispensed to the patient.</p>
-                    <form method="POST" action="{{ route('pharmacy.prescriptions.dispense', $prescription) }}">
+                <div class="glass-card fade-in delay-2" style="border:1px solid rgba(var(--accent-success-rgb),0.3);">
+                    <h6 class="form-section-title"><i class="bi bi-capsule me-2" style="color:var(--accent-success);"></i>Dispense Medications</h6>
+                    <p class="mb-3" style="color:var(--text-secondary);">Complete the checklist before marking as dispensed.</p>
+
+                    {{-- Inline checklist --}}
+                    <div class="mb-3" id="dispenseChecklist">
+                        @foreach([
+                            'chk1' => 'Patient identity verified (name + ID)',
+                            'chk2' => 'All medications available in stock',
+                            'chk3' => 'Drug interactions reviewed',
+                            'chk4' => 'Correct dosage and quantity confirmed',
+                            'chk5' => 'Patient counselled on administration',
+                        ] as $id => $label)
+                        <div class="form-check mb-2">
+                            <input class="form-check-input dispense-check" type="checkbox" id="{{ $id }}" value="1">
+                            <label class="form-check-label" for="{{ $id }}" style="color:var(--text-secondary);">{{ $label }}</label>
+                        </div>
+                        @endforeach
+                    </div>
+
+                    <form method="POST" action="{{ route('pharmacy.prescriptions.dispense', $prescription) }}" id="dispenseForm">
                         @csrf
-                        <button type="submit" class="btn btn-success btn-lg"
-                            onclick="return confirm('Mark this prescription as dispensed?')">
+                        <div class="mb-3">
+                            <label for="dispenseNotes" class="form-label" style="font-size:0.85rem; color:var(--text-muted);">Dispensing Notes (optional)</label>
+                            <textarea id="dispenseNotes" name="dispense_notes" class="form-control form-control-sm" rows="2" placeholder="e.g. Take with food, avoid alcohol…"></textarea>
+                        </div>
+                        <button type="button" id="dispenseBtn" class="btn btn-success btn-lg w-100" disabled
+                                data-bs-toggle="modal" data-bs-target="#dispenseConfirmModal">
                             <i class="bi bi-check-circle me-1"></i>Mark as Dispensed
                         </button>
                     </form>
+                </div>
+
+                {{-- Dispense confirm modal --}}
+                <div class="modal fade" id="dispenseConfirmModal" tabindex="-1">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content" style="border-color:rgba(var(--accent-success-rgb),0.5);">
+                            <div class="modal-header" style="background:rgba(var(--accent-success-rgb),0.1);">
+                                <h5 class="modal-title"><i class="bi bi-check-circle me-2" style="color:var(--accent-success);"></i>Confirm Dispensing</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p class="mb-2 fw-semibold">
+                                    {{ $prescription->patient?->first_name }} {{ $prescription->patient?->last_name }} —
+                                    {{ $prescription->items->count() }} medication(s)
+                                </p>
+                                <ul class="mb-0 small" style="color:var(--text-secondary);">
+                                    @foreach($prescription->items as $item)
+                                    <li>{{ $item->medication_name }} {{ $item->dosage ?? '' }} × {{ $item->quantity }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Go Back</button>
+                                <button type="button" class="btn btn-success" onclick="document.getElementById('dispenseForm').submit()">
+                                    <i class="bi bi-check-circle me-1"></i>Confirm Dispensed
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             @endif
         </div>
     </div>
 </div>
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var checks = document.querySelectorAll('.dispense-check');
+    var btn    = document.getElementById('dispenseBtn');
+    if (!checks.length || !btn) return;
+
+    function refreshBtn() {
+        var allChecked = Array.from(checks).every(function (c) { return c.checked; });
+        btn.disabled = !allChecked;
+        btn.classList.toggle('opacity-50', !allChecked);
+    }
+
+    checks.forEach(function (c) { c.addEventListener('change', refreshBtn); });
+    refreshBtn();
+});
+</script>
+@endpush
+
 @endsection

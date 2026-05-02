@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use Database\Seeders\SoapKeywordSeeder;
 use Illuminate\Database\Seeder;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
@@ -13,6 +14,7 @@ class DatabaseSeeder extends Seeder
         $this->call(RoleSeeder::class);
         $this->call(CommissionConfigSeeder::class);
         $this->call(ServiceCatalogSeeder::class);
+        $this->call(SoapKeywordSeeder::class);
 
         // Owner
         $owner = User::firstOrCreate(

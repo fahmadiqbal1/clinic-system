@@ -13,7 +13,7 @@
         @endcan
     </div>
 
-    @can('approve', App\Models\ProcurementRequest::class)
+    @role('Owner')
     <form action="{{ route('procurement.bulk-approve') }}" method="POST" id="bulkApproveForm">
         @csrf
         <div id="bulkBar" style="display:none;" class="alert d-flex align-items-center gap-3 mb-3 fade-in" style="background:rgba(var(--accent-success-rgb),0.12); border:1px solid var(--accent-success); border-radius:var(--radius-md);">
@@ -21,7 +21,7 @@
             <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('Approve all selected pending requests?')"><i class="bi bi-check-all me-1"></i>Bulk Approve Selected</button>
             <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelection">Clear</button>
         </div>
-    @endcan
+    @endrole
 
     @if (session('success'))
         <div class="alert alert-success alert-dismissible fade show">
@@ -41,9 +41,9 @@
                 <table class="table table-hover mb-0">
                     <thead>
                         <tr>
-                            @can('approve', App\Models\ProcurementRequest::class)
+                            @role('Owner')
                             <th style="width:36px;"><input type="checkbox" id="selectAll" title="Select all pending"></th>
-                            @endcan
+                            @endrole
                             <th class="sortable-th">ID</th>
                             <th class="sortable-th">Department</th>
                             <th class="sortable-th">Type</th>
@@ -57,19 +57,32 @@
                     <tbody>
                         @foreach ($requests as $request)
                             <tr>
-                                @can('approve', App\Models\ProcurementRequest::class)
+                                @role('Owner')
                                 <td>
                                     @if($request->status === 'pending' && !$request->isChangeRequest())
                                         <input type="checkbox" name="ids[]" value="{{ $request->id }}" class="bulk-checkbox">
                                     @endif
                                 </td>
-                                @endcan
+                                @endrole
                                 <td><span class="code-tag">#{{ $request->id }}</span></td>
                                 <td>{{ ucfirst($request->department) }}</td>
                                 <td>
-                                    <span class="badge {{ $request->type === 'inventory' ? 'badge-glass-primary' : 'badge-glass-info' }}">
-                                        {{ ucfirst($request->type) }}
-                                    </span>
+                                    @php
+                                        $typeBadge = match($request->type) {
+                                            'inventory'        => 'badge-glass-primary',
+                                            'service'          => 'badge-glass-info',
+                                            'new_item_request' => 'badge-glass-success',
+                                            default            => 'badge-glass-secondary',
+                                        };
+                                        $typeLabel = match($request->type) {
+                                            'new_item_request' => 'New Items',
+                                            default            => ucfirst($request->type),
+                                        };
+                                    @endphp
+                                    <span class="badge {{ $typeBadge }}">{{ $typeLabel }}</span>
+                                    @if($request->ai_approved_at)
+                                        <span class="badge badge-glass-secondary ms-1" title="AI auto-approved"><i class="bi bi-robot"></i></span>
+                                    @endif
                                 </td>
                                 <td>{{ $request->requester?->name ?? 'Unknown' }}</td>
                                 <td>
@@ -86,6 +99,9 @@
                                         ($i->quantity_received !== null && $i->quantity_received != $i->quantity_requested)
                                     ))
                                         <span class="badge badge-glass-danger ms-1" title="Quantity discrepancy"><i class="bi bi-exclamation-triangle-fill"></i></span>
+                                    @endif
+                                    @if($request->status === 'approved' && $request->type === 'inventory' && $request->receipt_deadline_at?->isPast() && !$request->received_at)
+                                        <span class="badge ms-1" style="background:var(--accent-warning);color:#000;" title="Receipt overdue"><i class="bi bi-clock-history"></i> Overdue</span>
                                     @endif
                                 </td>
                                 <td>{{ $request->items->count() }} item(s)</td>
@@ -104,12 +120,12 @@
             </div>
         @endif
     </div>
-    @can('approve', App\Models\ProcurementRequest::class)
+    @role('Owner')
     </form>
-    @endcan
+    @endrole
 </div>
 
-@can('approve', App\Models\ProcurementRequest::class)
+@role('Owner')
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
@@ -145,5 +161,5 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 @endpush
-@endcan
+@endrole
 @endsection

@@ -431,6 +431,23 @@
         });
     });
 
+    // Resolve placeholder values from form fields
+    function resolvePlaceholders(html) {
+        const staffSelect = document.getElementById('user_id');
+        const selectedOpt = staffSelect ? staffSelect.options[staffSelect.selectedIndex] : null;
+        const staffName   = selectedOpt && selectedOpt.value ? selectedOpt.text.split(' — ')[0].trim() : '[STAFF_NAME]';
+        const role        = selectedOpt && selectedOpt.value ? (selectedOpt.dataset.role || '[ROLE]') : '[ROLE]';
+        const effDate     = document.getElementById('effective_from')?.value || '[EFFECTIVE_DATE]';
+        const term        = document.getElementById('minimum_term_months')?.value || '[TERM_MONTHS]';
+        return html
+            .replaceAll('[STAFF_NAME]', staffName)
+            .replaceAll('[ROLE]', role)
+            .replaceAll('[EFFECTIVE_DATE]', effDate)
+            .replaceAll('[TERM_MONTHS]', term + ' months')
+            .replaceAll('[CLINIC_NAME]', 'Aviva Healthcare')
+            .replaceAll('[TODAY_DATE]', new Date().toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'}));
+    }
+
     // Template quick-fill
     const templates = {
         standard: `<h2>Employment Contract</h2>
@@ -541,7 +558,7 @@
             const key = this.dataset.template;
             if (!templates[key]) return;
             if (editor.innerText.trim().length > 10 && !confirm('Replace current content with template?')) return;
-            editor.innerHTML = templates[key];
+            editor.innerHTML = resolvePlaceholders(templates[key]);
             syncToSource();
         });
     });

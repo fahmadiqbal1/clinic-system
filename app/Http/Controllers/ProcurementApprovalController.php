@@ -26,6 +26,11 @@ class ProcurementApprovalController extends Controller
             return $this->approveChangeRequest($procurementRequest);
         }
 
+        // --- Handle price list updates ---
+        if ($procurementRequest->type === \App\Models\ProcurementRequest::TYPE_PRICE_LIST) {
+            return $this->approvePriceList($procurementRequest);
+        }
+
         // Validate service procurements have required data
         if ($procurementRequest->type === 'service') {
             $procurementRequest->load('items');
@@ -58,14 +63,26 @@ class ProcurementApprovalController extends Controller
             }
         }
 
-        $procurementRequest->update([
-            'status' => 'approved',
+        $updateData = [
+            'status'      => 'approved',
             'approved_by' => Auth::user()->id,
-        ]);
+        ];
+
+        // Set 48-hour receipt deadline for inventory procurements
+        if ($procurementRequest->type === 'inventory') {
+            $updateData['receipt_deadline_at'] = now()->addHours(48);
+        }
+
+        $procurementRequest->update($updateData);
 
         // If service type, create expense immediately
         if ($procurementRequest->type === 'service') {
             $this->createServiceExpense($procurementRequest);
+        }
+
+        // For new_item_request, dispatch the job to create InventoryItem records
+        if ($procurementRequest->type === ProcurementRequest::TYPE_NEW_ITEM_REQUEST) {
+            \App\Jobs\ApplyNewItemsJob::dispatch($procurementRequest->id);
         }
 
         // Notify the requester
@@ -103,13 +120,20 @@ class ProcurementApprovalController extends Controller
                 continue;
             }
 
-            $pr->update([
-                'status' => 'approved',
+            $bulkData = [
+                'status'      => 'approved',
                 'approved_by' => Auth::user()->id,
-            ]);
+            ];
+            if ($pr->type === 'inventory') {
+                $bulkData['receipt_deadline_at'] = now()->addHours(48);
+            }
+            $pr->update($bulkData);
 
             if ($pr->type === 'service') {
                 $this->createServiceExpense($pr);
+            }
+            if ($pr->type === ProcurementRequest::TYPE_NEW_ITEM_REQUEST) {
+                \App\Jobs\ApplyNewItemsJob::dispatch($pr->id);
             }
 
             $pr->requester?->notify(
@@ -232,5 +256,41 @@ class ProcurementApprovalController extends Controller
             'cost' => $totalCost,
             'created_by' => Auth::user()->id,
         ]);
+    }
+
+    protected function approvePriceList(\App\Models\ProcurementRequest $pr): \Illuminate\Http\RedirectResponse
+    {
+        $diff = $pr->price_list_diff ?? [];
+        $updated = 0;
+
+        foreach ($diff as $change) {
+            $item = \App\Models\InventoryItem::find($change['id'] ?? null);
+            if (!$item) continue;
+            $item->update(['selling_price' => $change['new_price']]);
+            $updated++;
+        }
+
+        $pr->update([
+            'status'      => 'approved',
+            'approved_by' => Auth::id(),
+        ]);
+
+        // Dispatch job to create any new items listed in the diff
+        \App\Jobs\ApplyNewItemsJob::dispatch($pr->id);
+
+        // Update vendor checklist date if available
+        if ($pr->vendor_id && $pr->checklist_date) {
+            $pr->vendor?->update([
+                'last_checklist_date'  => $pr->checklist_date,
+                'checklist_valid_until' => $pr->checklist_date->addYear(),
+            ]);
+        }
+
+        $pr->requester?->notify(
+            new \App\Notifications\ProcurementStatusUpdated($pr, \App\Notifications\ProcurementStatusUpdated::EVENT_APPROVED)
+        );
+
+        return redirect()->route('procurement.show', $pr)
+            ->with('success', "Price list approved — {$updated} medicine prices updated.");
     }
 }

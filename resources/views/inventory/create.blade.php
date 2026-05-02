@@ -45,6 +45,27 @@
                         @enderror
                     </div>
 
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label for="manufacturer" class="form-label">Manufacturer</label>
+                            <input type="text" name="manufacturer" id="manufacturer" value="{{ old('manufacturer') }}"
+                                class="form-control @error('manufacturer') is-invalid @enderror"
+                                placeholder="e.g. GlaxoSmithKline, Roche, Muller &amp; Phipps">
+                            @error('manufacturer')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="manufacturer_tag" class="form-label">Manufacturer Tag <small class="text-muted">(≤8 chars)</small></label>
+                            <input type="text" name="manufacturer_tag" id="manufacturer_tag" value="{{ old('manufacturer_tag') }}"
+                                class="form-control @error('manufacturer_tag') is-invalid @enderror"
+                                maxlength="8" placeholder="GSK">
+                            @error('manufacturer_tag')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label for="chemical_formula" class="form-label">Chemical Formula</label>
                         <input type="text" name="chemical_formula" id="chemical_formula" value="{{ old('chemical_formula') }}"

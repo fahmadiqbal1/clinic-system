@@ -46,27 +46,46 @@
                 <div class="col-md-6">
                     <label for="scheduled_at" class="form-label"><i class="bi bi-clock me-1" style="color:var(--accent-warning);"></i>Date & Time <span class="text-danger">*</span></label>
                     <input type="datetime-local" class="form-control @error('scheduled_at') is-invalid @enderror" id="scheduled_at" name="scheduled_at" value="{{ old('scheduled_at') }}" required>
+                    {{-- Quick time slot chips --}}
+                    <div class="d-flex flex-wrap gap-1 mt-2" id="timeSlotChips">
+                        <small class="text-muted w-100 mb-1">Quick slots:</small>
+                        <button type="button" class="btn btn-xs btn-outline-secondary timeslot-chip" data-offset="60">+1h today</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary timeslot-chip" data-offset="120">+2h today</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary timeslot-chip" data-day="1" data-hour="9">Tomorrow 9am</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary timeslot-chip" data-day="1" data-hour="10">Tomorrow 10am</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary timeslot-chip" data-day="1" data-hour="14">Tomorrow 2pm</button>
+                    </div>
                     @error('scheduled_at')
                         <div class="invalid-feedback">{{ $message }}</div>
                     @enderror
                 </div>
                 <div class="col-md-6">
-                    <label for="type" class="form-label"><i class="bi bi-tag me-1" style="color:var(--accent-secondary);"></i>Type <span class="text-danger">*</span></label>
-                    <select class="form-select @error('type') is-invalid @enderror" id="type" name="type" required>
-                        <option value="">Select Type</option>
+                    <label class="form-label"><i class="bi bi-tag me-1" style="color:var(--accent-secondary);"></i>Type <span class="text-danger">*</span></label>
+                    <input type="hidden" id="type" name="type" value="{{ old('type') }}" required>
+                    <div class="d-flex flex-wrap gap-2 mb-2" id="typeChips">
                         @foreach($types as $value => $label)
-                            <option value="{{ $value }}" {{ old('type') === $value ? 'selected' : '' }}>{{ $label }}</option>
+                        <button type="button"
+                                class="btn btn-sm type-chip {{ old('type') === $value ? 'btn-primary' : 'btn-outline-secondary' }}"
+                                data-value="{{ $value }}">{{ $label }}</button>
                         @endforeach
-                    </select>
+                    </div>
                     @error('type')
-                        <div class="invalid-feedback">{{ $message }}</div>
+                        <div class="text-danger small">{{ $message }}</div>
                     @enderror
                 </div>
             </div>
 
             <div class="mb-3">
                 <label for="reason" class="form-label"><i class="bi bi-chat-text me-1" style="color:var(--accent-info);"></i>Reason</label>
-                <textarea class="form-control @error('reason') is-invalid @enderror" id="reason" name="reason" rows="3" maxlength="500">{{ old('reason') }}</textarea>
+                {{-- Common reason chips --}}
+                <div class="d-flex flex-wrap gap-1 mb-2">
+                    @foreach(['Follow-up visit','Routine checkup','Review test results','Prescription renewal','New complaint','Post-operative review','Vaccination','Referral consultation'] as $r)
+                    <button type="button"
+                            class="btn btn-xs btn-outline-info reason-chip"
+                            data-reason="{{ $r }}">{{ $r }}</button>
+                    @endforeach
+                </div>
+                <textarea class="form-control @error('reason') is-invalid @enderror" id="reason" name="reason" rows="2" maxlength="500">{{ old('reason') }}</textarea>
                 @error('reason')
                     <div class="invalid-feedback">{{ $message }}</div>
                 @enderror
@@ -88,3 +107,52 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    // ── Appointment type chips ──────────────────────────────────────────────
+    document.querySelectorAll('.type-chip').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.type-chip').forEach(function (b) {
+                b.classList.remove('btn-primary'); b.classList.add('btn-outline-secondary');
+            });
+            btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-primary');
+            document.getElementById('type').value = btn.dataset.value;
+        });
+    });
+
+    // ── Quick time slot chips ───────────────────────────────────────────────
+    document.querySelectorAll('.timeslot-chip').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var now = new Date();
+            var target;
+            if (btn.dataset.offset) {
+                target = new Date(now.getTime() + parseInt(btn.dataset.offset) * 60000);
+                target.setSeconds(0, 0);
+            } else {
+                var d = new Date(now);
+                d.setDate(d.getDate() + (parseInt(btn.dataset.day) || 0));
+                d.setHours(parseInt(btn.dataset.hour) || 9, 0, 0, 0);
+                target = d;
+            }
+            // Format to datetime-local value (YYYY-MM-DDTHH:MM)
+            var pad = function (n) { return n < 10 ? '0' + n : n; };
+            var val = target.getFullYear() + '-' + pad(target.getMonth() + 1) + '-' + pad(target.getDate())
+                    + 'T' + pad(target.getHours()) + ':' + pad(target.getMinutes());
+            document.getElementById('scheduled_at').value = val;
+        });
+    });
+
+    // ── Reason chips ────────────────────────────────────────────────────────
+    document.querySelectorAll('.reason-chip').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var ta = document.getElementById('reason');
+            ta.value = btn.dataset.reason;
+        });
+    });
+
+});
+</script>
+@endpush

@@ -20,7 +20,60 @@
             @if($invoice->isWorkCompleted() || $invoice->status === 'completed')
                 <a href="{{ route('laboratory.invoices.report-pdf', $invoice) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>Download PDF Report</a>
             @endif
+            <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#referExternalModal"><i class="bi bi-arrow-right-circle me-1"></i>Refer to External Lab</button>
             <a href="{{ route('laboratory.invoices.index') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Back to Tests</a>
+        </div>
+    </div>
+
+    {{-- External Referral Modal --}}
+    @php $externalLabs = \App\Models\ExternalLab::where('is_active', true)->orderBy('name')->get(); @endphp
+    <div class="modal fade" id="referExternalModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form method="POST" action="{{ route('external-referrals.store') }}">
+                    @csrf
+                    <input type="hidden" name="patient_id" value="{{ $invoice->patient_id }}">
+                    <input type="hidden" name="invoice_id" value="{{ $invoice->id }}">
+                    <input type="hidden" name="department" value="lab">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-arrow-right-circle me-2" style="color:var(--accent-warning);"></i>Refer to External Lab</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        @if($externalLabs->isEmpty())
+                            <div class="alert alert-warning mb-0">No external labs configured. Ask the owner to add MOU partner labs first.</div>
+                        @else
+                        <div class="mb-3">
+                            <label class="form-label">External Lab <span class="text-danger">*</span></label>
+                            <select name="external_lab_id" class="form-select" required>
+                                <option value="">Select lab...</option>
+                                @foreach($externalLabs as $lab)
+                                    <option value="{{ $lab->id }}">{{ $lab->name }}{{ $lab->city ? ' — '.$lab->city : '' }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Test / Service Name <span class="text-danger">*</span></label>
+                            <input type="text" name="test_name" class="form-control" value="{{ $invoice->service_name }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Reason for Referral</label>
+                            <input type="text" name="reason" class="form-control" placeholder="e.g. Machine not operational, service unavailable">
+                        </div>
+                        <div class="mb-0">
+                            <label class="form-label">Clinical Notes</label>
+                            <textarea name="clinical_notes" class="form-control" rows="3" placeholder="Relevant clinical context for the external lab..."></textarea>
+                        </div>
+                        @endif
+                    </div>
+                    @if(!$externalLabs->isEmpty())
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-warning"><i class="bi bi-send me-1"></i>Submit for Approval</button>
+                    </div>
+                    @endif
+                </form>
+            </div>
         </div>
     </div>
 
@@ -122,8 +175,30 @@
             @if(in_array($invoice->status, ['pending', 'in_progress']) || ($invoice->status === 'paid' && !$invoice->isWorkCompleted()))
                 <form action="{{ route('laboratory.invoices.save-report', $invoice) }}" method="POST" class="mt-3">
                     @csrf
-                    <div class="mb-3">
-                        <label for="report" class="form-label">Write Report</label>
+                    <div class="mb-2">
+                        <label class="form-label d-flex align-items-center gap-2">
+                            Write Report
+                            <button type="button" id="labSttBtn" class="btn btn-sm btn-outline-secondary ms-auto" style="display:none;" title="Dictate report">
+                                <i class="bi bi-mic" id="labSttIcon"></i> <span id="labSttLabel">Dictate</span>
+                            </button>
+                            <span id="labSttStatus" class="badge bg-danger" style="display:none; font-size:0.7rem;">● REC</span>
+                        </label>
+                        {{-- Template chips --}}
+                        <div class="d-flex flex-wrap gap-1 mb-2">
+                            <small class="text-muted w-100">Insert template:</small>
+                            @foreach([
+                                'All parameters within normal limits.' => 'Normal',
+                                'Results show borderline values. Clinical correlation recommended.' => 'Borderline',
+                                'Abnormal findings noted. Please review with ordering physician.' => 'Abnormal',
+                                'Haemoglobin low — consistent with anaemia. Further workup advised.' => 'Anaemia',
+                                'Elevated WBC — possible infection or inflammatory process.' => 'Elevated WBC',
+                                'Blood glucose elevated — recommend fasting repeat and HbA1c.' => 'High Glucose',
+                                'Liver enzymes elevated. Clinical correlation and repeat testing recommended.' => 'Liver',
+                                'Lipid panel abnormal — dietary review and cardiology follow-up advised.' => 'Lipids',
+                            ] as $text => $label)
+                            <button type="button" class="btn btn-xs btn-outline-secondary lab-template-btn" data-text="{{ $text }}">{{ $label }}</button>
+                            @endforeach
+                        </div>
                         <textarea name="report" id="report" class="form-control" rows="5" required minlength="3">{{ old('report', $invoice->report_text) }}</textarea>
                         @error('report')
                             <div class="invalid-feedback d-block">{{ $message }}</div>
@@ -247,6 +322,11 @@
 
             {{-- ============ EDITABLE FORM ============ --}}
             @if($canEdit)
+                {{-- Embed defaults as JSON for the Fill Normal JS ── --}}
+                <script>
+                window.labSectionDefaults = @json(collect($sections)->keyBy('key')->map(fn($s) => $s['defaults']));
+                </script>
+
                 <form action="{{ route('laboratory.invoices.save-results', $invoice) }}" method="POST" id="labResultsForm">
                     @csrf
 
@@ -305,9 +385,14 @@
                                             </tbody>
                                         </table>
                                     </div>
-                                    <button type="button" class="btn btn-outline-secondary btn-sm mt-2 add-row-btn" data-section="{{ $sec['key'] }}">
-                                        <i class="bi bi-plus-circle me-1"></i>Add Parameter
-                                    </button>
+                                    <div class="d-flex gap-2 mt-2">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm add-row-btn" data-section="{{ $sec['key'] }}">
+                                            <i class="bi bi-plus-circle me-1"></i>Add Parameter
+                                        </button>
+                                        <button type="button" class="btn btn-outline-success btn-sm fill-normal-btn" data-section="{{ $sec['key'] }}" title="Auto-fill result fields using reference range midpoints">
+                                            <i class="bi bi-lightning-fill me-1"></i>Fill All Normal
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -365,6 +450,50 @@
                                 badge.textContent = tbody.children.length;
                             }
                         }
+
+                        // ── Fill All Normal ────────────────────────────────────
+                        document.querySelectorAll('.fill-normal-btn').forEach(btn => {
+                            btn.addEventListener('click', function () {
+                                const section = this.dataset.section;
+                                const tbody   = document.querySelector(`.results-body[data-section="${section}"]`);
+                                if (!tbody) return;
+
+                                Array.from(tbody.querySelectorAll('tr')).forEach(row => {
+                                    const resultInput = row.querySelector('[name*="[result]"]');
+                                    const rangeInput  = row.querySelector('[name*="[reference_range]"]');
+                                    if (!resultInput || resultInput.value.trim()) return; // skip if already filled
+
+                                    const range = (rangeInput ? rangeInput.value : '').trim();
+                                    if (!range) return;
+
+                                    // Numeric range: "X-Y" or "X – Y"
+                                    const numMatch = range.match(/^([\d.]+)\s*[-–]\s*([\d.]+)$/);
+                                    if (numMatch) {
+                                        const lo = parseFloat(numMatch[1]);
+                                        const hi = parseFloat(numMatch[2]);
+                                        const mid = ((lo + hi) / 2).toFixed(1);
+                                        resultInput.value = mid;
+                                        return;
+                                    }
+
+                                    // Single numeric: "< X" or "> X"
+                                    const ltMatch = range.match(/^[<≤]\s*([\d.]+)$/);
+                                    if (ltMatch) { resultInput.value = (parseFloat(ltMatch[1]) * 0.8).toFixed(1); return; }
+                                    const gtMatch = range.match(/^[>≥]\s*([\d.]+)$/);
+                                    if (gtMatch) { resultInput.value = (parseFloat(gtMatch[1]) * 1.1).toFixed(1); return; }
+
+                                    // Text normals
+                                    const lower = range.toLowerCase();
+                                    if (lower.includes('negative'))          { resultInput.value = 'Negative'; return; }
+                                    if (lower.includes('absent'))            { resultInput.value = 'Absent'; return; }
+                                    if (lower.includes('not detected'))      { resultInput.value = 'Not Detected'; return; }
+                                    if (lower.includes('normal'))            { resultInput.value = 'Normal'; return; }
+                                    if (lower.includes('clear'))             { resultInput.value = 'Clear'; return; }
+                                });
+
+                                updateParamCount(section);
+                            });
+                        });
                     });
                 </script>
             @endif
@@ -401,18 +530,62 @@
             </div>
         @endif
         @if($invoice->status === 'paid' && !$invoice->performed_by_user_id)
-            <form action="{{ route('laboratory.invoices.start-work', $invoice) }}" method="POST">
-                @csrf
-                <button type="submit" class="btn btn-warning" onclick="return confirm('Start work on this test?')"><i class="bi bi-play-circle me-1"></i>Start Work</button>
-            </form>
+            <form id="labStartWorkForm" action="{{ route('laboratory.invoices.start-work', $invoice) }}" method="POST">@csrf</form>
+            <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#labStartModal">
+                <i class="bi bi-play-circle me-1"></i>Start Work
+            </button>
         @endif
         @if($invoice->status === 'paid' && $invoice->performed_by_user_id && $invoice->report_text && !$invoice->isWorkCompleted())
-            <form action="{{ route('laboratory.invoices.mark-complete', $invoice) }}" method="POST">
-                @csrf
-                <button type="submit" class="btn btn-success" onclick="return confirm('Mark this test as completed?')"><i class="bi bi-check-circle me-1"></i>Mark Complete</button>
-            </form>
+            <form id="labCompleteForm" action="{{ route('laboratory.invoices.mark-complete', $invoice) }}" method="POST">@csrf</form>
+            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#labCompleteModal">
+                <i class="bi bi-check-circle me-1"></i>Mark Complete
+            </button>
         @endif
         <a href="{{ route('laboratory.invoices.index') }}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+    </div>
+
+    {{-- Start Work modal --}}
+    <div class="modal fade" id="labStartModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-play-circle me-2" style="color:var(--accent-warning);"></i>Start Lab Work</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1">You are about to begin work on:</p>
+                    <p class="fw-semibold mb-0">{{ $invoice->service_name }} — Patient: {{ $invoice->patient?->first_name }} {{ $invoice->patient?->last_name }}</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" onclick="document.getElementById('labStartWorkForm').submit()"><i class="bi bi-play-circle me-1"></i>Start Work</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Mark Complete modal --}}
+    <div class="modal fade" id="labCompleteModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-color:rgba(var(--accent-success-rgb),0.5);">
+                <div class="modal-header" style="background:rgba(var(--accent-success-rgb),0.1);">
+                    <h5 class="modal-title"><i class="bi bi-check-circle me-2" style="color:var(--accent-success);"></i>Mark Test Complete</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Confirm that all of the following are done before marking complete:</p>
+                    <ul class="mb-0">
+                        <li>Report text has been written and saved</li>
+                        <li>All structured result parameters have been entered</li>
+                        <li>Results have been reviewed for accuracy</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Go Back</button>
+                    <button type="button" class="btn btn-success" onclick="document.getElementById('labCompleteForm').submit()"><i class="bi bi-check-circle me-1"></i>Confirm Complete</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     @include('components.invoice-print-layout', ['invoice' => $invoice])
@@ -424,6 +597,52 @@
 @endpush
 
 @push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    // ── Report template chips ───────────────────────────────────────────────
+    document.querySelectorAll('.lab-template-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var ta = document.getElementById('report');
+            if (!ta) return;
+            var cur = ta.value.trim();
+            ta.value = cur ? (cur + '\n' + btn.dataset.text) : btn.dataset.text;
+        });
+    });
+
+    // ── STT for report ──────────────────────────────────────────────────────
+    (function () {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) return;
+        var btn  = document.getElementById('labSttBtn');
+        var icon = document.getElementById('labSttIcon');
+        var lbl  = document.getElementById('labSttLabel');
+        var stat = document.getElementById('labSttStatus');
+        var ta   = document.getElementById('report');
+        if (!btn || !ta) return;
+        btn.style.display = '';
+        var rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US';
+        var listening = false;
+        rec.onresult = function (e) {
+            var interim = '', final = '';
+            for (var i = e.resultIndex; i < e.results.length; i++) {
+                if (e.results[i].isFinal) final += e.results[i][0].transcript;
+                else interim += e.results[i][0].transcript;
+            }
+            if (final) { var c = ta.value; ta.value = c + (c && !c.endsWith(' ') && !c.endsWith('\n') ? ' ' : '') + final; }
+            stat.textContent = interim ? ('● ' + interim.substring(0,40) + (interim.length>40?'…':'')) : '● REC';
+        };
+        rec.onerror = function (e) { if (e.error==='no-speech') return; listening=false; setIdle(); if(e.error==='not-allowed') alert('Microphone access denied.'); };
+        rec.onend   = function () { if (listening) { try{rec.start();}catch(e){} } else setIdle(); };
+        function setIdle()      { icon.className='bi bi-mic'; lbl.textContent='Dictate'; stat.style.display='none'; btn.classList.remove('btn-danger'); btn.classList.add('btn-outline-secondary'); }
+        function setRecording() { icon.className='bi bi-mic-fill'; lbl.textContent='Stop'; stat.style.display=''; stat.textContent='● REC'; btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-danger'); }
+        btn.addEventListener('click', function () {
+            if (listening) { listening=false; rec.stop(); } else { listening=true; setRecording(); try{rec.start();}catch(e){} }
+        });
+    }());
+
+});
+</script>
 @if($invoice->isPaid() && $invoice->fbr_qr_code)
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSe2s9qnDN7oD6eblnBHyH3P1pAzrBDxhxNSw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>

@@ -21,14 +21,27 @@ class InvoiceController extends Controller
             ->where('prescribing_doctor_id', $user->id)
             ->orderByDesc('created_at');
 
-        // Status filtering
-        if ($request->filled('status')) {
-            $query->where('status', $request->query('status'));
-        }
+        // Results-ready shortcut: completed lab + radiology invoices
+        // Upfront-paid invoices stay status='paid' after work done, so we check both statuses
+        // and require performed_by_user_id + (report_text OR lab_results) as work-done signals.
+        if ($request->filled('results_ready')) {
+            $query->whereIn('department', ['lab', 'radiology'])
+                  ->whereIn('status', ['paid', 'completed'])
+                  ->whereNotNull('performed_by_user_id')
+                  ->where(function ($q) {
+                      $q->whereNotNull('report_text')
+                        ->orWhereNotNull('lab_results');
+                  });
+        } else {
+            // Status filtering
+            if ($request->filled('status')) {
+                $query->where('status', $request->query('status'));
+            }
 
-        // Department filtering
-        if ($request->filled('department')) {
-            $query->where('department', $request->query('department'));
+            // Department filtering
+            if ($request->filled('department')) {
+                $query->where('department', $request->query('department'));
+            }
         }
 
         // Date filtering
@@ -42,8 +55,9 @@ class InvoiceController extends Controller
         $invoices = $query->paginate(25)->withQueryString();
 
         return view('doctor.invoices.index', [
-            'invoices' => $invoices,
-            'filters' => $request->only(['status', 'department', 'from', 'to']),
+            'invoices'      => $invoices,
+            'filters'       => $request->only(['status', 'department', 'from', 'to']),
+            'resultsReady'  => $request->filled('results_ready'),
         ]);
     }
 

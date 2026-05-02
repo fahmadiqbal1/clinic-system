@@ -96,7 +96,7 @@
         $tasks = collect();
         if ($activePatients > 0) $tasks->push(['label' => 'Patients waiting for consultation', 'count' => $activePatients, 'icon' => 'bi-hourglass-split', 'color' => 'warning', 'url' => route('doctor.patients.index', ['status' => 'with_doctor'])]);
         if ($pendingPayouts > 0) $tasks->push(['label' => 'Payouts pending confirmation', 'count' => $pendingPayouts, 'icon' => 'bi-wallet2', 'color' => 'info', 'url' => route('reception.payouts.index')]);
-        if ($resultsReadyCount > 0) $tasks->push(['label' => 'Lab / Radiology results ready', 'count' => $resultsReadyCount, 'icon' => 'bi-file-earmark-check', 'color' => 'success', 'url' => route('doctor.invoices.index')]);
+        if ($resultsReadyCount > 0) $tasks->push(['label' => 'Lab / Radiology results ready', 'count' => $resultsReadyCount, 'icon' => 'bi-file-earmark-check', 'color' => 'success', 'url' => route('doctor.results.index')]);
     @endphp
     @if($tasks->count() > 0)
     <div class="card mb-4 fade-in delay-3">

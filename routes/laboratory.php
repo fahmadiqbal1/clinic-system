@@ -21,14 +21,14 @@ Route::middleware('role:Laboratory')->group(function () {
         ->middleware('verified')
         ->name('laboratory.dashboard');
 
-    // Invoice Work Queue
-    Route::get('/laboratory/invoices', [LaboratoryInvoiceController::class, 'index'])->name('laboratory.invoices.index');
-    Route::get('/laboratory/invoices/{invoice}', [LaboratoryInvoiceController::class, 'show'])->name('laboratory.invoices.show');
-    Route::post('/laboratory/invoices/{invoice}/start-work', [LaboratoryInvoiceController::class, 'startWork'])->name('laboratory.invoices.start-work');
-    Route::post('/laboratory/invoices/{invoice}/save-report', [LaboratoryInvoiceController::class, 'saveReport'])->name('laboratory.invoices.save-report');
-    Route::post('/laboratory/invoices/{invoice}/save-results', [LaboratoryInvoiceController::class, 'saveResults'])->name('laboratory.invoices.save-results');
-    Route::post('/laboratory/invoices/{invoice}/complete', [LaboratoryInvoiceController::class, 'markComplete'])->name('laboratory.invoices.mark-complete');
-    Route::get('/laboratory/invoices/{invoice}/report-pdf', [LaboratoryInvoiceController::class, 'reportPdf'])->name('laboratory.invoices.report-pdf');
+    // Test Work Queue
+    Route::get('/laboratory/results', [LaboratoryInvoiceController::class, 'index'])->name('laboratory.invoices.index');
+    Route::get('/laboratory/results/{invoice}', [LaboratoryInvoiceController::class, 'show'])->name('laboratory.invoices.show');
+    Route::post('/laboratory/results/{invoice}/start-work', [LaboratoryInvoiceController::class, 'startWork'])->name('laboratory.invoices.start-work');
+    Route::post('/laboratory/results/{invoice}/save-report', [LaboratoryInvoiceController::class, 'saveReport'])->name('laboratory.invoices.save-report');
+    Route::post('/laboratory/results/{invoice}/save-results', [LaboratoryInvoiceController::class, 'saveResults'])->name('laboratory.invoices.save-results');
+    Route::post('/laboratory/results/{invoice}/complete', [LaboratoryInvoiceController::class, 'markComplete'])->name('laboratory.invoices.mark-complete');
+    Route::get('/laboratory/results/{invoice}/report-pdf', [LaboratoryInvoiceController::class, 'reportPdf'])->name('laboratory.invoices.report-pdf');
 });
 
 // Lab + Owner shared routes

@@ -29,6 +29,8 @@ use App\Http\Controllers\Owner\RetentionPolicyController;
 use App\Http\Controllers\Owner\AdminAiController;
 use App\Http\Controllers\Owner\OpsAiController;
 use App\Http\Controllers\Owner\ComplianceAiController;
+use App\Http\Controllers\Owner\ExternalLabController;
+use App\Http\Controllers\Owner\VendorController;
 use App\Http\Controllers\Api\AiAssistantController;
 use Illuminate\Support\Facades\Route;
 
@@ -56,6 +58,26 @@ Route::middleware('role:Owner')->group(function () {
     Route::post('/owner/users', [UserController::class, 'store'])->name('owner.users.store');
     Route::get('/owner/users/{user}/edit', [UserController::class, 'edit'])->name('owner.users.edit');
     Route::patch('/owner/users/{user}', [UserController::class, 'update'])->name('owner.users.update');
+
+    // External Labs & Referrals
+    Route::get('/owner/external-labs', [ExternalLabController::class, 'index'])->name('owner.external-labs.index');
+    Route::get('/owner/external-labs/create', [ExternalLabController::class, 'create'])->name('owner.external-labs.create');
+    Route::post('/owner/external-labs', [ExternalLabController::class, 'store'])->name('owner.external-labs.store');
+    Route::get('/owner/external-labs/{externalLab}/edit', [ExternalLabController::class, 'edit'])->name('owner.external-labs.edit');
+    Route::patch('/owner/external-labs/{externalLab}', [ExternalLabController::class, 'update'])->name('owner.external-labs.update');
+    Route::post('/owner/external-referrals/{referral}/decide', [ExternalLabController::class, 'decideReferral'])->name('owner.external-referrals.decide');
+    Route::post('/owner/external-referrals/{referral}/status', [ExternalLabController::class, 'updateStatus'])->name('owner.external-referrals.status');
+
+    // Vendor Management
+    Route::get('/owner/vendors', [VendorController::class, 'index'])->name('owner.vendors.index');
+    Route::get('/owner/vendors/create', [VendorController::class, 'create'])->name('owner.vendors.create');
+    Route::post('/owner/vendors', [VendorController::class, 'store'])->name('owner.vendors.store');
+    Route::get('/owner/vendors/{vendor}/edit', [VendorController::class, 'edit'])->name('owner.vendors.edit');
+    Route::patch('/owner/vendors/{vendor}', [VendorController::class, 'update'])->name('owner.vendors.update');
+    Route::delete('/owner/vendors/{vendor}', [VendorController::class, 'destroy'])->name('owner.vendors.destroy');
+
+    // Price List Approval (owner side — approve/reject a price_list procurement request)
+    // handled by existing ProcurementApprovalController
 
     // Service Catalog Management
     Route::get('/owner/service-catalog', [ServiceCatalogController::class, 'index'])->name('owner.service-catalog.index');

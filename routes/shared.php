@@ -20,6 +20,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Owner\InvoiceDiscountController;
 use App\Http\Controllers\InvoicePdfController;
+use App\Http\Controllers\Shared\ExternalReferralController;
 use Illuminate\Support\Facades\Route;
 
 // ── Contracts (all authenticated staff) ──
@@ -100,6 +101,12 @@ Route::middleware('role:Owner|Pharmacy|Laboratory|Radiology')->group(function ()
     Route::get('/procurement/{procurementRequest}/receive', [ProcurementReceiptController::class, 'create'])->name('procurement.receive');
     Route::post('/procurement/{procurementRequest}/receive', [ProcurementReceiptController::class, 'store'])->name('procurement.receive.store');
     Route::post('/procurement/{procurementRequest}/upload-invoice', [ProcurementReceiptController::class, 'uploadInvoice'])->name('procurement.upload-invoice');
+});
+
+// ── External Lab Referrals (Lab + Radiology staff submit; Owner approves via owner routes) ──
+Route::middleware('role:Laboratory|Radiology')->group(function () {
+    Route::post('/external-referrals', [ExternalReferralController::class, 'store'])->name('external-referrals.store');
+    Route::post('/external-referrals/{referral}/mark-sent', [ExternalReferralController::class, 'markSent'])->name('external-referrals.mark-sent');
 });
 
 // ── Discount Requests (Receptionist + Pharmacy can request, Owner approves) ──

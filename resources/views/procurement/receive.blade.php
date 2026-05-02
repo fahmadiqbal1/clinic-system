@@ -397,13 +397,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ── Step 3: Build Reconciliation Summary ──
     function buildReconciliation() {
-        const items = @json($procurementRequest->items->map(fn($i) => [
-            'id' => $i->id,
-            'name' => $i->inventoryItem?->name ?? 'Unknown',
-            'unit' => $i->inventoryItem?->unit ?? '',
-            'po_qty' => $i->quantity_requested,
-            'po_price' => $i->quoted_unit_price,
-        ]));
+        @php
+            $receiptItemsJson = $procurementRequest->items->map(fn($i) => [
+                'id'       => $i->id,
+                'name'     => $i->inventoryItem?->name ?? 'Unknown',
+                'unit'     => $i->inventoryItem?->unit ?? '',
+                'po_qty'   => $i->quantity_requested,
+                'po_price' => $i->quoted_unit_price,
+            ]);
+        @endphp
+        const items = @json($receiptItemsJson);
 
         let html = '<div class="table-responsive"><table class="table align-middle mb-0"><thead><tr>';
         html += '<th>Item</th><th class="text-center">PO Qty</th><th class="text-center">Invoice Qty</th><th class="text-center">Received Qty</th>';

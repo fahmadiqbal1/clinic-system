@@ -104,7 +104,7 @@ class TestCatalogController extends Controller
 
         $payload = [
             'name' => $validated['name'],
-            'code' => $validated['code'] ?? null,
+            'code' => $validated['code'] ?? $serviceCatalog->code,
             'description' => $validated['description'] ?? null,
             'category' => $validated['category'] ?? null,
             'price' => $validated['price'],

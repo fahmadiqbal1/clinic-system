@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Patient;
+use App\Models\PlatformSetting;
 use App\Models\ServiceCatalog;
+use App\Models\SoapKeyword;
 use App\Models\User;
 use App\Notifications\InvoiceStatusChanged;
 use App\Services\AuditableService;
@@ -65,14 +67,25 @@ class ConsultationController extends Controller
             ->limit(10)
             ->get();
 
+        // Preload SOAP chip library for the chip builder component.
+        // Includes this doctor's private chips + all global chips, ordered by popularity.
+        $soapKeywords = SoapKeyword::forDoctor($user->id)
+            ->orderBy('usage_count', 'desc')
+            ->get()
+            ->groupBy('section');
+
+        $aiEnabled = PlatformSetting::isEnabled('ai.chat.enabled.doctor');
+
         return view('doctor.consultation.show', [
-            'patient' => $patient,
-            'latestVitals' => $latestVitals,
-            'prescriptions' => $prescriptions,
-            'invoices' => $invoices,
+            'patient'        => $patient,
+            'latestVitals'   => $latestVitals,
+            'prescriptions'  => $prescriptions,
+            'invoices'       => $invoices,
             'serviceCatalog' => $serviceCatalog,
-            'aiAnalyses' => $aiAnalyses,
+            'aiAnalyses'     => $aiAnalyses,
             'previousVisits' => $previousVisits,
+            'soapKeywords'   => $soapKeywords,
+            'aiEnabled'      => $aiEnabled,
         ]);
     }
 

@@ -22,3 +22,12 @@ Schedule::command('appointments:send-reminders')->hourly();
 
 // Sync service catalog + inventory to RAGFlow corpus — nightly at 03:00 (Phase 3)
 Schedule::command('ragflow:sync')->dailyAt('03:00');
+
+// Flag inventory procurement receipts overdue >48 hours — every 2 hours
+Schedule::command('procurement:check-receipts')->everyTwoHours();
+
+// Daily ops AI monitor: auto-draft critical stock, flag warning stock — 06:30
+Schedule::command('ai:ops-procurement-monitor')->dailyAt('06:30');
+
+// Soft-archive inventory items out of stock for 12+ months — every Sunday at 02:00
+Schedule::command('inventory:archive-stale')->weekly()->sundays()->at('02:00');
