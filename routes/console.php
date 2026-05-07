@@ -31,3 +31,12 @@ Schedule::command('ai:ops-procurement-monitor')->dailyAt('06:30');
 
 // Soft-archive inventory items out of stock for 12+ months — every Sunday at 02:00
 Schedule::command('inventory:archive-stale')->weekly()->sundays()->at('02:00');
+
+// FBR compliance watchdog: quarantine non-compliant paid invoices before nightly batch — 22:00
+Schedule::command('fbr:watchdog')->dailyAt('22:00');
+
+// Revenue leakage watchdog: detect unbilled consultations (AI analysis but no billing item) — 07:30
+Schedule::command('revenue:leakage-watchdog')->dailyAt('07:30');
+
+// Queue worker fallback — stops after draining the queue (Supervisor handles persistent workers in production)
+Schedule::command('queue:work --stop-when-empty')->everyFiveMinutes()->withoutOverlapping();

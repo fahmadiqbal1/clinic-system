@@ -149,6 +149,52 @@ def make_fbr_status_tool(period_days: int) -> Tool:
     )
 
 
+def make_revenue_leakage_tool(period_days: int) -> Tool:
+    """
+    Detects potential unbilled services by cross-referencing visits that have
+    AI analyses (indicating a consultation occurred) against their invoices.
+    Flags visits where the AI analysis exists but the linked invoice has no
+    consultation line item — a strong signal that a service was rendered but
+    not billed.
+    """
+    async def _query() -> dict:
+        async with db.cursor() as cur:
+            # Visits with an AI analysis in the window but missing a consultation invoice item
+            await cur.execute(
+                """
+                SELECT
+                    COUNT(*) AS total_analysed,
+                    SUM(CASE WHEN ii.id IS NULL THEN 1 ELSE 0 END) AS potentially_unbilled
+                FROM ai_analyses aa
+                LEFT JOIN invoice_items ii
+                    ON ii.invoice_id = aa.invoice_id
+                    AND ii.item_type = 'consultation'
+                WHERE aa.created_at >= NOW() - INTERVAL %s DAY
+                  AND aa.invoice_id IS NOT NULL
+                """,
+                (period_days,),
+            )
+            row = await cur.fetchone() or {}
+
+        total_analysed = row.get("total_analysed") or 0
+        potentially_unbilled = row.get("potentially_unbilled") or 0
+        leakage_pct = (potentially_unbilled / total_analysed * 100) if total_analysed else 0
+        verdict = "HIGH RISK" if leakage_pct >= 10 else ("MODERATE" if leakage_pct >= 3 else "LOW")
+        return {
+            "tool": "revenue_leakage",
+            "answer": (
+                f"Revenue leakage check last {period_days}d: "
+                f"{total_analysed} consultations analysed, "
+                f"{potentially_unbilled} potentially unbilled ({leakage_pct:.1f}%) → {verdict}."
+            ),
+        }
+    return _make_failopen_tool(
+        "revenue_leakage",
+        "Cross-references AI consultation analyses against invoice items to detect unbilled services.",
+        _query,
+    )
+
+
 def make_payout_audit_tool(period_days: int) -> Tool:
     async def _query() -> dict:
         async with db.cursor() as cur:

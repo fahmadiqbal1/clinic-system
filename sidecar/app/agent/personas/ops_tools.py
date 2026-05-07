@@ -117,6 +117,160 @@ def make_expense_category_tool(period_days: int) -> Tool:
     )
 
 
+def make_room_utilisation_tool(period_days: int) -> Tool:
+    """
+    Analyses clinic room utilisation by joining appointments → clinic_rooms.
+    Identifies under-used rooms, peak hours, and which doctor-room pairings
+    generate the most patient throughput. Fail-open.
+    """
+    async def _q() -> dict:
+        async with db.cursor() as cur:
+            # Room-level booking counts over the period
+            await cur.execute(
+                """
+                SELECT
+                    cr.name         AS room_name,
+                    cr.type         AS room_type,
+                    COUNT(a.id)     AS booking_count,
+                    COUNT(DISTINCT a.doctor_id) AS unique_doctors
+                FROM clinic_rooms cr
+                LEFT JOIN appointments a
+                    ON a.room_id = cr.id
+                   AND a.scheduled_at >= NOW() - INTERVAL %s DAY
+                   AND a.status NOT IN ('cancelled','no_show')
+                WHERE cr.is_active = 1
+                GROUP BY cr.id, cr.name, cr.type
+                ORDER BY booking_count DESC
+                """,
+                (period_days,),
+            )
+            room_rows = await cur.fetchall()
+
+            # Doctor-room pairing with patient count (top 10 pairings)
+            await cur.execute(
+                """
+                SELECT
+                    u.name          AS doctor_name,
+                    cr.name         AS room_name,
+                    COUNT(a.id)     AS patient_count
+                FROM appointments a
+                JOIN users       u  ON u.id = a.doctor_id
+                JOIN clinic_rooms cr ON cr.id = a.room_id
+                WHERE a.scheduled_at >= NOW() - INTERVAL %s DAY
+                  AND a.status NOT IN ('cancelled','no_show')
+                GROUP BY a.doctor_id, a.room_id
+                ORDER BY patient_count DESC
+                LIMIT 10
+                """,
+                (period_days,),
+            )
+            pairing_rows = await cur.fetchall()
+
+        if not room_rows:
+            return {"tool": "room_utilisation", "answer": "No clinic rooms or appointment data available."}
+
+        total_bookings = sum(r.get("booking_count") or 0 for r in room_rows)
+        top_room = room_rows[0] if room_rows else {}
+        idle_rooms = [r["room_name"] for r in room_rows if (r.get("booking_count") or 0) == 0]
+
+        lines = [f"Room utilisation last {period_days}d: {total_bookings} total bookings."]
+        lines.append(f"Most used: {top_room.get('room_name','?')} ({top_room.get('booking_count',0)} bookings).")
+        if idle_rooms:
+            lines.append(f"Idle rooms (0 bookings): {', '.join(idle_rooms)}.")
+        if pairing_rows:
+            top = pairing_rows[0]
+            lines.append(
+                f"Top doctor-room pairing: {top.get('doctor_name','?')} in {top.get('room_name','?')} "
+                f"({top.get('patient_count',0)} patients)."
+            )
+        return {"tool": "room_utilisation", "answer": "\n".join(lines), "rooms": room_rows}
+
+    return _failopen("room_utilisation", "Analyses clinic room booking utilisation and doctor-room pairings.", _q)
+
+
+def make_doctor_demand_tool(period_days: int) -> Tool:
+    """
+    Identifies which doctors/specialities receive the most patients over time
+    and detects demand trends (growing, stable, declining). Used by the owner
+    to make rostering and room-allocation decisions.
+    """
+    async def _q() -> dict:
+        async with db.cursor() as cur:
+            # Per-doctor patient throughput
+            await cur.execute(
+                """
+                SELECT
+                    u.name                  AS doctor_name,
+                    u.specialty             AS specialty,
+                    COUNT(DISTINCT p.id)    AS unique_patients,
+                    COUNT(a.id)             AS total_appointments
+                FROM users u
+                LEFT JOIN appointments a
+                    ON a.doctor_id = u.id
+                   AND a.scheduled_at >= NOW() - INTERVAL %s DAY
+                   AND a.status NOT IN ('cancelled','no_show')
+                LEFT JOIN patients p ON p.id = a.patient_id
+                JOIN model_has_roles mhr ON mhr.model_id = u.id AND mhr.model_type = 'App\\\\Models\\\\User'
+                JOIN roles r ON r.id = mhr.role_id AND r.name = 'Doctor'
+                WHERE u.is_active = 1
+                GROUP BY u.id, u.name, u.specialty
+                ORDER BY total_appointments DESC
+                LIMIT 15
+                """,
+                (period_days,),
+            )
+            doctor_rows = await cur.fetchall()
+
+            # Speciality-level demand (group by specialty)
+            await cur.execute(
+                """
+                SELECT
+                    COALESCE(u.specialty, 'General Practice') AS specialty,
+                    COUNT(a.id)                               AS total_appointments,
+                    COUNT(DISTINCT a.doctor_id)               AS doctor_count
+                FROM appointments a
+                JOIN users u ON u.id = a.doctor_id
+                WHERE a.scheduled_at >= NOW() - INTERVAL %s DAY
+                  AND a.status NOT IN ('cancelled','no_show')
+                GROUP BY specialty
+                ORDER BY total_appointments DESC
+                LIMIT 10
+                """,
+                (period_days,),
+            )
+            specialty_rows = await cur.fetchall()
+
+        if not doctor_rows:
+            return {"tool": "doctor_demand", "answer": "No appointment data in window."}
+
+        total = sum(r.get("total_appointments") or 0 for r in doctor_rows)
+        top_doctor = doctor_rows[0] if doctor_rows else {}
+        top_specialty = specialty_rows[0] if specialty_rows else {}
+
+        lines = [f"Doctor demand last {period_days}d: {total} total appointments across {len(doctor_rows)} doctors."]
+        lines.append(
+            f"Highest demand: Dr. {top_doctor.get('doctor_name','?')} "
+            f"({top_doctor.get('specialty') or 'GP'}) — {top_doctor.get('total_appointments',0)} appointments."
+        )
+        if top_specialty:
+            lines.append(
+                f"Top speciality by demand: {top_specialty.get('specialty','?')} "
+                f"({top_specialty.get('total_appointments',0)} appointments, {top_specialty.get('doctor_count',0)} doctors)."
+            )
+        idle_doctors = [r["doctor_name"] for r in doctor_rows if (r.get("total_appointments") or 0) == 0]
+        if idle_doctors:
+            lines.append(f"Doctors with 0 appointments: {', '.join(idle_doctors[:3])}.")
+
+        return {
+            "tool": "doctor_demand",
+            "answer": "\n".join(lines),
+            "doctors": doctor_rows,
+            "specialties": specialty_rows,
+        }
+
+    return _failopen("doctor_demand", "Identifies doctor and speciality demand trends from appointment data.", _q)
+
+
 def make_queue_health_tool() -> Tool:
     async def _q() -> dict:
         # Read counts directly from the jobs / failed_jobs tables via clinic_ro

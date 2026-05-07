@@ -11,7 +11,7 @@ from typing import Annotated, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-OpsDomain = Literal["inventory", "procurement", "expense", "queue", "general"]
+OpsDomain = Literal["inventory", "procurement", "expense", "queue", "rooms", "general"]
 UrgencyLevel = Literal["Critical", "Warning", "Info"]
 
 

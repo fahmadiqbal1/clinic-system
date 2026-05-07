@@ -73,6 +73,7 @@ class UserController extends Controller
             'commission_lab' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'commission_radiology' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'is_independent' => ['nullable', 'boolean'],
+            'specialty' => ['nullable', 'string', 'max:100'],
         ]);
 
         // Force commission rates to zero for salaried users
@@ -94,6 +95,7 @@ class UserController extends Controller
             'commission_pharmacy' => $isSalaried ? 0 : ($validated['commission_pharmacy'] ?? null),
             'commission_lab' => $isSalaried ? 0 : ($validated['commission_lab'] ?? null),
             'commission_radiology' => $isSalaried ? 0 : ($validated['commission_radiology'] ?? null),
+            'specialty' => ($role->name === 'Doctor') ? ($validated['specialty'] ?? null) : null,
         ]);
         $user->assignRole($role);
 
@@ -148,6 +150,7 @@ class UserController extends Controller
             'commission_pharmacy' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'commission_lab' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'commission_radiology' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'specialty' => ['nullable', 'string', 'max:100'],
         ]);
 
         $oldRole = $user->roles()->first()?->name;
@@ -172,6 +175,7 @@ class UserController extends Controller
             'commission_pharmacy' => $isSalaried ? 0 : ($validated['commission_pharmacy'] ?? null),
             'commission_lab' => $isSalaried ? 0 : ($validated['commission_lab'] ?? null),
             'commission_radiology' => $isSalaried ? 0 : ($validated['commission_radiology'] ?? null),
+            'specialty' => ($newRole->name === 'Doctor') ? ($validated['specialty'] ?? null) : null,
         ]);
 
         // Update role - remove all and assign new

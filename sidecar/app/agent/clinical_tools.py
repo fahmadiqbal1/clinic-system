@@ -150,6 +150,52 @@ def make_medication_safety_tool(body: Any) -> Tool:
     )
 
 
+def make_graph_query_tool(body: Any) -> Tool:
+    """
+    GraphRAG tool — traverses the clinic knowledge graph for deterministic
+    patient-drug-allergy facts, then enriches with RAG guidelines.
+    Fail-open: a DB or RAGFlow outage returns empty context rather than raising.
+    """
+    # Local import avoids circular dependency at module load time
+    from app.services import graphrag  # noqa: PLC0415
+
+    patient_id = getattr(body, "patient_id", None)
+    medications: list[str] = list(getattr(body, "medications", []) or [])
+
+    async def _invoke(_ctx: dict) -> dict:
+        query_text = (
+            body.vitals.chief_complaint
+            if getattr(body, "vitals", None) and getattr(body.vitals, "chief_complaint", None)
+            else "clinical assessment"
+        )
+        try:
+            result = await graphrag.graphrag_retrieve(
+                query_text,
+                context_hints={"patient_id": patient_id, "drug_names": medications},
+            )
+        except Exception as exc:
+            logger.debug("graph_query tool: graphrag_retrieve failed (%s)", exc)
+            return {"tool": "graph_query", "answer": "", "graph_facts": {}, "citations": []}
+        return {
+            "tool":        "graph_query",
+            "answer":      result.get("combined_context", ""),
+            "graph_facts": result.get("graph_facts", {}),
+            "citations":   result.get("citations", []),
+        }
+
+    return Tool(
+        name="graph_query",
+        description=(
+            "Traverses the clinic knowledge graph for deterministic patient-drug-allergy "
+            "facts, then enriches with RAG guidelines. Use when patient history or drug "
+            "safety context is needed."
+        ),
+        schema={"type": "object", "properties": {}, "required": []},
+        invoke_fn=_invoke,
+        fail_open=True,
+    )
+
+
 def make_rag_query_tool(body: Any) -> Tool:
     """
     Promote the inline rag_query factory from harness.py to this module so

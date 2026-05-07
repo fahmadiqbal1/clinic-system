@@ -114,6 +114,55 @@ class ConsultationController extends Controller
     }
 
     /**
+     * Smart prescription suggestions — AJAX endpoint.
+     *
+     * Returns the top 5 drugs this doctor has most frequently prescribed for
+     * visits whose diagnosis contains the given keyword, along with current
+     * stock levels. Enables the "Graph-Powered Smart Prescriptions" feature
+     * where the UI floats context-aware suggestions rather than a raw dropdown.
+     *
+     * GET /doctor/consultations/{patient}/suggest-drugs?diagnosis=bronchitis
+     *
+     * Response: JSON array of { id, name, category, stock, prescribed_count }
+     */
+    public function suggestDrugs(Request $request, Patient $patient): \Illuminate\Http\JsonResponse
+    {
+        $user = Auth::user();
+        if ($patient->doctor_id !== $user->id) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $keyword = trim($request->query('diagnosis', ''));
+        if (strlen($keyword) < 2) {
+            return response()->json([]);
+        }
+
+        // Walk: this doctor's prescriptions → visits with matching diagnosis → drugs → stock
+        $suggestions = DB::select(
+            "SELECT
+                 sc.id,
+                 sc.name,
+                 sc.category,
+                 COALESCE(ii.quantity_in_stock, 0) AS stock,
+                 COUNT(pi.id)                       AS prescribed_count
+             FROM prescriptions pr
+             JOIN visits              v   ON v.id = pr.visit_id
+             JOIN prescription_items  pi  ON pi.prescription_id = pr.id
+             JOIN service_catalog     sc  ON sc.id = pi.service_catalog_id
+             LEFT JOIN inventory_items ii  ON ii.name = sc.name AND ii.is_active = 1
+             WHERE pr.doctor_id = ?
+               AND v.diagnosis LIKE ?
+               AND sc.is_active = 1
+             GROUP BY sc.id, sc.name, sc.category, ii.quantity_in_stock
+             ORDER BY prescribed_count DESC
+             LIMIT 5",
+            [$user->id, "%{$keyword}%"]
+        );
+
+        return response()->json($suggestions);
+    }
+
+    /**
      * Create consolidated invoice(s) for selected services.
      *
      * Groups selected catalog items by department and creates ONE invoice

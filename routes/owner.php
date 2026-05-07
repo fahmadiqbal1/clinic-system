@@ -31,6 +31,8 @@ use App\Http\Controllers\Owner\OpsAiController;
 use App\Http\Controllers\Owner\ComplianceAiController;
 use App\Http\Controllers\Owner\ExternalLabController;
 use App\Http\Controllers\Owner\VendorController;
+use App\Http\Controllers\Owner\ClinicRoomController;
+use App\Http\Controllers\Owner\DoctorCredentialController;
 use App\Http\Controllers\Api\AiAssistantController;
 use Illuminate\Support\Facades\Route;
 
@@ -68,6 +70,11 @@ Route::middleware('role:Owner')->group(function () {
     Route::post('/owner/external-referrals/{referral}/decide', [ExternalLabController::class, 'decideReferral'])->name('owner.external-referrals.decide');
     Route::post('/owner/external-referrals/{referral}/status', [ExternalLabController::class, 'updateStatus'])->name('owner.external-referrals.status');
 
+    // External Lab MOU & Price List (Phase 10C)
+    Route::post('/owner/external-labs/{lab}/mou', [ExternalLabController::class, 'uploadMou'])->name('owner.external-labs.mou');
+    Route::post('/owner/external-labs/{lab}/price-list', [ExternalLabController::class, 'uploadPriceList'])->name('owner.external-labs.price-list.upload');
+    Route::get('/owner/external-labs/{lab}/test-prices', [ExternalLabController::class, 'testPrices'])->name('owner.external-labs.test-prices');
+
     // Vendor Management
     Route::get('/owner/vendors', [VendorController::class, 'index'])->name('owner.vendors.index');
     Route::get('/owner/vendors/create', [VendorController::class, 'create'])->name('owner.vendors.create');
@@ -75,6 +82,12 @@ Route::middleware('role:Owner')->group(function () {
     Route::get('/owner/vendors/{vendor}/edit', [VendorController::class, 'edit'])->name('owner.vendors.edit');
     Route::patch('/owner/vendors/{vendor}', [VendorController::class, 'update'])->name('owner.vendors.update');
     Route::delete('/owner/vendors/{vendor}', [VendorController::class, 'destroy'])->name('owner.vendors.destroy');
+
+    // Vendor MOU & Price List (Phase 10C)
+    Route::post('/owner/vendors/{vendor}/mou', [VendorController::class, 'uploadMou'])->name('owner.vendors.mou');
+    Route::post('/owner/vendors/{vendor}/price-list', [VendorController::class, 'uploadPriceList'])->name('owner.vendors.price-list.upload');
+    Route::get('/owner/vendors/price-list/{priceList}/review', [VendorController::class, 'reviewPriceList'])->name('owner.vendors.price-list.review');
+    Route::post('/owner/vendors/price-list/{priceList}/apply', [VendorController::class, 'applyPrices'])->name('owner.vendors.price-list.apply');
 
     // Price List Approval (owner side — approve/reject a price_list procurement request)
     // handled by existing ProcurementApprovalController
@@ -151,6 +164,24 @@ Route::middleware('role:Owner')->group(function () {
     // Data Retention Policy (Phase 5)
     Route::get('/owner/retention-policy',   [RetentionPolicyController::class, 'index'])->name('owner.retention-policy.index');
     Route::patch('/owner/retention-policy', [RetentionPolicyController::class, 'update'])->name('owner.retention-policy.update');
+
+    // Phase 10A — Clinic Rooms
+    Route::prefix('owner/rooms')->name('owner.rooms.')->group(function () {
+        Route::get('/', [ClinicRoomController::class, 'index'])->name('index');
+        Route::get('/create', [ClinicRoomController::class, 'create'])->name('create');
+        Route::post('/', [ClinicRoomController::class, 'store'])->name('store');
+        Route::get('/{room}/edit', [ClinicRoomController::class, 'edit'])->name('edit');
+        Route::patch('/{room}', [ClinicRoomController::class, 'update'])->name('update');
+        Route::delete('/{room}', [ClinicRoomController::class, 'destroy'])->name('destroy');
+    });
+
+    // Phase 10A — Doctor Credential Verification
+    Route::prefix('owner/credentials')->name('owner.credentials.')->group(function () {
+        Route::get('/', [DoctorCredentialController::class, 'index'])->name('index');
+        Route::get('/doctor/{user}', [DoctorCredentialController::class, 'showDoctor'])->name('doctor');
+        Route::post('/verify/{credential}', [DoctorCredentialController::class, 'verify'])->name('verify');
+        Route::post('/reject/{credential}', [DoctorCredentialController::class, 'reject'])->name('reject');
+    });
 
     // Phase 8 — Administrative / Operations / Compliance AI personas (flag-gated)
     // Rate-limited to 20 AI requests per minute per authenticated user.

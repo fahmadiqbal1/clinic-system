@@ -16,6 +16,7 @@ from app.agent.personas.admin_tools import (
     make_fbr_status_tool,
     make_payout_audit_tool,
     make_revenue_anomaly_tool,
+    make_revenue_leakage_tool,
 )
 from app.agent.tool_registry import ToolRegistry
 from app.agent.verification_interface import VerificationInterface
@@ -99,6 +100,8 @@ class AdminAgentHarness(PersonaHarness):
             registry.register(make_fbr_status_tool(body.period_days))
         if qt in ("payout_audit", "general"):
             registry.register(make_payout_audit_tool(body.period_days))
+        if qt in ("revenue_leakage", "general"):
+            registry.register(make_revenue_leakage_tool(body.period_days))
         return registry
 
     def post_process(self, rationale: str, body: Any) -> dict:

@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // Phase 10B — OmniDimension phone AI integration
+    'omnidimension' => [
+        'webhook_secret' => env('OMNIDIMENSION_WEBHOOK_SECRET', ''),
+        'api_key'        => env('OMNIDIMENSION_API_KEY', ''),
+    ],
+
 ];

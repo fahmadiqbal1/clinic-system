@@ -44,6 +44,21 @@
 
             <div class="row mb-3">
                 <div class="col-md-6">
+                    <label for="room_id" class="form-label"><i class="bi bi-door-open me-1" style="color:var(--accent-success);"></i>Room <span class="text-muted">(optional)</span></label>
+                    <select class="form-select @error('room_id') is-invalid @enderror" id="room_id" name="room_id">
+                        <option value="">— No room assigned —</option>
+                        @foreach($rooms as $room)
+                            <option value="{{ $room->id }}" {{ old('room_id') == $room->id ? 'selected' : '' }}>
+                                {{ $room->name }} ({{ ucfirst($room->type) }})
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('room_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                </div>
+            </div>
+
+            <div class="row mb-3">
+                <div class="col-md-6">
                     <label for="scheduled_at" class="form-label"><i class="bi bi-clock me-1" style="color:var(--accent-warning);"></i>Date & Time <span class="text-danger">*</span></label>
                     <input type="datetime-local" class="form-control @error('scheduled_at') is-invalid @enderror" id="scheduled_at" name="scheduled_at" value="{{ old('scheduled_at') }}" required>
                     {{-- Quick time slot chips --}}

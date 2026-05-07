@@ -12,6 +12,7 @@ use App\Http\Controllers\Receptionist\PatientRegistrationController;
 use App\Http\Controllers\Receptionist\InvoiceController as ReceptionistInvoiceController;
 use App\Http\Controllers\Receptionist\PayoutController as ReceptionistPayoutController;
 use App\Http\Controllers\Receptionist\AppointmentController;
+use App\Http\Controllers\Receptionist\PreBookedController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('role:Receptionist|Owner')->group(function () {
@@ -53,4 +54,8 @@ Route::middleware('role:Receptionist|Owner')->group(function () {
     Route::post('/receptionist/appointments', [AppointmentController::class, 'store'])->name('receptionist.appointments.store');
     Route::get('/receptionist/appointments/{appointment}', [AppointmentController::class, 'show'])->name('receptionist.appointments.show');
     Route::post('/receptionist/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->name('receptionist.appointments.cancel');
+
+    // Pre-booked (phone / OmniDimension) appointments
+    Route::get('/receptionist/pre-booked', [PreBookedController::class, 'index'])->name('receptionist.pre-booked.index');
+    Route::post('/receptionist/pre-booked/{appointment}/register', [PreBookedController::class, 'quickRegister'])->name('receptionist.pre-booked.register');
 });

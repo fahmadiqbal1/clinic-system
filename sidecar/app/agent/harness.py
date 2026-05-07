@@ -60,6 +60,7 @@ import time
 import uuid
 
 from app.agent.clinical_tools import (
+    make_graph_query_tool,
     make_medication_safety_tool,
     make_rag_query_tool,
     make_vital_alert_tool,
@@ -131,6 +132,7 @@ class AgentHarness:
         override this to wire their own tools.
         """
         registry = ToolRegistry()
+        registry.register(make_graph_query_tool(body))
         registry.register(make_rag_query_tool(body))
         registry.register(make_vital_alert_tool(body))
         registry.register(make_medication_safety_tool(body))

@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Owner;
 use App\Http\Controllers\Controller;
 use App\Models\ExternalLab;
 use App\Models\ExternalReferral;
-use Illuminate\Http\Request;
+use App\Models\Vendor;
+use App\Models\VendorPriceList;
+use App\Services\PriceExtractionService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\View\View;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\View\View;
 
 class ExternalLabController extends Controller
 {
@@ -119,5 +122,87 @@ class ExternalLabController extends Controller
         $request->validate(['status' => 'required|in:sent,completed']);
         $referral->update(['status' => $request->status]);
         return back()->with('success', 'Referral status updated.');
+    }
+
+    /**
+     * Upload an MOU document for an external lab (private storage path).
+     */
+    public function uploadMou(Request $request, ExternalLab $lab): RedirectResponse
+    {
+        $request->validate([
+            'mou_file' => 'required|file|mimes:pdf,jpg,jpeg,png|max:10240',
+        ]);
+
+        $file = $request->file('mou_file');
+        $path = $file->store("private/mou/external-labs/{$lab->id}", 'local');
+
+        $lab->update(['mou_document_path' => $path]);
+
+        return back()->with('success', 'MOU document uploaded for ' . $lab->name . '.');
+    }
+
+    /**
+     * Upload a price list for an external lab and queue extraction.
+     */
+    public function uploadPriceList(Request $request, ExternalLab $lab): RedirectResponse
+    {
+        $request->validate([
+            'price_list_file' => 'required|file|mimes:pdf,jpg,jpeg,png,csv|max:20480',
+        ]);
+
+        // Resolve or create a linked vendor for this lab
+        $vendorId = $lab->vendor_id;
+        if (! $vendorId) {
+            $vendor = Vendor::firstOrCreate(
+                ['name' => $lab->name . ' (External Lab)'],
+                [
+                    'category'     => 'external_lab',
+                    'contact_name' => $lab->contact_name,
+                    'email'        => $lab->contact_email,
+                    'phone'        => $lab->contact_phone,
+                    'is_approved'  => true,
+                ]
+            );
+            $lab->update(['vendor_id' => $vendor->id]);
+            $vendorId = $vendor->id;
+        }
+
+        $file         = $request->file('price_list_file');
+        $originalName = $file->getClientOriginalName();
+        $extension    = strtolower($file->getClientOriginalExtension());
+        $fileType     = match ($extension) {
+            'pdf'  => 'pdf',
+            'csv'  => 'csv',
+            default => 'image',
+        };
+
+        $storedPath = $file->store("private/price-lists/external-labs/{$lab->id}", 'local');
+
+        $priceList = VendorPriceList::create([
+            'vendor_id'         => $vendorId,
+            'external_lab_id'   => $lab->id,
+            'uploaded_by'       => auth()->id(),
+            'filename'          => basename($storedPath),
+            'original_filename' => $originalName,
+            'file_path'         => $storedPath,
+            'file_type'         => $fileType,
+            'status'            => 'pending',
+        ]);
+
+        app(PriceExtractionService::class)->queueExtraction($priceList);
+
+        return back()->with('success', 'Price list uploaded and queued for extraction.');
+    }
+
+    /**
+     * Show test prices for an external lab.
+     */
+    public function testPrices(ExternalLab $lab): View
+    {
+        $testPrices = $lab->testPrices()
+            ->orderBy('test_name')
+            ->paginate(50);
+
+        return view('owner.external-labs.test-prices', compact('lab', 'testPrices'));
     }
 }

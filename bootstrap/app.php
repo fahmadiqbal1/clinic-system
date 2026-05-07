@@ -16,7 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function () {
             // Role-specific route files (all get web + auth middleware)
-            $roleFiles = ['owner', 'doctor', 'receptionist', 'triage', 'laboratory', 'radiology', 'pharmacy', 'patient', 'shared'];
+            $roleFiles = ['owner', 'doctor', 'receptionist', 'triage', 'laboratory', 'radiology', 'pharmacy', 'patient', 'shared', 'vendor'];
             foreach ($roleFiles as $file) {
                 Route::middleware(['web', 'auth'])
                     ->group(base_path("routes/{$file}.php"));
@@ -28,7 +28,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-            'active' => \App\Http\Middleware\EnsureUserIsActive::class,
+            'active'               => \App\Http\Middleware\EnsureUserIsActive::class,
+            'require.credentials'  => \App\Http\Middleware\RequireDocumentVerification::class,
         ]);
 
         // Apply is_active check to all web routes after auth

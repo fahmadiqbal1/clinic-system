@@ -73,5 +73,54 @@
             <a href="{{ route('owner.external-labs.index') }}" class="btn btn-outline-secondary">Cancel</a>
         </div>
     </form>
+
+    {{-- MOU Upload (Phase 10C) --}}
+    <div class="glass-card mt-4">
+        <h6 class="fw-semibold mb-3"><i class="bi bi-file-earmark-pdf me-2"></i>MOU Document</h6>
+        @if($lab->mou_document_path)
+            <p class="mb-2"><span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle me-1"></i>Document on file</span></p>
+        @endif
+        <form method="POST" action="{{ route('owner.external-labs.mou', $lab) }}" enctype="multipart/form-data">
+            @csrf
+            <div class="row g-2 align-items-end">
+                <div class="col-md-8">
+                    <label class="form-label">Upload / Replace MOU</label>
+                    <input type="file" name="mou_file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                    <div class="form-text">PDF, JPG or PNG, max 10 MB</div>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-outline-primary w-100"><i class="bi bi-upload me-1"></i>Upload MOU</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    {{-- Price List Upload & Test Prices (Phase 10C) --}}
+    <div class="glass-card mt-3">
+        <h6 class="fw-semibold mb-3"><i class="bi bi-file-earmark-text me-2"></i>Test Price List</h6>
+        <p class="text-muted small mb-3">
+            Upload a PDF, image, or CSV price list from this lab. The AI sidecar will extract item prices
+            for your review before anything is saved.
+            <strong>This does not affect your onsite lab pricing.</strong>
+        </p>
+        <form method="POST" action="{{ route('owner.external-labs.price-list.upload', $lab) }}" enctype="multipart/form-data">
+            @csrf
+            <div class="row g-2 align-items-end">
+                <div class="col-md-8">
+                    <label class="form-label">Price List File</label>
+                    <input type="file" name="price_list_file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.csv" required>
+                    <div class="form-text">PDF, image or CSV, max 20 MB</div>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-outline-primary w-100"><i class="bi bi-upload me-1"></i>Upload & Extract</button>
+                </div>
+            </div>
+        </form>
+        <div class="mt-3">
+            <a href="{{ route('owner.external-labs.test-prices', $lab) }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-table me-1"></i>View All Test Prices
+            </a>
+        </div>
+    </div>
 </div>
 @endsection

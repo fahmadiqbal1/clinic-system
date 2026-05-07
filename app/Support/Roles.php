@@ -19,9 +19,10 @@ class Roles
     public const RADIOLOGY = 'Radiology';
     public const PHARMACY = 'Pharmacy';
     public const PATIENT = 'Patient';
+    public const VENDOR  = 'Vendor';
 
     /**
-     * All staff roles (excludes Patient).
+     * All staff roles (excludes Patient and Vendor portal users).
      */
     public const ALL_STAFF = [
         self::OWNER,
@@ -91,10 +92,10 @@ class Roles
     }
 
     /**
-     * Get all roles (including Patient).
+     * Get all roles (including Patient and Vendor).
      */
     public static function all(): array
     {
-        return array_merge(self::ALL_STAFF, [self::PATIENT]);
+        return array_merge(self::ALL_STAFF, [self::PATIENT, self::VENDOR]);
     }
 }

@@ -73,6 +73,16 @@
                             </div>
                         </div>
 
+                        {{-- Specialty (only shown when Doctor role selected) --}}
+                        <div id="specialty-field" class="mt-3" style="display:none;">
+                            <label for="specialty" class="form-label">Medical Specialty</label>
+                            <input type="text" name="specialty" id="specialty"
+                                value="{{ old('specialty', $user->specialty) }}"
+                                class="form-control @error('specialty') is-invalid @enderror"
+                                placeholder="e.g. Cardiology, General Practice">
+                            @error('specialty')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+
                         {{-- Independent Doctor flag (only shown when Doctor role selected) --}}
                         <div id="independent-doctor-field" class="mt-3" style="display:none;">
                             <div class="form-check">
@@ -179,10 +189,13 @@ document.addEventListener('DOMContentLoaded', function() {
         salaryField.style.display = ['salaried','hybrid'].includes(val) ? 'block' : 'none';
         commissionFields.style.display = ['commission','hybrid'].includes(val) ? 'block' : 'none';
     }
+    const specialtyField = document.getElementById('specialty-field');
     function toggleIndependentField() {
         const selectedText = roleSelect.options[roleSelect.selectedIndex]?.text || '';
-        independentDoctorField.style.display = selectedText === 'Doctor' ? 'block' : 'none';
-        if (selectedText !== 'Doctor') {
+        const isDoctor = selectedText === 'Doctor';
+        independentDoctorField.style.display = isDoctor ? 'block' : 'none';
+        specialtyField.style.display = isDoctor ? 'block' : 'none';
+        if (!isDoctor) {
             document.getElementById('is_independent').checked = false;
         }
     }

@@ -41,7 +41,15 @@
                     </div>
                     <div class="modal-body">
                         @if($externalLabs->isEmpty())
-                            <div class="alert alert-warning mb-0">No external labs configured. Ask the owner to add MOU partner labs first.</div>
+                            <div class="alert alert-warning mb-0">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                No MOU partner labs configured.
+                                @if(auth()->user()->hasRole('Owner'))
+                                    <a href="{{ route('owner.external-labs.index') }}" class="alert-link">Add an external lab partner</a> to enable referrals.
+                                @else
+                                    Ask the owner to add MOU partner labs at <strong>Owner → External Labs</strong> first.
+                                @endif
+                            </div>
                         @else
                         <div class="mb-3">
                             <label class="form-label">External Lab <span class="text-danger">*</span></label>

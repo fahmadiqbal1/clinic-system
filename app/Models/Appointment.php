@@ -15,6 +15,14 @@ class Appointment extends Model
     use HasFactory, SoftDeletes;
 
     /**
+     * Appointment source constants.
+     */
+    public const SOURCE_WALK_IN      = 'walk_in';
+    public const SOURCE_PHONE        = 'phone';
+    public const SOURCE_ONLINE       = 'online';
+    public const SOURCE_OMNIDIMENSION = 'omnidimension';
+
+    /**
      * Appointment type constants.
      */
     public const TYPE_FIRST_VISIT = 'first_visit';
@@ -36,13 +44,17 @@ class Appointment extends Model
     protected $fillable = [
         'patient_id',
         'doctor_id',
+        'room_id',
         'booked_by',
         'scheduled_at',
         'ended_at',
         'type',
         'status',
+        'source',
         'reason',
         'notes',
+        'pre_booked_name',
+        'pre_booked_phone',
         'cancellation_reason',
         'cancelled_at',
         'cancelled_by',
@@ -91,6 +103,14 @@ class Appointment extends Model
     }
 
     /**
+     * Get the room assigned to this appointment.
+     */
+    public function room(): BelongsTo
+    {
+        return $this->belongsTo(ClinicRoom::class);
+    }
+
+    /**
      * Check if appointment is upcoming.
      */
     public function isUpcoming(): bool
@@ -131,6 +151,14 @@ class Appointment extends Model
     public function scopeForDoctor($query, int $doctorId)
     {
         return $query->where('doctor_id', $doctorId);
+    }
+
+    /**
+     * Scope for pre-booked (phone/OmniDimension) appointments without a registered patient.
+     */
+    public function scopePreBooked($query)
+    {
+        return $query->whereNotNull('pre_booked_name')->whereNull('patient_id');
     }
 
     /**

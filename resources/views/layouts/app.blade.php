@@ -28,6 +28,8 @@
 
         @stack('styles')
 
+        @livewireStyles
+
         <!-- Theme initialization (prevent flash) -->
         <script>
             (function() {
@@ -63,6 +65,14 @@
                             <li class="nav-item"><a class="nav-link" href="{{ route('contracts.index') }}">Contracts</a></li>
                             <li class="nav-item"><a class="nav-link" href="{{ route('procurement.index') }}">Procurement</a></li>
                             <li class="nav-item"><a class="nav-link" href="{{ route('owner.vendors.index') }}">Vendors</a></li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"><i class="bi bi-building me-1"></i>Facility</a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.rooms.*') ? 'active' : '' }}" href="{{ route('owner.rooms.index') }}"><i class="bi bi-door-open me-2"></i>Clinic Rooms</a></li>
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.credentials.*') ? 'active' : '' }}" href="{{ route('owner.credentials.index') }}"><i class="bi bi-person-badge me-2"></i>Doctor Credentials</a></li>
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.external-labs.*') ? 'active' : '' }}" href="{{ route('owner.external-labs.index') }}"><i class="bi bi-building-check me-2"></i>External Labs</a></li>
+                                </ul>
+                            </li>
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"><i class="bi bi-wallet2 me-1"></i>Finance</a>
                                 <ul class="dropdown-menu">
@@ -122,7 +132,17 @@
                                     <li><a class="dropdown-item" href="{{ route('reception.payouts.create') }}"><i class="bi bi-plus-circle me-2"></i>Custom Payout</a></li>
                                 </ul>
                             </li>
-                            <li class="nav-item"><a class="nav-link {{ request()->routeIs('receptionist.appointments.*') ? 'active' : '' }}" href="{{ route('receptionist.appointments.index') }}"><i class="bi bi-calendar-check me-1"></i>Appointments</a></li>
+                            <li class="nav-item dropdown">
+                                @php $preBookedCount = \App\Models\Appointment::query()->whereDate('scheduled_at', today())->whereIn('source', ['phone','omnidimension'])->whereNull('patient_id')->count(); @endphp
+                                <a class="nav-link dropdown-toggle {{ request()->routeIs('receptionist.appointments.*') || request()->routeIs('receptionist.pre-booked.*') ? 'active' : '' }}" href="#" role="button" data-bs-toggle="dropdown"><i class="bi bi-calendar-check me-1"></i>Appointments</a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item {{ request()->routeIs('receptionist.appointments.*') ? 'active' : '' }}" href="{{ route('receptionist.appointments.index') }}"><i class="bi bi-calendar-week me-2"></i>Calendar &amp; List</a></li>
+                                    <li><a class="dropdown-item {{ request()->routeIs('receptionist.pre-booked.*') ? 'active' : '' }}" href="{{ route('receptionist.pre-booked.index') }}">
+                                        <i class="bi bi-person-walking me-2"></i>Pre-Booked Walk-ins
+                                        @if($preBookedCount > 0)<span class="badge bg-warning text-dark ms-1">{{ $preBookedCount }}</span>@endif
+                                    </a></li>
+                                </ul>
+                            </li>
                             <li class="nav-item"><a class="nav-link" href="{{ route('contracts.show') }}">My Contract</a></li>
                         @endif
 
@@ -310,6 +330,89 @@
                     </div>
                 @endif
             </div>
+
+            {{-- ═══════════════════════════════════════════════════════════════ --}}
+            {{-- Doctor Credential Reminder Banner (shows on EVERY doctor page) --}}
+            {{-- ═══════════════════════════════════════════════════════════════ --}}
+            @if(Auth::check() && Auth::user()->hasRole('Doctor'))
+            @php
+                $__credUser     = Auth::user();
+                $__deadline     = $__credUser->created_at->addHours(48);
+                $__secsLeft     = max(0, (int) now()->diffInSeconds($__deadline, false));
+                $__submitted    = $__credUser->credentials_submitted_at !== null;
+                $__verified     = $__credUser->credentials_verified_at  !== null;
+                $__overDeadline = $__secsLeft === 0 && !$__submitted;
+            @endphp
+
+            @if(!$__submitted)
+            {{-- Not submitted: show countdown warning/danger banner --}}
+            <div id="credBanner" style="
+                background: {{ $__overDeadline ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.13)' }};
+                border-bottom: 2px solid {{ $__overDeadline ? '#ef4444' : '#f59e0b' }};
+                padding: 10px 24px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                font-size: 0.875rem;
+            ">
+                <i class="bi {{ $__overDeadline ? 'bi-lock-fill text-danger' : 'bi-exclamation-triangle-fill' }}"
+                   style="font-size:1.1rem; color:{{ $__overDeadline ? '#ef4444' : '#f59e0b' }};"></i>
+                <span style="color:var(--text-primary); flex:1; min-width: 220px;">
+                    @if($__overDeadline)
+                        <strong>Account access restricted.</strong> Your 48-hour credential submission window has passed.
+                    @else
+                        <strong>Action required:</strong> Upload your Medical Licence &amp; Degree Certificate to keep system access.
+                        Account will be locked in&nbsp;<strong id="credCountdown">--:--:--</strong>.
+                    @endif
+                </span>
+                <a href="{{ route('doctor.credentials.upload') }}" class="btn btn-sm {{ $__overDeadline ? 'btn-danger' : 'btn-warning' }}" style="white-space:nowrap;">
+                    <i class="bi bi-upload me-1"></i>{{ $__overDeadline ? 'Submit Now to Restore Access' : 'Upload Credentials' }}
+                </a>
+            </div>
+
+            @if(!$__overDeadline)
+            <script>
+            (function () {
+                var secs = {{ $__secsLeft }};
+                function tick() {
+                    if (secs <= 0) {
+                        var el = document.getElementById('credCountdown');
+                        if (el) el.textContent = 'EXPIRED';
+                        return;
+                    }
+                    var h = Math.floor(secs / 3600);
+                    var m = Math.floor((secs % 3600) / 60);
+                    var s = secs % 60;
+                    var el = document.getElementById('credCountdown');
+                    if (el) el.textContent = h + 'h ' + String(m).padStart(2,'0') + 'm ' + String(s).padStart(2,'0') + 's';
+                    secs--;
+                }
+                tick();
+                setInterval(tick, 1000);
+            })();
+            </script>
+            @endif
+
+            @elseif(!$__verified)
+            {{-- Submitted, pending verification --}}
+            <div style="
+                background: rgba(34,197,94,0.1);
+                border-bottom: 2px solid #22c55e;
+                padding: 9px 24px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 0.875rem;
+            ">
+                <i class="bi bi-hourglass-split" style="color:#22c55e;"></i>
+                <span style="color:var(--text-primary);">
+                    <strong>Credentials submitted</strong> on {{ $__credUser->credentials_submitted_at->format('M d, Y') }} — awaiting owner verification. You will be notified once reviewed.
+                </span>
+            </div>
+            @endif
+            @endif
+            {{-- END Doctor Credential Reminder Banner --}}
 
             @yield('content')
         </main>
@@ -694,6 +797,8 @@
         </script>
 
         @stack('scripts')
+
+        @livewireScripts
 
         {{-- ── Notification Live Timer ── --}}
         <script>

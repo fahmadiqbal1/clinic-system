@@ -12,10 +12,12 @@ from typing import Any
 
 from app.agent.personas.base import PersonaHarness
 from app.agent.personas.ops_tools import (
+    make_doctor_demand_tool,
     make_expense_category_tool,
     make_inventory_velocity_tool,
     make_procurement_recommendation_tool,
     make_queue_health_tool,
+    make_room_utilisation_tool,
 )
 from app.agent.tool_registry import ToolRegistry
 from app.agent.verification_interface import VerificationInterface
@@ -87,17 +89,20 @@ class OpsAgentHarness(PersonaHarness):
         "procurement":  {"procurement_recommendation", "expense_category_analysis"},
         "expense":      {"expense_category_analysis"},
         "queue":        {"queue_health"},
-        "general":      {"inventory_velocity", "procurement_recommendation", "expense_category_analysis", "queue_health"},
+        "rooms":        {"room_utilisation", "doctor_demand"},
+        "general":      {"inventory_velocity", "procurement_recommendation", "expense_category_analysis", "queue_health", "room_utilisation", "doctor_demand"},
     }
 
     def build_tools(self, body: Any) -> ToolRegistry:
         registry = ToolRegistry()
         domain  = getattr(body, "domain", "general")
         allowed = self._DOMAIN_TOOLS.get(domain, self._DOMAIN_TOOLS["general"])
-        if "inventory_velocity"           in allowed: registry.register(make_inventory_velocity_tool())
-        if "procurement_recommendation"   in allowed: registry.register(make_procurement_recommendation_tool())
-        if "expense_category_analysis"    in allowed: registry.register(make_expense_category_tool(body.period_days))
-        if "queue_health"                 in allowed: registry.register(make_queue_health_tool())
+        if "inventory_velocity"         in allowed: registry.register(make_inventory_velocity_tool())
+        if "procurement_recommendation" in allowed: registry.register(make_procurement_recommendation_tool())
+        if "expense_category_analysis"  in allowed: registry.register(make_expense_category_tool(body.period_days))
+        if "queue_health"               in allowed: registry.register(make_queue_health_tool())
+        if "room_utilisation"           in allowed: registry.register(make_room_utilisation_tool(body.period_days))
+        if "doctor_demand"              in allowed: registry.register(make_doctor_demand_tool(body.period_days))
         return registry
 
     def post_process(self, rationale: str, body: Any) -> dict:

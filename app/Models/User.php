@@ -7,6 +7,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Permission\Traits\HasRoles;
+use App\Models\DoctorCredential;
 
 class User extends Authenticatable
 {
@@ -25,6 +26,10 @@ class User extends Authenticatable
         'commission_pharmacy',
         'commission_lab',
         'commission_radiology',
+        'specialty',
+        'credentials_submitted_at',
+        'credentials_verified_at',
+        'credentials_verified_by',
     ];
 
     protected $hidden = [
@@ -42,6 +47,8 @@ class User extends Authenticatable
         'commission_pharmacy' => 'decimal:2',
         'commission_lab' => 'decimal:2',
         'commission_radiology' => 'decimal:2',
+        'credentials_submitted_at' => 'datetime',
+        'credentials_verified_at' => 'datetime',
     ];
 
     /**
@@ -70,6 +77,11 @@ class User extends Authenticatable
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class, 'prescribing_doctor_id');
+    }
+
+    public function credentials(): HasMany
+    {
+        return $this->hasMany(DoctorCredential::class, 'user_id');
     }
 
     /*
