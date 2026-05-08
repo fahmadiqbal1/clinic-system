@@ -8,11 +8,11 @@ use Carbon\Carbon;
 class ExpenseIntelligenceQueryService
 {
     /**
-     * Get total expenses for date range
+     * Get total expenses for date range (uses expense_date for accuracy).
      */
     public function getTotalExpenses(Carbon $from, Carbon $to): float
     {
-        return (float) Expense::whereBetween('created_at', [$from, $to])
+        return (float) Expense::whereBetween('expense_date', [$from->toDateString(), $to->toDateString()])
             ->sum('cost');
     }
 
@@ -39,26 +39,35 @@ class ExpenseIntelligenceQueryService
     }
 
     /**
-     * Get expense breakdown by type (Inventory vs Service procurement)
+     * Get expense breakdown by type (procurement vs other).
+     * Uses the `category` column, with a description-prefix fallback for legacy rows.
      */
     public function getExpensesByType(Carbon $from, Carbon $to): array
     {
-        $inventoryExpenses = Expense::whereBetween('created_at', [$from, $to])
-            ->where('description', 'like', '%Procurement:%')
+        $base = Expense::whereBetween('expense_date', [$from->toDateString(), $to->toDateString()]);
+
+        $procurementExpenses = (clone $base)
+            ->where(function ($q) {
+                $q->where('category', 'procurement')
+                  ->orWhere('category', 'like', '%procur%')
+                  ->orWhere('description', 'like', 'Procurement:%');
+            })
             ->sum('cost');
 
+        $totalExpenses = (clone $base)->sum('cost');
+
         return [
-            'procurement' => (float) $inventoryExpenses,
-            'other' => (float) (Expense::whereBetween('created_at', [$from, $to])->sum('cost') - $inventoryExpenses),
+            'procurement' => (float) $procurementExpenses,
+            'other'       => (float) ($totalExpenses - $procurementExpenses),
         ];
     }
 
     /**
-     * Get expenses by department for date range
+     * Get expenses by department for date range.
      */
     public function getExpensesByDepartment(Carbon $from, Carbon $to): array
     {
-        $expenses = Expense::whereBetween('created_at', [$from, $to])
+        $expenses = Expense::whereBetween('expense_date', [$from->toDateString(), $to->toDateString()])
             ->selectRaw('department, SUM(cost) as total')
             ->groupBy('department')
             ->get();
@@ -79,11 +88,11 @@ class ExpenseIntelligenceQueryService
     }
 
     /**
-     * Get top expense categories
+     * Get top expense categories.
      */
     public function getTopExpenseDescriptions(Carbon $from, Carbon $to, int $limit = 10): array
     {
-        return Expense::whereBetween('created_at', [$from, $to])
+        return Expense::whereBetween('expense_date', [$from->toDateString(), $to->toDateString()])
             ->selectRaw('description, COUNT(*) as count, SUM(cost) as total')
             ->groupBy('description')
             ->orderByDesc('total')
@@ -94,14 +103,15 @@ class ExpenseIntelligenceQueryService
     }
 
     /**
-     * Get average daily expense
+     * Get average daily expense over the date range.
      */
     public function getAverageDailyExpense(Carbon $from, Carbon $to): float
     {
         $total = $this->getTotalExpenses($from, $to);
-        $days = $to->diffInDays($from) + 1;
+        // Use startOfDay copies so diffInDays counts whole calendar days correctly
+        $days = $from->copy()->startOfDay()->diffInDays($to->copy()->startOfDay()) + 1;
 
-        return $days > 0 ? $total / $days : 0.0;
+        return $days > 0 ? round($total / $days, 2) : 0.0;
     }
 
     /**

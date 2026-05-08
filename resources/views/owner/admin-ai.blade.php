@@ -13,6 +13,20 @@
         </a>
     </div>
 
+    @php $sidecarEnabled = \App\Models\PlatformSetting::isEnabled('ai.sidecar.enabled'); @endphp
+    @if(!$sidecarEnabled)
+    <div class="alert alert-warning d-flex align-items-start gap-2 mb-3 fade-in" role="alert">
+        <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+        <div>
+            <strong>AI Sidecar is not enabled.</strong>
+            The sidecar must be running at <code>localhost:8001</code> for AI analysis to work.
+            Start it with: <code>docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d sidecar</code>
+            — or if running natively, ensure Ollama is running and the FastAPI sidecar is started.
+            <br><small>Enable the <strong>ai.sidecar.enabled</strong> flag in Platform Settings once it's running.</small>
+        </div>
+    </div>
+    @endif
+
     <div class="card mb-3 fade-in">
         <div class="card-body">
             <form id="adminAiForm" action="{{ route('owner.admin-ai.analyse') }}" class="row g-3">

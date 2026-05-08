@@ -50,6 +50,10 @@
                     @endif
                 </div>
                 <div class="d-flex gap-2 flex-wrap align-items-start">
+                    <a href="{{ route('owner.credentials.download', $credential) }}"
+                       class="btn btn-sm btn-outline-primary" target="_blank">
+                        <i class="bi bi-eye me-1"></i>View File
+                    </a>
                     <a href="{{ route('owner.credentials.verify', $credential) }}"
                        class="btn btn-sm btn-outline-success"
                        onclick="return confirm('Mark this credential as verified?')"

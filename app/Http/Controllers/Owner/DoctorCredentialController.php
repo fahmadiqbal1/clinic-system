@@ -8,8 +8,10 @@ use App\Models\User;
 use App\Services\AuditableService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Spatie\Permission\Models\Role;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DoctorCredentialController extends Controller
 {
@@ -71,6 +73,18 @@ class DoctorCredentialController extends Controller
         );
 
         return redirect()->back()->with('success', 'Credential verified successfully.');
+    }
+
+    /**
+     * Download a private credential file.
+     */
+    public function download(DoctorCredential $credential): StreamedResponse
+    {
+        if (! Storage::disk('local')->exists($credential->file_path)) {
+            abort(404, 'Credential file not found.');
+        }
+
+        return Storage::disk('local')->download($credential->file_path, $credential->original_filename);
     }
 
     /**

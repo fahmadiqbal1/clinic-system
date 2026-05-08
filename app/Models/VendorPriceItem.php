@@ -11,6 +11,7 @@ class VendorPriceItem extends Model
         'vendor_price_list_id',
         'item_name',
         'sku_detected',
+        'pack_size',
         'unit_detected',
         'detected_price',
         'current_price',

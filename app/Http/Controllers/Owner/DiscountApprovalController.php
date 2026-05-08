@@ -22,11 +22,10 @@ class DiscountApprovalController extends Controller
             ->whereNotNull('discount_approved_at')
             ->with(['patient', 'discountRequester', 'discountApprover'])
             ->latest('discount_approved_at')
-            ->take(20)
-            ->get();
+            ->paginate(20, ['*'], 'history_page');
 
         return view('owner.discount-approvals.index', [
-            'pendingDiscounts' => $pendingDiscounts,
+            'pendingDiscounts'  => $pendingDiscounts,
             'recentlyProcessed' => $recentlyProcessed,
         ]);
     }

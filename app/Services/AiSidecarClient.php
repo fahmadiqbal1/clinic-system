@@ -114,6 +114,52 @@ class AiSidecarClient
         return $this->call('POST', '/v1/compliance/analyse', $payload);
     }
 
+    /**
+     * Smart Assistant — cross-role conversational AI with optional file upload.
+     * Sends multipart/form-data so the sidecar can read the file bytes directly.
+     *
+     * @param  array{message:string,role:string,current_page:string,session_id:string} $payload
+     * @param  string|null $fileContents  Raw file bytes
+     * @param  string|null $fileName      Original filename (used for extension detection)
+     */
+    public function assistantChat(array $payload, ?string $fileContents = null, ?string $fileName = null): array
+    {
+        if ($this->isCircuitOpen()) {
+            throw new \RuntimeException('AI sidecar unavailable (circuit open).');
+        }
+
+        $url   = rtrim(config('clinic.sidecar_url', 'http://localhost:8001'), '/') . '/v1/assistant/chat';
+        $jwt   = $this->mintJwt();
+        $start = (int) (microtime(true) * 1000);
+
+        try {
+            $request = Http::withToken($jwt)->timeout(30);
+
+            if ($fileContents !== null && $fileName !== null) {
+                $request = $request->attach('file', $fileContents, $fileName);
+            }
+
+            $response = $request->post($url, $payload);
+
+            $latencyMs = (int) (microtime(true) * 1000) - $start;
+
+            if (!$response->successful()) {
+                throw new \RuntimeException("Sidecar HTTP {$response->status()}: " . $response->body());
+            }
+
+            $body = $response->json() ?? [];
+            $this->recordSuccess();
+            $this->writeLog('/v1/assistant/chat', $payload, $body, $latencyMs, 'ok', null);
+
+            return $body;
+        } catch (\Exception $e) {
+            $latencyMs = (int) (microtime(true) * 1000) - $start;
+            $this->recordFailure();
+            $this->writeLog('/v1/assistant/chat', $payload, null, $latencyMs, 'error', null);
+            throw $e;
+        }
+    }
+
     private function call(string $method, string $path, array $payload = [], ?string $caseToken = null, int $timeoutS = self::TIMEOUT_S): array
     {
         if ($this->isCircuitOpen()) {

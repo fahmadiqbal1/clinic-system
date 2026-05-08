@@ -40,6 +40,17 @@
                     <input type="email" name="po_email" class="form-control" value="{{ old('po_email') }}" placeholder="orders@vendor.com">
                 </div>
                 <div class="col-md-6">
+                    <label class="form-label">Vendor Category <span class="text-danger">*</span></label>
+                    <select name="category" class="form-select @error('category') is-invalid @enderror" required>
+                        <option value="">— Select —</option>
+                        <option value="pharmaceutical" {{ old('category') === 'pharmaceutical' ? 'selected' : '' }}>Pharmaceutical</option>
+                        <option value="lab_supplies"   {{ old('category') === 'lab_supplies'   ? 'selected' : '' }}>Lab Supplies</option>
+                        <option value="external_lab"   {{ old('category') === 'external_lab'   ? 'selected' : '' }}>External Lab</option>
+                        <option value="general"        {{ old('category') === 'general'        ? 'selected' : '' }}>General / Other</option>
+                    </select>
+                    @error('category')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                </div>
+                <div class="col-md-6">
                     <label class="form-label">Payment Terms</label>
                     <input type="text" name="payment_terms" class="form-control" value="{{ old('payment_terms') }}" placeholder="Net 30, COD, ...">
                 </div>

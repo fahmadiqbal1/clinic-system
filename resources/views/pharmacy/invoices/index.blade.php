@@ -43,23 +43,27 @@
                                 <td class="fw-medium">{{ currency($invoice->total_amount ?? 0) }}</td>
                                 <td>
                                     @php
-                                        $sStyle = match($invoice->status) {
-                                            'completed' => 'background:rgba(var(--accent-success-rgb),0.15);color:var(--accent-success);',
-                                            'paid' => 'background:rgba(var(--accent-primary-rgb),0.15);color:var(--accent-primary);',
-                                            'cancelled' => 'background:rgba(var(--accent-danger-rgb),0.15);color:var(--accent-danger);',
-                                            default => 'background:rgba(var(--accent-warning-rgb),0.15);color:var(--accent-warning);',
-                                        };
+                                        $isDispensed = $invoice->isPaid() && $invoice->performed_by_user_id && $invoice->items->count() > 0;
+                                        $sStyle = $isDispensed
+                                            ? 'background:rgba(var(--accent-success-rgb),0.15);color:var(--accent-success);'
+                                            : match($invoice->status) {
+                                                'completed' => 'background:rgba(var(--accent-success-rgb),0.15);color:var(--accent-success);',
+                                                'paid'      => 'background:rgba(var(--accent-primary-rgb),0.15);color:var(--accent-primary);',
+                                                'cancelled' => 'background:rgba(var(--accent-danger-rgb),0.15);color:var(--accent-danger);',
+                                                default     => 'background:rgba(var(--accent-warning-rgb),0.15);color:var(--accent-warning);',
+                                            };
+                                        $sLabel = $isDispensed ? 'Dispensed' : ucfirst($invoice->status ?? 'pending');
                                     @endphp
-                                    <span class="badge-glass" style="{{ $sStyle }}">{{ ucfirst($invoice->status ?? 'pending') }}</span>
+                                    <span class="badge-glass" style="{{ $sStyle }}">{{ $sLabel }}</span>
                                 </td>
                                 <td>
                                     <a href="{{ route('pharmacy.invoices.show', $invoice) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-eye me-1"></i>View</a>
                                     @if($invoice->status === 'pending')
-                                        <a href="{{ route('pharmacy.invoices.show', $invoice) }}" class="btn btn-sm btn-outline-success"><i class="bi bi-cash me-1"></i>Collect</a>
+                                        <a href="{{ route('pharmacy.invoices.show', $invoice) }}" class="btn btn-sm btn-outline-success"><i class="bi bi-cash me-1"></i>Collect Payment</a>
                                     @elseif($invoice->isPaid() && !$invoice->performed_by_user_id)
-                                        <a href="{{ route('pharmacy.invoices.show', $invoice) }}" class="btn btn-sm btn-success"><i class="bi bi-play-circle me-1"></i>Start</a>
-                                    @elseif($invoice->isPaid() && $invoice->performed_by_user_id && !$invoice->items->count())
-                                        <a href="{{ route('pharmacy.invoices.show', $invoice) }}" class="btn btn-sm btn-success"><i class="bi bi-check-circle me-1"></i>Dispense</a>
+                                        <a href="{{ route('pharmacy.invoices.show', $invoice) }}" class="btn btn-sm btn-warning"><i class="bi bi-play-circle me-1"></i>Start Work</a>
+                                    @elseif($invoice->isPaid() && $invoice->performed_by_user_id && $invoice->items->count() === 0)
+                                        <a href="{{ route('pharmacy.invoices.show', $invoice) }}" class="btn btn-sm btn-success"><i class="bi bi-capsule me-1"></i>Dispense</a>
                                     @endif
                                 </td>
                             </tr>

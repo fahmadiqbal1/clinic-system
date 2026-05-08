@@ -7,6 +7,7 @@ use App\Models\PlatformSetting;
 use App\Services\AiSidecarClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class AdminAiController extends Controller
@@ -43,9 +44,16 @@ class AdminAiController extends Controller
         try {
             return response()->json($this->sidecar->adminAnalyse($payload));
         } catch (\Throwable $e) {
-            $msg = str_contains($e->getMessage(), 'circuit open')
-                ? 'Administrative AI temporarily unavailable.'
-                : 'Administrative AI error: ' . $e->getMessage();
+            $raw = $e->getMessage();
+            if (str_contains($raw, 'circuit open')) {
+                $msg = 'The AI sidecar is temporarily unavailable (circuit open). Please wait a few minutes and retry.';
+            } elseif (str_contains($raw, 'Connection refused') || str_contains($raw, 'Failed to connect') || str_contains($raw, 'cURL error')) {
+                $msg = 'AI sidecar is not running (localhost:8001 unreachable). Start it with: docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d sidecar — or use Ollama locally if running natively.';
+            } elseif (str_contains($raw, 'timed out') || str_contains($raw, 'timeout')) {
+                $msg = 'AI sidecar timed out. The model may be loading — please retry in 30 seconds.';
+            } else {
+                $msg = 'Administrative AI is unavailable: ' . Str::limit($raw, 120);
+            }
             return response()->json(['error' => $msg], 503);
         }
     }

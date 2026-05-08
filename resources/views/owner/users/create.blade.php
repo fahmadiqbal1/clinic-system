@@ -67,6 +67,19 @@
                             </div>
                         </div>
 
+                        {{-- Timezone --}}
+                        <div class="mt-3">
+                            <label for="timezone" class="form-label">Timezone</label>
+                            <select name="timezone" id="timezone" class="form-select">
+                                <option value="Asia/Karachi" {{ old('timezone','Asia/Karachi')==='Asia/Karachi'?'selected':'' }}>Pakistan (Asia/Karachi) — Default</option>
+                                <option value="Asia/Kolkata" {{ old('timezone')==='Asia/Kolkata'?'selected':'' }}>India (Asia/Kolkata)</option>
+                                <option value="Asia/Dubai" {{ old('timezone')==='Asia/Dubai'?'selected':'' }}>UAE (Asia/Dubai)</option>
+                                <option value="Asia/Riyadh" {{ old('timezone')==='Asia/Riyadh'?'selected':'' }}>Saudi Arabia (Asia/Riyadh)</option>
+                                <option value="UTC" {{ old('timezone')==='UTC'?'selected':'' }}>UTC</option>
+                            </select>
+                            <div class="form-text">Used to display clock-in/out times correctly in attendance logs.</div>
+                        </div>
+
                         {{-- Specialty (only shown when Doctor role selected) --}}
                         <div id="specialty-field" class="mt-3" style="display:none;">
                             <label for="specialty" class="form-label">Medical Specialty</label>

@@ -71,6 +71,8 @@
                                     <li><a class="dropdown-item {{ request()->routeIs('owner.rooms.*') ? 'active' : '' }}" href="{{ route('owner.rooms.index') }}"><i class="bi bi-door-open me-2"></i>Clinic Rooms</a></li>
                                     <li><a class="dropdown-item {{ request()->routeIs('owner.credentials.*') ? 'active' : '' }}" href="{{ route('owner.credentials.index') }}"><i class="bi bi-person-badge me-2"></i>Doctor Credentials</a></li>
                                     <li><a class="dropdown-item {{ request()->routeIs('owner.external-labs.*') ? 'active' : '' }}" href="{{ route('owner.external-labs.index') }}"><i class="bi bi-building-check me-2"></i>External Labs</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item {{ request()->routeIs('owner.attendance*') ? 'active' : '' }}" href="{{ route('owner.attendance.index') }}"><i class="bi bi-clock-history me-2"></i>Attendance Log</a></li>
                                 </ul>
                             </li>
                             <li class="nav-item dropdown">
@@ -796,6 +798,9 @@
         });
         </script>
 
+        <!-- Axios (required for Alpine.js AJAX calls e.g. clock-in/out) -->
+        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
         @stack('scripts')
 
         @livewireScripts
@@ -1083,5 +1088,7 @@
                 </div>
             </div>
         </div>
+
+        <x-smart-assistant />
     </body>
 </html>

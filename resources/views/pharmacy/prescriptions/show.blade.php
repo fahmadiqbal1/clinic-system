@@ -167,6 +167,31 @@
                     </div>
                 </div>
             @endif
+            {{-- Supplement Upsell --}}
+            @if($supplements->count() > 0)
+            <div class="glass-card fade-in delay-3 mt-4" style="border:1px solid rgba(var(--accent-info-rgb),0.3);">
+                <h6 class="form-section-title"><i class="bi bi-bag-plus me-2" style="color:var(--accent-info);"></i>Suggest OTC Supplements</h6>
+                <p class="small mb-3" style="color:var(--text-muted);">Complementary over-the-counter products available in stock. Offer these to the patient as relevant add-ons.</p>
+                <div class="row g-2">
+                    @foreach($supplements as $supp)
+                    <div class="col-6">
+                        <div class="d-flex align-items-center justify-content-between p-2 rounded" style="background:rgba(var(--accent-info-rgb),0.07); border:1px solid rgba(var(--accent-info-rgb),0.15);">
+                            <div class="overflow-hidden me-2">
+                                <div class="fw-medium small text-truncate">{{ $supp->name }}</div>
+                                @if($supp->unit)
+                                <div class="small" style="color:var(--text-muted); font-size:0.75rem;">{{ $supp->unit }}</div>
+                                @endif
+                            </div>
+                            <div class="text-end flex-shrink-0">
+                                <div class="fw-semibold small">{{ currency($supp->selling_price) }}</div>
+                                <div class="small" style="color:var(--text-muted); font-size:0.7rem;">{{ (int) $supp->current_stock }} in stock</div>
+                            </div>
+                        </div>
+                    </div>
+                    @endforeach
+                </div>
+            </div>
+            @endif
         </div>
     </div>
 </div>

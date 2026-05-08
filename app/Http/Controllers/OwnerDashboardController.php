@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Models\DoctorCredential;
 use App\Models\Invoice;
 use App\Models\InventoryItem;
 use App\Models\ProcurementRequest;
+use App\Models\StaffShift;
+use App\Models\VendorPriceList;
 use App\Services\FinancialReportService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -67,8 +70,22 @@ class OwnerDashboardController extends Controller
             ->where('receipt_deadline_at', '<', now())
             ->count();
 
+        // Staff currently on shift (open shifts today)
+        $onShiftCount = StaffShift::today()->open()->count();
+
+        // Pending credential verifications (submitted but not yet all verified)
+        $pendingCredentialsCount = DoctorCredential::whereNull('verified_at')->count();
+
         // Count pending procurement approvals
         $pendingProcurementCount = ProcurementRequest::where('status', 'pending')->count();
+
+        // Vendor price lists awaiting owner review (extracted or flagged, not yet applied)
+        $pendingPriceListCount = VendorPriceList::whereIn('status', ['extracted', 'flagged'])->count();
+        $pendingPriceLists = VendorPriceList::whereIn('status', ['extracted', 'flagged'])
+            ->with('vendor')
+            ->latest()
+            ->take(5)
+            ->get();
 
         // Count pending discount requests
         $pendingDiscountCount = Invoice::where('discount_status', Invoice::DISCOUNT_PENDING)->count();
@@ -114,6 +131,10 @@ class OwnerDashboardController extends Controller
             'pending_procurement_count' => $pendingProcurementCount,
             'pending_discount_count' => $pendingDiscountCount,
             'pending_discounts' => $pendingDiscounts,
+            'on_shift_count' => $onShiftCount,
+            'pending_credentials_count' => $pendingCredentialsCount,
+            'pending_price_list_count' => $pendingPriceListCount,
+            'pending_price_lists' => $pendingPriceLists,
             'trend_labels' => $trendLabels,
             'trend_revenue' => $trendRevenue,
             'trend_expenses' => $trendExpenses,

@@ -123,6 +123,70 @@
     </div>
     @endif
 
+    {{-- Prescription Reference Panel --}}
+    @if($invoice->isPaid() && $invoice->performed_by_user_id && !$invoice->items->count() && $prescriptionItems->count())
+    <div class="card mb-4 fade-in delay-3" style="border:1px solid rgba(var(--accent-info-rgb),0.3);">
+        <div class="card-header"><i class="bi bi-file-medical me-2" style="color:var(--accent-info);"></i>Prescribed Medicines
+            @php $allInStock = $prescriptionItems->every(fn($i) => $i['in_stock']); @endphp
+            @if($allInStock)
+                <span class="badge ms-2" style="background:rgba(var(--accent-success-rgb),0.2);color:var(--accent-success);">All in stock</span>
+            @else
+                <span class="badge ms-2" style="background:rgba(var(--accent-warning-rgb),0.2);color:var(--accent-warning);">Some unavailable</span>
+            @endif
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Medicine</th>
+                        <th>Dosage</th>
+                        <th class="text-center">Prescribed Qty</th>
+                        <th class="text-center">In Stock</th>
+                        <th>Inventory Match</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($prescriptionItems as $pi)
+                    <tr>
+                        <td class="fw-medium">{{ $pi['medication_name'] }}
+                            @if($pi['duration']) <small class="d-block" style="color:var(--text-muted);">{{ $pi['duration'] }}</small> @endif
+                        </td>
+                        <td>{{ $pi['dosage'] ?? '—' }}
+                            @if($pi['frequency']) <small class="d-block" style="color:var(--text-muted);">{{ $pi['frequency'] }}</small> @endif
+                        </td>
+                        <td class="text-center fw-bold">{{ $pi['quantity'] }}</td>
+                        <td class="text-center">
+                            @if($pi['inventory_item'])
+                                @if($pi['in_stock'])
+                                    <span style="color:var(--accent-success);"><i class="bi bi-check-circle-fill"></i> {{ $pi['current_stock'] }}</span>
+                                @else
+                                    <span style="color:var(--accent-danger);"><i class="bi bi-x-circle-fill"></i> {{ $pi['current_stock'] }}</span>
+                                @endif
+                            @else
+                                <span style="color:var(--text-muted);" title="No matching item found in inventory"><i class="bi bi-question-circle"></i> Not found</span>
+                            @endif
+                        </td>
+                        <td>
+                            @if($pi['inventory_item'])
+                                <small style="color:var(--text-muted);">{{ $pi['inventory_item']->name }}</small>
+                            @else
+                                <small style="color:var(--accent-warning);">Manual select required</small>
+                            @endif
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        @if(!$allInStock)
+        <div class="card-footer" style="background:rgba(var(--accent-warning-rgb),0.07); border-top:1px solid rgba(var(--accent-warning-rgb),0.2);">
+            <small style="color:var(--accent-warning);"><i class="bi bi-exclamation-triangle me-1"></i>
+                One or more prescribed medicines are out of stock. Dispense available items only — the invoice total will be adjusted to the dispensed amount and any difference should be refunded to the patient in cash.</small>
+        </div>
+        @endif
+    </div>
+    @endif
+
     {{-- Dispensing Form (paid invoice with performer assigned, no items yet) --}}
     @if($invoice->isPaid() && $invoice->performed_by_user_id && !$invoice->items->count())
     <div class="card mb-4 fade-in delay-3">
@@ -148,32 +212,73 @@
             <form action="{{ route('pharmacy.invoices.mark-complete', $invoice) }}" method="POST" id="dispense-form">
                 @csrf
                 <div id="dispense-items">
-                    <div class="row mb-2 dispense-row">
-                        <div class="col-md-7">
-                            <select name="items[0][inventory_item_id]" class="form-select item-select" required>
-                                <option value="">-- Select Item --</option>
-                                @foreach($pharmacyItems as $pharmacyItem)
-                                    <option value="{{ $pharmacyItem->id }}" data-barcode="{{ $pharmacyItem->barcode ?? '' }}" data-price="{{ $pharmacyItem->selling_price }}">
-                                        {{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }}) {{ $pharmacyItem->barcode ? '['.$pharmacyItem->barcode.']' : '' }}
-                                    </option>
-                                @endforeach
-                            </select>
+                    {{-- Pre-populate from prescription for items with inventory matches --}}
+                    @php
+                        $preRows = $prescriptionItems->filter(fn($pi) => $pi['inventory_item'] && $pi['in_stock']);
+                        $startIdx = 0;
+                    @endphp
+                    @if($preRows->count())
+                        @foreach($preRows as $pi)
+                        <div class="row mb-2 dispense-row">
+                            <div class="col-md-6">
+                                <select name="items[{{ $startIdx }}][inventory_item_id]" class="form-select item-select" required>
+                                    <option value="">-- Select Item --</option>
+                                    @foreach($pharmacyItems as $pharmacyItem)
+                                        <option value="{{ $pharmacyItem->id }}"
+                                            data-barcode="{{ $pharmacyItem->barcode ?? '' }}"
+                                            data-price="{{ $pharmacyItem->selling_price }}"
+                                            @selected($pharmacyItem->id === $pi['inventory_item']->id)>
+                                            {{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <small style="color:var(--text-muted);">Prescribed: {{ $pi['medication_name'] }}</small>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" name="items[{{ $startIdx }}][quantity]" class="form-control item-qty" placeholder="Qty" min="1" value="{{ $pi['quantity'] }}" required>
+                                <small style="color:var(--text-muted);">Stock: {{ $pi['current_stock'] }}</small>
+                            </div>
+                            <div class="col-md-3 d-flex align-items-center gap-2">
+                                <span style="color:var(--accent-success); font-size:0.8rem;"><i class="bi bi-check-circle-fill me-1"></i>In stock</span>
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-row">Remove</button>
+                            </div>
                         </div>
-                        <div class="col-md-3">
-                            <input type="number" name="items[0][quantity]" class="form-control item-qty" placeholder="Qty" min="1" value="1" required>
+                        @php $startIdx++; @endphp
+                        @endforeach
+                    @else
+                        {{-- No prescription or no matches — blank row --}}
+                        <div class="row mb-2 dispense-row">
+                            <div class="col-md-7">
+                                <select name="items[0][inventory_item_id]" class="form-select item-select" required>
+                                    <option value="">-- Select Item --</option>
+                                    @foreach($pharmacyItems as $pharmacyItem)
+                                        <option value="{{ $pharmacyItem->id }}" data-barcode="{{ $pharmacyItem->barcode ?? '' }}" data-price="{{ $pharmacyItem->selling_price }}">
+                                            {{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }}) {{ $pharmacyItem->barcode ? '['.$pharmacyItem->barcode.']' : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <input type="number" name="items[0][quantity]" class="form-control item-qty" placeholder="Qty" min="1" value="1" required>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-outline-danger btn-sm remove-row" style="display:none;">&times;</button>
+                            </div>
                         </div>
-                        <div class="col-md-2">
-                            <button type="button" class="btn btn-outline-danger btn-sm remove-row" style="display:none;">&times;</button>
-                        </div>
-                    </div>
+                    @endif
                 </div>
 
-                <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-3 mt-2">
                     <button type="button" class="btn btn-outline-primary btn-sm" id="add-item-row">
                         <i class="bi bi-plus-circle me-1"></i>Add Another Item
                     </button>
-                    <div id="dispenseTotal" class="fw-bold" style="color:var(--accent-success);display:none;">
-                        Est. Total: <span id="dispenseTotalValue">{{ currency_symbol() }}0.00</span>
+                    <div class="text-end">
+                        <div id="dispenseTotal" class="fw-bold" style="color:var(--accent-success);display:none;">
+                            Est. Dispensed: <span id="dispenseTotalValue">{{ currency_symbol() }}0.00</span>
+                        </div>
+                        <div id="refundNotice" style="display:none; color:var(--accent-warning); font-size:0.82rem;">
+                            <i class="bi bi-arrow-return-left me-1"></i>Refund due to patient: <span id="refundValue"></span>
+                        </div>
                     </div>
                 </div>
 
@@ -191,12 +296,16 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            let rowIndex = 1;
             const container = document.getElementById('dispense-items');
             const addBtn = document.getElementById('add-item-row');
             const feedback = document.getElementById('scanFeedback');
+            const paidAmount = {{ (float) ($invoice->total_amount ?? 0) }};
+            const currSym = '{{ currency_symbol() }}';
 
-            // Build barcode → item lookup from pharmacy items
+            // Row index starts after pre-populated rows
+            let rowIndex = container ? container.querySelectorAll('.dispense-row').length : 1;
+
+            // Build barcode → item lookup from first select's options
             const barcodeMap = {};
             document.querySelectorAll('.item-select option[data-barcode]').forEach(function(opt) {
                 const bc = opt.dataset.barcode;
@@ -215,7 +324,7 @@
                     return;
                 }
 
-                // Check if item already in a row → increment qty
+                // Increment qty if already in a row
                 let found = false;
                 container.querySelectorAll('.item-select').forEach(function(sel) {
                     if (sel.value === match.id) {
@@ -226,55 +335,53 @@
                 });
 
                 if (!found) {
-                    // Find first empty row or add new
-                    const emptyRow = container.querySelector('.item-select[value=""], .item-select:not([value])');
-                    if (emptyRow && !emptyRow.closest('.dispense-row').querySelector('.item-qty').value) {
-                        emptyRow.value = match.id;
-                    } else {
-                        addBtn.click();
-                        const newSelect = container.querySelector('.dispense-row:last-child .item-select');
-                        if (newSelect) newSelect.value = match.id;
-                    }
+                    addBtn.click();
+                    const newSelect = container.querySelector('.dispense-row:last-child .item-select');
+                    if (newSelect) newSelect.value = match.id;
                 }
 
                 feedback.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Added: <strong>' + match.name + '</strong></span>';
                 calculateDispenseTotal();
             });
 
-            addBtn.addEventListener('click', function() {
-                const row = document.createElement('div');
-                row.className = 'row mb-2 dispense-row';
-                row.innerHTML = `
-                    <div class="col-md-7">
-                        <select name="items[${rowIndex}][inventory_item_id]" class="form-select item-select" required>
-                            <option value="">-- Select Item --</option>
-                            @foreach($pharmacyItems as $pharmacyItem)
-                                <option value="{{ $pharmacyItem->id }}" data-barcode="{{ $pharmacyItem->barcode ?? '' }}" data-price="{{ $pharmacyItem->selling_price }}">{{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }}) {{ $pharmacyItem->barcode ? '['.$pharmacyItem->barcode.']' : '' }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <input type="number" name="items[${rowIndex}][quantity]" class="form-control item-qty" placeholder="Qty" min="1" value="1" required>
-                    </div>
-                    <div class="col-md-2">
-                        <button type="button" class="btn btn-outline-danger btn-sm remove-row">&times;</button>
-                    </div>`;
-                container.appendChild(row);
-                rowIndex++;
-                updateRemoveButtons();
-                calculateDispenseTotal();
-            });
-
-            container.addEventListener('click', function(e) {
-                if (e.target.classList.contains('remove-row')) {
-                    e.target.closest('.dispense-row').remove();
+            if (addBtn) {
+                addBtn.addEventListener('click', function() {
+                    const row = document.createElement('div');
+                    row.className = 'row mb-2 dispense-row';
+                    row.innerHTML = `
+                        <div class="col-md-7">
+                            <select name="items[${rowIndex}][inventory_item_id]" class="form-select item-select" required>
+                                <option value="">-- Select Item --</option>
+                                @foreach($pharmacyItems as $pharmacyItem)
+                                    <option value="{{ $pharmacyItem->id }}" data-barcode="{{ $pharmacyItem->barcode ?? '' }}" data-price="{{ $pharmacyItem->selling_price }}">{{ $pharmacyItem->name }} ({{ currency($pharmacyItem->selling_price) }}) {{ $pharmacyItem->barcode ? '['.$pharmacyItem->barcode.']' : '' }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" name="items[${rowIndex}][quantity]" class="form-control item-qty" placeholder="Qty" min="1" value="1" required>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-outline-danger btn-sm remove-row">&times;</button>
+                        </div>`;
+                    container.appendChild(row);
+                    rowIndex++;
                     updateRemoveButtons();
                     calculateDispenseTotal();
-                }
-            });
+                });
+            }
 
-            container.addEventListener('change', calculateDispenseTotal);
-            container.addEventListener('input', calculateDispenseTotal);
+            if (container) {
+                container.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('remove-row')) {
+                        e.target.closest('.dispense-row').remove();
+                        updateRemoveButtons();
+                        calculateDispenseTotal();
+                    }
+                });
+
+                container.addEventListener('change', calculateDispenseTotal);
+                container.addEventListener('input', calculateDispenseTotal);
+            }
 
             function updateRemoveButtons() {
                 const rows = container.querySelectorAll('.dispense-row');
@@ -294,9 +401,27 @@
                     total += price * qty;
                 });
                 const totalDiv = document.getElementById('dispenseTotal');
-                document.getElementById('dispenseTotalValue').textContent = '{{ currency_symbol() }}' + total.toFixed(2);
-                totalDiv.style.display = total > 0 ? 'block' : 'none';
+                if (totalDiv) {
+                    document.getElementById('dispenseTotalValue').textContent = currSym + total.toFixed(2);
+                    totalDiv.style.display = total > 0 ? 'block' : 'none';
+                }
+                // Refund notice
+                const refundDiv = document.getElementById('refundNotice');
+                const refundVal = document.getElementById('refundValue');
+                if (refundDiv && refundVal && paidAmount > 0) {
+                    const diff = paidAmount - total;
+                    if (diff > 0.01) {
+                        refundVal.textContent = currSym + diff.toFixed(2);
+                        refundDiv.style.display = 'block';
+                    } else {
+                        refundDiv.style.display = 'none';
+                    }
+                }
             }
+
+            // Trigger initial calculation for pre-populated rows
+            calculateDispenseTotal();
+            updateRemoveButtons();
         });
     </script>
     @endif

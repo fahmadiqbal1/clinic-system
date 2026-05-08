@@ -10,6 +10,7 @@
  *   routes/pharmacy.php, routes/shared.php
  */
 
+use App\Http\Controllers\ExternalLabPortalController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Auth;
@@ -35,7 +36,9 @@ Route::get('/dashboard', function () {
     if ($user->hasRole('Radiology')) return redirect()->route('radiology.dashboard');
     if ($user->hasRole('Pharmacy')) return redirect()->route('pharmacy.dashboard');
     if ($user->hasRole('Patient')) return redirect()->route('patient.dashboard');
-    if ($user->hasRole('Vendor')) return redirect()->route('vendor.dashboard');
+    if ($user->hasRole('Vendor')) {
+        if ($user->external_lab_id) return redirect()->route('lab-portal.dashboard');
+    }
     return redirect()->route('home');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
@@ -49,6 +52,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::post('/user/complete-tour', [UserController::class, 'completeTour'])->name('user.complete-tour');
+
+    // Smart Assistant — available to all authenticated roles
+    Route::post('/assistant/chat', [\App\Http\Controllers\AssistantController::class, 'chat'])->name('assistant.chat');
 });
 
 // ── Attendance (all staff roles) ──
@@ -58,6 +64,13 @@ Route::middleware(['auth', 'verified', 'role:Doctor|Receptionist|Triage|Laborato
         Route::post('/attendance/clock-out', [\App\Http\Controllers\AttendanceController::class, 'clockOut'])->name('attendance.clock-out');
         Route::get('/attendance/status',     [\App\Http\Controllers\AttendanceController::class, 'status'])->name('attendance.status');
     });
+
+// ── External Lab Portal (Vendor role + external_lab_id required) ──
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/lab-portal', [ExternalLabPortalController::class, 'dashboard'])->name('lab-portal.dashboard');
+    Route::get('/lab-portal/mou', [ExternalLabPortalController::class, 'downloadMou'])->name('lab-portal.mou');
+    Route::post('/lab-portal/price-list', [ExternalLabPortalController::class, 'uploadPriceList'])->name('lab-portal.price-list');
+});
 
 require __DIR__.'/auth.php';
 

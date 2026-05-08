@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Casts\SafeEncryptedString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -35,7 +36,7 @@ class Visit extends Model
         'triage_started_at' => 'datetime',
         'doctor_started_at' => 'datetime',
         'completed_at' => 'datetime',
-        'consultation_notes' => 'encrypted',
+        'consultation_notes' => SafeEncryptedString::class,
     ];
 
     public function patient(): BelongsTo

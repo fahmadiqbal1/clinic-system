@@ -3,14 +3,21 @@
 namespace App\Http\Controllers\Owner;
 
 use App\Http\Controllers\Controller;
+use App\Mail\ExternalLabCredentialsMail;
+use App\Mail\ExternalLabRegisteredMail;
 use App\Models\ExternalLab;
 use App\Models\ExternalReferral;
+use App\Models\User;
 use App\Models\Vendor;
 use App\Models\VendorPriceList;
 use App\Services\PriceExtractionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class ExternalLabController extends Controller
@@ -53,9 +60,29 @@ class ExternalLabController extends Controller
         }
         unset($validated['mou_document']);
 
-        ExternalLab::create($validated);
+        $lab = ExternalLab::create($validated);
 
-        return redirect()->route('owner.external-labs.index')->with('success', 'External lab added successfully.');
+        if ($lab->contact_email && ! User::where('email', $lab->contact_email)->exists()) {
+            $plainPassword = Str::random(10);
+            $portalUser = User::create([
+                'name'             => $lab->contact_name ?: $lab->name,
+                'email'            => $lab->contact_email,
+                'password'         => Hash::make($plainPassword),
+                'is_active'        => true,
+                'external_lab_id'  => $lab->id,
+                'compensation_type'=> 'salaried',
+                'timezone'         => 'Asia/Karachi',
+            ]);
+            $portalUser->assignRole('Vendor');
+
+            try {
+                Mail::to($lab->contact_email)->send(new ExternalLabCredentialsMail($lab, $plainPassword));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send lab credentials email to ' . $lab->contact_email . ': ' . $e->getMessage());
+            }
+        }
+
+        return redirect()->route('owner.external-labs.index')->with('success', 'External lab added and portal login sent to ' . ($lab->contact_email ?: 'lab contact') . '.');
     }
 
     public function edit(ExternalLab $externalLab): View

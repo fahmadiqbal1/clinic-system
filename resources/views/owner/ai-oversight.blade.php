@@ -199,13 +199,6 @@
         @endif
     </div>
 
-    {{-- Owner AI Knowledge Assistant --}}
-    @if($ragflowEnabled)
-    <x-ai-assistant-panel
-        collection="general"
-        panelTitle="Owner Knowledge Assistant"
-        placeholder="Ask about clinical protocols, services, or infrastructure…" />
-    @endif
 
 </div>
 @endsection

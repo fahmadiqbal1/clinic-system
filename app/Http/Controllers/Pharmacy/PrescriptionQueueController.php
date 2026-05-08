@@ -37,7 +37,18 @@ class PrescriptionQueueController extends Controller
     public function show(Prescription $prescription): View
     {
         $prescription->load(['patient', 'doctor', 'items.inventoryItem', 'invoices']);
-        return view('pharmacy.prescriptions.show', compact('prescription'));
+
+        $supplements = InventoryItem::where('department', 'pharmacy')
+            ->where('requires_prescription', false)
+            ->where('is_active', true)
+            ->withSum('stockMovements as current_stock', 'quantity')
+            ->orderBy('name')
+            ->get()
+            ->filter(fn ($item) => ($item->current_stock ?? 0) > 0)
+            ->take(8)
+            ->values();
+
+        return view('pharmacy.prescriptions.show', compact('prescription', 'supplements'));
     }
 
     /**

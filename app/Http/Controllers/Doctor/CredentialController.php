@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Doctor;
 
 use App\Http\Controllers\Controller;
 use App\Models\DoctorCredential;
+use App\Models\User;
+use App\Notifications\GenericOwnerAlert;
 use App\Services\AuditableService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -57,6 +59,15 @@ class CredentialController extends Controller
         }
 
         $user->update(['credentials_submitted_at' => $now]);
+
+        $reviewUrl = route('owner.credentials.doctor', $user);
+        User::role('Owner')->each(fn ($owner) => $owner->notify(new GenericOwnerAlert(
+            message: "Dr. {$user->name} has submitted credentials for review.",
+            icon: 'bi-person-badge',
+            color: 'warning',
+            url: $reviewUrl,
+            title: 'Credential Submission',
+        )));
 
         AuditableService::logTransition(
             $user,

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ExternalLab extends Model
 {
@@ -18,6 +19,11 @@ class ExternalLab extends Model
         'mou_commission_pct' => 'decimal:2',
         'is_active'          => 'boolean',
     ];
+
+    public function portalUser(): HasOne
+    {
+        return $this->hasOne(User::class, 'external_lab_id');
+    }
 
     public function referrals(): HasMany
     {

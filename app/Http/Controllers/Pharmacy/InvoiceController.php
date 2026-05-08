@@ -41,16 +41,55 @@ class InvoiceController extends Controller
     {
         $this->authorize('view', $invoice);
 
-        $invoice->load(['patient', 'items.inventoryItem', 'prescribingDoctor']);
+        $invoice->load(['patient', 'items.inventoryItem', 'prescribingDoctor', 'prescription.items']);
 
-        $pharmacyItems = \App\Models\InventoryItem::where('department', 'pharmacy')
+        // Load all active pharmacy items with current stock in one query
+        $pharmacyItems = InventoryItem::where('department', 'pharmacy')
             ->where('is_active', true)
+            ->withSum('stockMovements as current_stock', 'quantity')
             ->orderBy('name')
             ->get();
 
+        $pharmacyById = $pharmacyItems->keyBy('id');
+
+        // Build prescription availability data — match each prescribed item to inventory
+        $prescriptionItems = collect();
+        if ($invoice->prescription) {
+            $prescriptionItems = $invoice->prescription->items->map(function ($presItem) use ($pharmacyItems, $pharmacyById) {
+                // 1) Direct ID link
+                $invItem = $presItem->inventory_item_id
+                    ? $pharmacyById->get($presItem->inventory_item_id)
+                    : null;
+
+                // 2) Fuzzy name match fallback
+                if (!$invItem) {
+                    $needle = strtolower($presItem->medication_name);
+                    $invItem = $pharmacyItems->first(
+                        fn ($i) => str_contains(strtolower($i->name), $needle)
+                            || str_contains($needle, strtolower($i->name))
+                    );
+                }
+
+                $currentStock = (int) ($invItem?->current_stock ?? 0);
+
+                return [
+                    'medication_name' => $presItem->medication_name,
+                    'dosage'          => $presItem->dosage,
+                    'frequency'       => $presItem->frequency,
+                    'duration'        => $presItem->duration,
+                    'quantity'        => $presItem->quantity,
+                    'instructions'    => $presItem->instructions,
+                    'inventory_item'  => $invItem,
+                    'in_stock'        => $invItem && $currentStock >= $presItem->quantity,
+                    'current_stock'   => $currentStock,
+                ];
+            });
+        }
+
         return view('pharmacy.invoices.show', [
-            'invoice' => $invoice,
-            'pharmacyItems' => $pharmacyItems,
+            'invoice'           => $invoice,
+            'pharmacyItems'     => $pharmacyItems,
+            'prescriptionItems' => $prescriptionItems,
         ]);
     }
 

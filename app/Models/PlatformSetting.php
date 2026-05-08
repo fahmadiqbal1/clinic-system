@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\SafeEncryptedString;
 use Illuminate\Database\Eloquent\Model;
 
 class PlatformSetting extends Model
@@ -19,7 +20,7 @@ class PlatformSetting extends Model
     ];
 
     protected $casts = [
-        'api_key' => 'encrypted',
+        'api_key' => SafeEncryptedString::class,
         'last_tested_at' => 'datetime',
         'meta' => 'json',
     ];

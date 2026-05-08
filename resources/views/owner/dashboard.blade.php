@@ -189,6 +189,96 @@
         </div>
     </div>
 
+    {{-- Staff & Credentials --}}
+    <div class="row g-3 mb-4">
+        <div class="col-md-6 fade-in delay-2">
+            <a href="{{ route('owner.attendance.index') }}" class="text-decoration-none">
+            <div class="glass-card p-3 hover-lift" style="{{ $on_shift_count > 0 ? 'border-left:3px solid var(--accent-success);' : '' }}">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stat-icon stat-icon-success"><i class="bi bi-person-check"></i></div>
+                    <div>
+                        <div class="text-muted small">Staff On Shift Now</div>
+                        <div class="stat-value glow-success">{{ $on_shift_count }}</div>
+                    </div>
+                </div>
+            </div>
+            </a>
+        </div>
+        <div class="col-md-6 fade-in delay-3">
+            <a href="{{ route('owner.credentials.index') }}" class="text-decoration-none">
+            <div class="glass-card p-3 hover-lift" style="{{ $pending_credentials_count > 0 ? 'border-left:3px solid var(--accent-warning);' : '' }}">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="stat-icon stat-icon-warning"><i class="bi bi-patch-exclamation"></i></div>
+                    <div>
+                        <div class="text-muted small">Credentials Awaiting Review</div>
+                        <div class="stat-value {{ $pending_credentials_count > 0 ? 'glow-warning' : '' }}">{{ $pending_credentials_count }}</div>
+                    </div>
+                </div>
+            </div>
+            </a>
+        </div>
+    </div>
+
+    {{-- Pending Vendor Price Lists --}}
+    @if($pending_price_list_count > 0)
+    <div class="glass-card p-4 mb-4 fade-in" style="border-left:3px solid var(--accent-primary);">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="stat-icon stat-icon-primary"><i class="bi bi-file-earmark-check"></i></div>
+                <div>
+                    <div class="fw-semibold" style="color:var(--text-primary);">{{ $pending_price_list_count }} Vendor Price List{{ $pending_price_list_count !== 1 ? 's' : '' }} Ready to Review</div>
+                    <div class="text-muted small">AI extraction complete — approve to update or create inventory items</div>
+                </div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead><tr>
+                    <th>Vendor</th><th>File</th><th>Items</th><th>Flagged</th><th>Status</th><th></th>
+                </tr></thead>
+                <tbody>
+                    @foreach($pending_price_lists as $pl)
+                    <tr>
+                        <td class="fw-medium">{{ $pl->vendor->name }}</td>
+                        <td><small class="text-muted">{{ $pl->original_filename }}</small></td>
+                        <td>{{ $pl->item_count ?? '—' }}</td>
+                        <td>
+                            @if($pl->flagged_count)
+                                <span class="badge bg-warning text-dark">{{ $pl->flagged_count }}</span>
+                            @else
+                                <span class="text-muted">—</span>
+                            @endif
+                        </td>
+                        <td>
+                            <span class="badge {{ $pl->status === 'flagged' ? 'bg-warning text-dark' : 'bg-primary' }}">
+                                {{ ucfirst($pl->status) }}
+                            </span>
+                        </td>
+                        <td class="d-flex gap-1 align-items-center">
+                            <a href="{{ route('owner.vendors.price-list.review', $pl) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye me-1"></i>Review
+                            </a>
+                            <form method="POST" action="{{ route('owner.vendors.price-list.reject', $pl) }}"
+                                  onsubmit="return confirm('Reject this price list? It will be removed from the review queue.')">
+                                @csrf
+                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Reject price list">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+        @if($pending_price_list_count > 5)
+            <div class="text-center mt-2">
+                <a href="{{ route('owner.vendors.index') }}" class="btn btn-sm btn-outline-secondary">View all {{ $pending_price_list_count }} pending</a>
+            </div>
+        @endif
+    </div>
+    @endif
+
     {{-- Procurement Summary --}}
     @if($pending_procurement_count > 0)
     <div class="glass-card p-4 mb-4 fade-in delay-6" style="border-left:3px solid var(--accent-warning);">

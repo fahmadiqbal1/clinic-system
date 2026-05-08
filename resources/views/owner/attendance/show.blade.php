@@ -47,8 +47,9 @@
                 <div class="card-body glass-stat text-center py-3">
                     <div class="stat-value mb-0" style="font-size:1rem;">
                         @if($openShift)
+                            @php $tz = $staff->timezone ?: 'Asia/Karachi'; @endphp
                             <span style="color:var(--accent-warning);">On Shift</span><br>
-                            <small>since {{ $openShift->clocked_in_at->format('H:i') }}</small>
+                            <small>since {{ $openShift->clocked_in_at->copy()->setTimezone($tz)->format('H:i') }}</small>
                         @else
                             <span style="color:var(--text-muted);">Not Clocked In</span>
                         @endif
@@ -72,28 +73,33 @@
             @else
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
+                    @php $tz = $staff->timezone ?: 'Asia/Karachi'; @endphp
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Clocked In</th>
+                            <th>Clocked In <small class="fw-normal text-muted">({{ $tz }})</small></th>
                             <th>Clocked Out</th>
                             <th>Duration</th>
+                            <th>IP Address</th>
                             <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($shifts as $shift)
                         @php
+                            $inAt     = $shift->clocked_in_at->copy()->setTimezone($tz);
+                            $outAt    = $shift->clocked_out_at?->copy()->setTimezone($tz);
                             $mins     = $shift->durationMinutes();
                             $duration = $mins !== null ? floor($mins/60) . 'h ' . ($mins%60) . 'm' : '—';
                             $isOpen   = $shift->isOpen();
                             $isLong   = $mins !== null && $mins > 720;
                         @endphp
                         <tr @class(['table-warning' => $isOpen || $isLong])>
-                            <td>{{ $shift->clocked_in_at->format('D, d M Y') }}</td>
-                            <td>{{ $shift->clocked_in_at->format('H:i') }}</td>
-                            <td>{{ $shift->clocked_out_at?->format('H:i') ?? '—' }}</td>
+                            <td>{{ $inAt->format('D, d M Y') }}</td>
+                            <td>{{ $inAt->format('H:i') }}</td>
+                            <td>{{ $outAt?->format('H:i') ?? '—' }}</td>
                             <td>{{ $duration }}</td>
+                            <td><small style="color:var(--text-muted); font-family:monospace;">{{ $shift->clocked_in_ip ?? '—' }}</small></td>
                             <td>
                                 @if($isOpen)
                                     <span class="badge bg-warning text-dark"><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;"></i>Open</span>

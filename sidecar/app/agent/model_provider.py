@@ -34,8 +34,8 @@ def _e(key: str, fallback: str = "") -> str:
 
 async def call_model(
     messages: list[dict],
-    ollama_url: str,        # passed from harness — overridable via OLLAMA_URL
-    ollama_model: str,      # passed from harness — overridable via OLLAMA_MODEL
+    ollama_url: str = "",       # passed from harness — overridable via OLLAMA_URL
+    ollama_model: str = "",     # passed from harness — overridable via OLLAMA_MODEL
     timeout_s: float = 600.0,
 ) -> str:
     provider = _e("AI_MODEL_PROVIDER", "ollama")

@@ -24,7 +24,7 @@
         <i class="bi bi-chevron-down ms-1" style="color:var(--text-muted); font-size:0.8rem;"></i>
     </div>
 
-    <div class="collapse" id="{{ $panelId }}_body">
+    <div class="collapse show" id="{{ $panelId }}_body">
         <div class="card-body p-3">
             {{-- Chat history --}}
             <div id="{{ $panelId }}_history"

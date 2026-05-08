@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Casts\SafeEncryptedString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -26,8 +27,8 @@ class AiAnalysis extends Model
      * AI response may contain sensitive medical analysis.
      */
     protected $casts = [
-        'prompt_summary' => 'encrypted',
-        'ai_response' => 'encrypted',
+        'prompt_summary' => SafeEncryptedString::class,
+        'ai_response' => SafeEncryptedString::class,
     ];
 
     public function patient(): BelongsTo

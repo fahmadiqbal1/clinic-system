@@ -89,6 +89,8 @@ Route::middleware('role:Owner')->group(function () {
     Route::post('/owner/vendors/{vendor}/price-list', [VendorController::class, 'uploadPriceList'])->name('owner.vendors.price-list.upload');
     Route::get('/owner/vendors/price-list/{priceList}/review', [VendorController::class, 'reviewPriceList'])->name('owner.vendors.price-list.review');
     Route::post('/owner/vendors/price-list/{priceList}/apply', [VendorController::class, 'applyPrices'])->name('owner.vendors.price-list.apply');
+    Route::post('/owner/vendors/price-list/{priceList}/retry', [VendorController::class, 'retryPriceList'])->name('owner.vendors.price-list.retry');
+    Route::post('/owner/vendors/price-list/{priceList}/reject', [VendorController::class, 'rejectPriceList'])->name('owner.vendors.price-list.reject');
 
     // Price List Approval (owner side — approve/reject a price_list procurement request)
     // handled by existing ProcurementApprovalController
@@ -180,6 +182,7 @@ Route::middleware('role:Owner')->group(function () {
     Route::prefix('owner/credentials')->name('owner.credentials.')->group(function () {
         Route::get('/', [DoctorCredentialController::class, 'index'])->name('index');
         Route::get('/doctor/{user}', [DoctorCredentialController::class, 'showDoctor'])->name('doctor');
+        Route::get('/download/{credential}', [DoctorCredentialController::class, 'download'])->name('download');
         Route::post('/verify/{credential}', [DoctorCredentialController::class, 'verify'])->name('verify');
         Route::post('/reject/{credential}', [DoctorCredentialController::class, 'reject'])->name('reject');
     });

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Casts\SafeEncryptedString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -25,8 +26,8 @@ class Prescription extends Model
      * PHI fields encrypted at rest for HIPAA compliance.
      */
     protected $casts = [
-        'diagnosis' => 'encrypted',
-        'notes' => 'encrypted',
+        'diagnosis' => SafeEncryptedString::class,
+        'notes' => SafeEncryptedString::class,
     ];
 
     public function patient(): BelongsTo

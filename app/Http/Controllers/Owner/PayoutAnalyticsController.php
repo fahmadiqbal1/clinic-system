@@ -192,33 +192,57 @@ class PayoutAnalyticsController extends Controller
      */
     public function performanceMatrix(Request $request): View
     {
-        $monthStart = now()->startOfMonth();
-        $monthEnd   = now()->endOfDay();
+        $monthStart = $request->query('from')
+            ? Carbon::parse($request->query('from'))->startOfDay()
+            : Carbon::today()->subDays(29)->startOfDay();
 
-        $staff = User::whereDoesntHave('roles', fn ($q) => $q->where('name', 'Owner'))
+        $monthEnd = $request->query('to')
+            ? Carbon::parse($request->query('to'))->endOfDay()
+            : Carbon::today()->endOfDay();
+
+        $staff = User::whereDoesntHave('roles', fn ($q) => $q->whereIn('name', ['Owner', 'Patient']))
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
 
         $matrix = $staff->map(function (User $member) use ($monthStart, $monthEnd) {
+            $role             = $member->getRoleNames()->first() ?? '';
             $revenue          = $this->kpi->revenueAttributed($member, $monthStart, $monthEnd);
             $compensation     = $this->kpi->compensationCost($member, $monthStart, $monthEnd);
             $nps              = $this->kpi->staffNps($member, $monthStart, $monthEnd);
             $patientsMonth    = $member->hasRole(Roles::DOCTOR) ? $this->kpi->patientsSeenCount($member, $monthStart, $monthEnd) : null;
-            $gpTier           = ($member->isGp() && $patientsMonth !== null) ? $member->gpTier($patientsMonth) : null;
             $shiftSummary     = $this->kpi->shiftSummary($member, $monthStart, $monthEnd);
 
+            // Tier calculation — role-aware
+            $tier = null;
+            if ($member->hasRole(Roles::DOCTOR)) {
+                // Doctors: GP uses patient-count thresholds; specialists use revenue bands
+                $tier = $member->isGp() && $patientsMonth !== null
+                    ? $member->gpTier($patientsMonth)
+                    : $this->kpi->revenueTier($revenue);
+            } elseif (in_array($role, ['Laboratory', 'Radiology', 'Pharmacy'], true)) {
+                // Revenue-generating support roles: tier by revenue
+                $tier = $this->kpi->revenueTier($revenue);
+            } else {
+                // Pure support roles (Triage, Receptionist): tier by shifts attended
+                $tier = $this->kpi->shiftTier($shiftSummary['shifts']);
+            }
+
+            // NPS is only meaningful for roles that generate direct revenue
+            $hasRevenue = $revenue > 0;
+
             return [
-                'id'           => $member->id,
-                'name'         => $member->name,
-                'role'         => $member->getRoleNames()->first() ?? '—',
+                'id'            => $member->id,
+                'name'          => $member->name,
+                'role'          => $role ?: '—',
                 'employee_type' => $member->employee_type,
-                'revenue'      => $revenue,
-                'compensation' => $compensation,
-                'nps'          => $nps,
-                'gp_tier'      => $gpTier,
-                'shifts'       => $shiftSummary['shifts'],
-                'hours'        => $shiftSummary['hours'],
+                'revenue'       => $revenue,
+                'compensation'  => $compensation,
+                'nps'           => $nps,
+                'nps_applicable' => $hasRevenue,
+                'gp_tier'       => $tier,
+                'shifts'        => $shiftSummary['shifts'],
+                'hours'         => $shiftSummary['hours'],
             ];
         })->sortByDesc('nps')->values();
 

@@ -79,31 +79,37 @@
                             <th>Clocked In</th>
                             <th>Clocked Out</th>
                             <th>Duration</th>
+                            <th>IP Address</th>
                             <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($shifts as $shift)
                         @php
+                            $tz       = $shift->user?->timezone ?: 'Asia/Karachi';
+                            $inAt     = $shift->clocked_in_at->copy()->setTimezone($tz);
+                            $outAt    = $shift->clocked_out_at?->copy()->setTimezone($tz);
                             $mins     = $shift->durationMinutes();
                             $duration = $mins !== null ? floor($mins/60) . 'h ' . ($mins%60) . 'm' : '—';
                             $isOpen   = $shift->isOpen();
                             $isLong   = $mins !== null && $mins > 720;
                         @endphp
                         <tr @class(['table-warning' => $isOpen || $isLong])>
-                            <td>{{ $shift->clocked_in_at->format('d M Y') }}</td>
+                            <td>{{ $inAt->format('d M Y') }}</td>
                             <td>
-                                <a href="{{ route('owner.attendance.show', $shift->user_id) }}" class="text-decoration-none">
+                                <a href="{{ route('owner.attendance.show', $shift->user_id) }}" class="text-decoration-none fw-medium">
                                     {{ $shift->user?->name ?? 'Unknown' }}
                                 </a>
+                                <div class="small" style="color:var(--text-muted); font-size:0.72rem;">{{ $tz }}</div>
                             </td>
                             <td><small style="color:var(--text-muted);">{{ $shift->user?->getRoleNames()->first() ?? '—' }}</small></td>
-                            <td>{{ $shift->clocked_in_at->format('H:i') }}</td>
-                            <td>{{ $shift->clocked_out_at?->format('H:i') ?? '—' }}</td>
+                            <td>{{ $inAt->format('H:i') }}</td>
+                            <td>{{ $outAt?->format('H:i') ?? '—' }}</td>
                             <td>{{ $duration }}</td>
+                            <td><small style="color:var(--text-muted); font-family:monospace;">{{ $shift->clocked_in_ip ?? '—' }}</small></td>
                             <td>
                                 @if($isOpen)
-                                    <span class="badge bg-warning text-dark"><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;"></i>Open</span>
+                                    <span class="badge bg-warning text-dark"><i class="bi bi-circle-fill me-1" style="font-size:0.5rem;"></i>On Shift</span>
                                 @elseif($isLong)
                                     <span class="badge bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>Long shift</span>
                                 @else

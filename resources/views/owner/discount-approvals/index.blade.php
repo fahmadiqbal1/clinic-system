@@ -84,7 +84,10 @@
     {{-- Recently Processed --}}
     @if($recentlyProcessed->count() > 0)
         <div class="glass-card fade-in delay-2">
-            <h5 class="fw-bold mb-3"><i class="bi bi-clock-history me-2 text-muted"></i>Recently Processed</h5>
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <h5 class="fw-bold mb-0"><i class="bi bi-clock-history me-2 text-muted"></i>Discount History</h5>
+                <small class="text-muted">{{ $recentlyProcessed->total() }} total &mdash; use for financial statements</small>
+            </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle table-sm mb-0">
                     <thead>
@@ -125,6 +128,7 @@
                     </tbody>
                 </table>
             </div>
+            <div class="mt-3">{{ $recentlyProcessed->withQueryString()->links() }}</div>
         </div>
     @endif
 </div>

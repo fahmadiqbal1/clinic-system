@@ -37,26 +37,55 @@ class ProcessPriceListJob implements ShouldQueue
 
         $fileContents = Storage::disk('local')->get($priceList->file_path);
         $sidecarUrl   = config('clinic.sidecar_url');
+        $data         = null;
 
-        try {
-            $response = Http::timeout(60)
-                ->attach('file', $fileContents, $priceList->original_filename)
-                ->post("{$sidecarUrl}/v1/price-extract", [
-                    'vendor_category' => $vendor->category,
+        // Try AI sidecar for PDF/image files (with JWT auth)
+        if ($sidecarUrl && $priceList->file_type !== 'csv') {
+            try {
+                $response = Http::timeout(60)
+                    ->withToken($this->mintJwt())
+                    ->attach('file', $fileContents, $priceList->original_filename)
+                    ->post("{$sidecarUrl}/v1/price-extract", [
+                        'vendor_category' => $vendor->category,
+                    ]);
+
+                if ($response->successful()) {
+                    $data = $response->json();
+                } else {
+                    Log::warning('ProcessPriceListJob: sidecar returned error', [
+                        'price_list_id' => $priceList->id,
+                        'status'        => $response->status(),
+                        'body'          => $response->body(),
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('ProcessPriceListJob: sidecar unavailable', [
+                    'price_list_id' => $priceList->id,
+                    'error'         => $e->getMessage(),
                 ]);
-
-            if (! $response->successful()) {
-                $this->markFailed(['sidecar_error', "HTTP {$response->status()}"]);
-                return;
             }
+        }
 
-            $data = $response->json();
-        } catch (\Throwable $e) {
-            Log::warning('ProcessPriceListJob: sidecar unavailable', [
-                'price_list_id' => $priceList->id,
-                'error'         => $e->getMessage(),
+        // Local CSV fallback — works for CSV uploads, or if sidecar failed on a CSV
+        if ($data === null && $priceList->file_type === 'csv') {
+            $data = $this->parseCsvFallback($fileContents);
+        }
+
+        // For PDF/image: if sidecar is down, mark as pending_review so the owner
+        // can retry once the sidecar is available, rather than hard-failing.
+        if ($data === null && $priceList->file_type !== 'csv') {
+            $priceList->update([
+                'status'       => 'pending_sidecar',
+                'flag_reasons' => ['sidecar_unavailable_on_first_attempt'],
             ]);
-            $this->markFailed(['sidecar_unavailable']);
+            Log::info('ProcessPriceListJob: PDF queued as pending_sidecar — will retry when sidecar is available', [
+                'price_list_id' => $priceList->id,
+            ]);
+            return;
+        }
+
+        if ($data === null) {
+            $this->markFailed(['sidecar_unavailable', 'no_fallback_for_file_type']);
             return;
         }
 
@@ -78,7 +107,8 @@ class ProcessPriceListJob implements ShouldQueue
                 'vendor_price_list_id'  => $priceList->id,
                 'item_name'             => $itemName,
                 'sku_detected'          => $item['sku'] ?? null,
-                'unit_detected'         => $item['unit'] ?? null,
+                'pack_size'             => $item['pack_size'] ?? $item['unit'] ?? null,
+                'unit_detected'         => $item['pack_size'] ?? $item['unit'] ?? null,
                 'detected_price'        => $price,
                 'confidence'            => $confidence,
                 'needs_review'          => $needsReview,
@@ -129,6 +159,89 @@ class ProcessPriceListJob implements ShouldQueue
                 title:   'Price List Extracted',
             ));
         }
+    }
+
+    /**
+     * Parse a CSV file locally — no sidecar required.
+     * Expects columns: name/item, price/unit_price/rate, sku (optional), unit (optional).
+     *
+     * @return array{items: array<array{item_name: string, price: float|null, sku: string|null, unit: string|null, confidence: float}>}
+     */
+    private function parseCsvFallback(string $csvContents): array
+    {
+        $lines = array_filter(explode("\n", str_replace("\r\n", "\n", $csvContents)));
+        if (empty($lines)) {
+            return ['items' => []];
+        }
+
+        $header = str_getcsv(array_shift($lines));
+        $header = array_map(fn($h) => strtolower(trim($h)), $header);
+
+        // Map common column aliases
+        $nameCol  = $this->resolveColumn($header, ['name', 'item', 'product', 'description', 'item_name', 'medicine']);
+        $priceCol = $this->resolveColumn($header, ['price', 'unit_price', 'rate', 'cost', 'mrp', 'tp']);
+        $skuCol   = $this->resolveColumn($header, ['sku', 'code', 'item_code', 'barcode', 'article']);
+        $unitCol  = $this->resolveColumn($header, ['unit', 'pack', 'pack_size', 'uom']);
+
+        if ($nameCol === null) {
+            return ['items' => []];
+        }
+
+        $items = [];
+        foreach ($lines as $line) {
+            $row  = str_getcsv(trim((string) $line));
+            $name = $nameCol !== null && isset($row[$nameCol]) ? trim($row[$nameCol]) : null;
+            if (! $name) {
+                continue;
+            }
+
+            $price = null;
+            if ($priceCol !== null && isset($row[$priceCol])) {
+                $raw   = preg_replace('/[^\d.]/', '', $row[$priceCol]);
+                $price = $raw !== '' ? (float) $raw : null;
+            }
+
+            $items[] = [
+                'item_name'   => $name,
+                'price'       => $price,
+                'sku'         => $skuCol !== null ? ($row[$skuCol] ?? null) : null,
+                'unit'        => $unitCol !== null ? ($row[$unitCol] ?? null) : null,
+                'confidence'  => ($name && $price !== null) ? 0.85 : 0.5,
+                'needs_review' => $price === null,
+            ];
+        }
+
+        return ['items' => $items];
+    }
+
+    private function mintJwt(): string
+    {
+        $now    = time();
+        $secret = config('clinic.sidecar_jwt_secret', '');
+
+        $b64url = fn(string $v) => rtrim(strtr(base64_encode($v), '+/', '-_'), '=');
+
+        $header  = $b64url(json_encode(['alg' => 'HS256', 'typ' => 'JWT']));
+        $payload = $b64url(json_encode([
+            'sub'  => 'system',
+            'role' => 'Owner',
+            'iat'  => $now,
+            'exp'  => $now + 300,
+        ]));
+        $sig = $b64url(hash_hmac('sha256', "{$header}.{$payload}", $secret, true));
+
+        return "{$header}.{$payload}.{$sig}";
+    }
+
+    private function resolveColumn(array $header, array $aliases): ?int
+    {
+        foreach ($aliases as $alias) {
+            $idx = array_search($alias, $header, true);
+            if ($idx !== false) {
+                return (int) $idx;
+            }
+        }
+        return null;
     }
 
     private function markFailed(array $reasons): void

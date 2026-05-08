@@ -34,6 +34,9 @@
             <span class="text-muted small" id="last-tested-text">
                 @if($medgemma->last_tested_at)
                     <i class="bi bi-clock me-1"></i>Last tested {{ $medgemma->last_tested_at->diffForHumans() }}
+                    @if($medgemma->status === 'connected' && $medgemma->last_tested_at->lt(now()->subHour()))
+                        <span class="badge bg-warning text-dark ms-1" title="Status may be stale — click Test Connection to verify">Unverified</span>
+                    @endif
                 @else
                     <i class="bi bi-clock me-1"></i>Never tested
                 @endif

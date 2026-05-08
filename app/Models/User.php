@@ -30,6 +30,8 @@ class User extends Authenticatable
         'commission_lab',
         'commission_radiology',
         'specialty',
+        'timezone',
+        'external_lab_id',
         'credentials_submitted_at',
         'credentials_verified_at',
         'credentials_verified_by',

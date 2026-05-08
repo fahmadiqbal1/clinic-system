@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Casts\SafeEncryptedString;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -43,11 +44,11 @@ class Patient extends Model
         'triage_started_at' => 'datetime',
         'doctor_started_at' => 'datetime',
         'completed_at' => 'datetime',
-        // PHI encryption
-        'phone' => 'encrypted',
-        'email' => 'encrypted',
-        'cnic' => 'encrypted',
-        'consultation_notes' => 'encrypted',
+        // PHI encryption (SafeEncryptedString gracefully handles legacy plain-text rows)
+        'phone'              => SafeEncryptedString::class,
+        'email'              => SafeEncryptedString::class,
+        'cnic'               => SafeEncryptedString::class,
+        'consultation_notes' => SafeEncryptedString::class,
     ];
 
     public function doctor(): BelongsTo

@@ -159,6 +159,28 @@ class KpiService
     }
 
     /**
+     * 3-tier classification by revenue (for non-GP doctors and clinical support roles).
+     * T1 < 50k PKR | T2 50k–150k | T3 > 150k
+     */
+    public function revenueTier(float $revenue): int
+    {
+        if ($revenue >= 150_000) return 3;
+        if ($revenue >= 50_000)  return 2;
+        return 1;
+    }
+
+    /**
+     * 3-tier classification by shifts attended (for support roles with no direct revenue).
+     * T1 < 15 shifts | T2 15–19 | T3 ≥ 20
+     */
+    public function shiftTier(int $shifts): int
+    {
+        if ($shifts >= 20) return 3;
+        if ($shifts >= 15) return 2;
+        return 1;
+    }
+
+    /**
      * Days attended (shifts with clock-in) in the period.
      */
     public function daysAttended(User $user, Carbon $from, Carbon $to): int

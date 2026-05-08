@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Casts\SafeEncryptedString;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -41,8 +42,8 @@ class TriageVital extends Model
         'height' => 'decimal:2',
         'oxygen_saturation' => 'decimal:1',
         // PHI encryption
-        'chief_complaint' => 'encrypted',
-        'notes' => 'encrypted',
+        'chief_complaint' => SafeEncryptedString::class,
+        'notes' => SafeEncryptedString::class,
     ];
 
     public function patient(): BelongsTo
