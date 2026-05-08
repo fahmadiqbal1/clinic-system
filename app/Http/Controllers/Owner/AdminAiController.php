@@ -46,7 +46,7 @@ class AdminAiController extends Controller
         } catch (\Throwable $e) {
             $raw = $e->getMessage();
             if (str_contains($raw, 'circuit open')) {
-                $msg = 'The AI sidecar is temporarily unavailable (circuit open). Please wait a few minutes and retry.';
+                $msg = 'Administrative AI temporarily unavailable.';
             } elseif (str_contains($raw, 'Connection refused') || str_contains($raw, 'Failed to connect') || str_contains($raw, 'cURL error')) {
                 $msg = 'AI sidecar is not running (localhost:8001 unreachable). Start it with: docker compose -f docker-compose.yml -f docker-compose.ai.yml up -d sidecar — or use Ollama locally if running natively.';
             } elseif (str_contains($raw, 'timed out') || str_contains($raw, 'timeout')) {
