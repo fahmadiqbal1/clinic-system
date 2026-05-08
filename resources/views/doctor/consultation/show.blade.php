@@ -129,6 +129,65 @@
     </div>
     @endif
 
+    {{-- Drug Suggestions — powered by prescription history + inventory stock --}}
+    @if($patient->status === 'with_doctor')
+    <div class="card mb-4 fade-in delay-2" id="drugSuggestCard" x-data="drugSuggest('{{ route('doctor.consultation.suggest-drugs', $patient) }}')">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span><i class="bi bi-search-heart me-2" style="color:var(--accent-primary);"></i>Smart Drug Suggestions</span>
+            <small style="color:var(--text-muted);">Based on your prescription history for similar diagnoses</small>
+        </div>
+        <div class="card-body">
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-stethoscope"></i></span>
+                <input type="text"
+                       class="form-control"
+                       placeholder="Type diagnosis keyword (e.g. fever, hypertension)…"
+                       x-model="query"
+                       x-on:input.debounce.500ms="fetch()"
+                       autocomplete="off">
+                <span class="input-group-text" x-show="loading"><span class="spinner-border spinner-border-sm"></span></span>
+            </div>
+            <div x-show="results.length > 0" class="row g-2">
+                <template x-for="drug in results" :key="drug.id">
+                    <div class="col-md-6 col-lg-4">
+                        <div class="p-2 rounded" style="border:1px solid var(--glass-border); background:var(--glass-bg);">
+                            <div class="fw-medium" x-text="drug.name" style="font-size:0.9rem;"></div>
+                            <small style="color:var(--text-muted);">
+                                <span x-text="drug.category"></span> &middot;
+                                Stock: <strong x-text="drug.stock" :style="drug.stock > 0 ? 'color:var(--accent-success)' : 'color:var(--accent-danger)'"></strong> &middot;
+                                Rx'd <strong x-text="drug.prescribed_count"></strong>×
+                            </small>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <p x-show="results.length === 0 && query.length >= 2 && !loading"
+               style="color:var(--text-muted); font-size:0.85rem;" class="mb-0">
+                No matching drugs in prescription history for this diagnosis.
+            </p>
+        </div>
+    </div>
+    @push('scripts')
+    <script>
+    function drugSuggest(url) {
+        return {
+            query: '',
+            results: [],
+            loading: false,
+            fetch() {
+                if (this.query.length < 2) { this.results = []; return; }
+                this.loading = true;
+                axios.get(url, { params: { diagnosis: this.query } })
+                    .then(r => { this.results = r.data; })
+                    .catch(() => { this.results = []; })
+                    .finally(() => { this.loading = false; });
+            }
+        };
+    }
+    </script>
+    @endpush
+    @endif
+
     {{-- Consultation Notes — SOAP Chip Builder --}}
     @include('components.soap-chip-builder', [
         'patient'      => $patient,

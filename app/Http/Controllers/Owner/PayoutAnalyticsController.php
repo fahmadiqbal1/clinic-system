@@ -7,12 +7,16 @@ use App\Models\DoctorPayout;
 use App\Models\Invoice;
 use App\Models\RevenueLedger;
 use App\Models\User;
+use App\Services\KpiService;
+use App\Support\Roles;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class PayoutAnalyticsController extends Controller
 {
+    public function __construct(private readonly KpiService $kpi) {}
+
     /**
      * Owner payout dashboard — staff overview + payouts needing approval + all payouts.
      */
@@ -165,6 +169,8 @@ class PayoutAnalyticsController extends Controller
             ->whereNull('payout_id')
             ->sum('amount');
 
+        $nps = $this->kpi->staffNps($user, $from, $to);
+
         return view('owner.payouts.performance', [
             'staff'          => $user,
             'from'           => $from->format('Y-m-d'),
@@ -177,6 +183,45 @@ class PayoutAnalyticsController extends Controller
             'topServices'    => $topServices,
             'payouts'        => $payouts,
             'unpaidBalance'  => $unpaidBalance,
+            'nps'            => $nps,
         ]);
+    }
+
+    /**
+     * Cross-staff performance matrix — all active staff ranked by Net Profit Score.
+     */
+    public function performanceMatrix(Request $request): View
+    {
+        $monthStart = now()->startOfMonth();
+        $monthEnd   = now()->endOfDay();
+
+        $staff = User::whereDoesntHave('roles', fn ($q) => $q->where('name', 'Owner'))
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+
+        $matrix = $staff->map(function (User $member) use ($monthStart, $monthEnd) {
+            $revenue          = $this->kpi->revenueAttributed($member, $monthStart, $monthEnd);
+            $compensation     = $this->kpi->compensationCost($member, $monthStart, $monthEnd);
+            $nps              = $this->kpi->staffNps($member, $monthStart, $monthEnd);
+            $patientsMonth    = $member->hasRole(Roles::DOCTOR) ? $this->kpi->patientsSeenCount($member, $monthStart, $monthEnd) : null;
+            $gpTier           = ($member->isGp() && $patientsMonth !== null) ? $member->gpTier($patientsMonth) : null;
+            $shiftSummary     = $this->kpi->shiftSummary($member, $monthStart, $monthEnd);
+
+            return [
+                'id'           => $member->id,
+                'name'         => $member->name,
+                'role'         => $member->getRoleNames()->first() ?? '—',
+                'employee_type' => $member->employee_type,
+                'revenue'      => $revenue,
+                'compensation' => $compensation,
+                'nps'          => $nps,
+                'gp_tier'      => $gpTier,
+                'shifts'       => $shiftSummary['shifts'],
+                'hours'        => $shiftSummary['hours'],
+            ];
+        })->sortByDesc('nps')->values();
+
+        return view('owner.payouts.performance-matrix', compact('matrix', 'monthStart', 'monthEnd'));
     }
 }

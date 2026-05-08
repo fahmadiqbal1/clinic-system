@@ -11,6 +11,71 @@
         </div>
     </div>
 
+    {{-- Shift Clock --}}
+    <x-shift-clock />
+
+    {{-- KPI Strip --}}
+    <div class="row g-2 mb-4 fade-in delay-1">
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-primary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['patients_today'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Pts Today</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-info);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['patients_month'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">This Month</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-success);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.1rem;">{{ number_format($kpi['revenue_month']) }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Revenue PKR</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-warning);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['prescriptions_month'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Prescriptions</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            @php $nps = $kpi['nps']; $npsColor = $nps >= 70 ? 'var(--accent-success)' : ($nps >= 40 ? 'var(--accent-warning)' : 'var(--accent-danger)'); @endphp
+            <div class="card hover-lift" style="border-left:3px solid {{ $npsColor }};">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem; color:{{ $npsColor }};">{{ $nps }}%</div>
+                    <div class="stat-label" style="font-size:0.7rem;">NPS Score</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            @if($kpi['gp_tier'])
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-secondary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">T{{ $kpi['gp_tier'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">GP Tier</div>
+                </div>
+            </div>
+            @else
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-secondary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.2rem;">{{ $kpi['shifts_month'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">{{ $kpi['hours_month'] }}h Shifts</div>
+                </div>
+            </div>
+            @endif
+        </div>
+    </div>
+
     {{-- Pending Payout Alert --}}
     @if($pendingPayouts > 0)
     <div class="alert-banner-success mb-4 fade-in delay-1">

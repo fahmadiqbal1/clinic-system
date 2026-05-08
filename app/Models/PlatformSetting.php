@@ -198,6 +198,19 @@ class PlatformSetting extends Model
     }
 
     /**
+     * Get the meta.value for a named setting row (any provider).
+     * Returns $default when the row or key is absent.
+     */
+    public static function getValue(string $name, mixed $default = null, string $provider = 'hr_config'): mixed
+    {
+        $setting = static::where('platform_name', $name)
+            ->where('provider', $provider)
+            ->first();
+
+        return $setting?->getMeta('value') ?? $default;
+    }
+
+    /**
      * Check whether a feature flag is enabled.
      * All flags default to false when the row does not exist.
      */

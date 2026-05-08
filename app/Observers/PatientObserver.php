@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Events\PatientStatusChanged;
 use App\Models\Patient;
 use App\Services\AuditableService;
 
@@ -38,13 +39,20 @@ class PatientObserver
         if ($patient->wasChanged('status')) {
             $from = $patient->getOriginal('status');
             $to = $patient->status;
-            
+
             AuditableService::logTransition(
                 $patient,
                 'Patient',
                 'status',
                 $from,
                 $to
+            );
+
+            PatientStatusChanged::dispatch(
+                $patient->id,
+                $patient->full_name,
+                $to,
+                'triage_queue'
             );
         } else {
             AuditableService::logUpdate(

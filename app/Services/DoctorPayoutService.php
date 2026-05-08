@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\DoctorPayout;
+use App\Models\Invoice;
+use App\Models\Patient;
 use App\Models\RevenueLedger;
 use App\Models\User;
 use App\Notifications\PayoutGenerated;
@@ -109,7 +111,45 @@ class DoctorPayoutService
         // Use the staff member's base salary if none provided
         $salary = $salaryAmount ?? (float) ($staff->base_salary ?? 0);
 
-        $payout = DB::transaction(function () use ($staff, $periodStart, $periodEnd, $paidAmount, $createdBy, $salary) {
+        // GP tier bonus: added on top of base salary
+        $gpTierBonus = 0.0;
+        $notesData = [];
+        if ($staff->employee_type === 'gp') {
+            $from = $periodStart ?? now()->startOfMonth();
+            $to   = $periodEnd   ?? now()->endOfMonth();
+            $lastMonthPatients = Patient::where('doctor_id', $staff->id)
+                ->whereBetween('created_at', [$from, $to])
+                ->count();
+            $tier = $staff->gpTier($lastMonthPatients);
+            if ($tier >= 2) {
+                $gpTierBonus = (float) \App\Models\PlatformSetting::getValue("gp.tier{$tier}.bonus", 0);
+                $notesData['gp_tier'] = $tier;
+                $notesData['gp_tier_bonus'] = $gpTierBonus;
+            }
+            $salary += $gpTierBonus;
+        }
+
+        // Revenue share for lab/radiology/pharmacy staff
+        $revenueShare = 0.0;
+        if ($staff->revenue_share_enabled) {
+            $from = $periodStart ?? now()->startOfMonth();
+            $to   = $periodEnd   ?? now()->endOfMonth();
+            $totalRevenue = (float) Invoice::where(function ($q) use ($staff) {
+                    $q->where('performed_by_user_id', $staff->id)
+                      ->orWhere('prescribing_doctor_id', $staff->id);
+                })
+                ->whereBetween('paid_at', [$from, $to])
+                ->where('status', 'paid')
+                ->sum('total_amount');
+            $revenueShare = round($totalRevenue * ($staff->revenue_share_percentage / 100), 2);
+            $notesData['revenue_share_base'] = $totalRevenue;
+            $notesData['revenue_share_pct']  = $staff->revenue_share_percentage;
+            $notesData['revenue_share']       = $revenueShare;
+        }
+
+        $salary += $revenueShare;
+
+        $payout = DB::transaction(function () use ($staff, $periodStart, $periodEnd, $paidAmount, $createdBy, $salary, $notesData) {
             $query = RevenueLedger::where('user_id', $staff->id)
                 ->where('category', 'commission')
                 ->whereNull('payout_id')
@@ -145,6 +185,7 @@ class DoctorPayoutService
                 'payout_type' => DoctorPayout::TYPE_MONTHLY,
                 'approval_status' => DoctorPayout::APPROVAL_PENDING,
                 'created_by' => $createdBy->id,
+                'notes' => $notesData ? json_encode($notesData) : null,
             ]);
 
             // Link commission ledger entries to this payout

@@ -29,6 +29,7 @@ use App\Http\Controllers\Owner\RetentionPolicyController;
 use App\Http\Controllers\Owner\AdminAiController;
 use App\Http\Controllers\Owner\OpsAiController;
 use App\Http\Controllers\Owner\ComplianceAiController;
+use App\Http\Controllers\Owner\AttendanceController as OwnerAttendanceController;
 use App\Http\Controllers\Owner\ExternalLabController;
 use App\Http\Controllers\Owner\VendorController;
 use App\Http\Controllers\Owner\ClinicRoomController;
@@ -182,6 +183,13 @@ Route::middleware('role:Owner')->group(function () {
         Route::post('/verify/{credential}', [DoctorCredentialController::class, 'verify'])->name('verify');
         Route::post('/reject/{credential}', [DoctorCredentialController::class, 'reject'])->name('reject');
     });
+
+    // Attendance logs
+    Route::get('/owner/attendance', [OwnerAttendanceController::class, 'index'])->name('owner.attendance.index');
+    Route::get('/owner/attendance/{user}', [OwnerAttendanceController::class, 'show'])->name('owner.attendance.show');
+
+    // Staff Performance Matrix
+    Route::get('/owner/performance-matrix', [\App\Http\Controllers\Owner\PayoutAnalyticsController::class, 'performanceMatrix'])->name('owner.performance-matrix');
 
     // Phase 8 — Administrative / Operations / Compliance AI personas (flag-gated)
     // Rate-limited to 20 AI requests per minute per authenticated user.

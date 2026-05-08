@@ -21,7 +21,10 @@ class User extends Authenticatable
         'is_active',
         'is_independent',
         'compensation_type',
+        'employee_type',
         'base_salary',
+        'revenue_share_enabled',
+        'revenue_share_percentage',
         'commission_consultation',
         'commission_pharmacy',
         'commission_lab',
@@ -38,17 +41,19 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
-        'email_verified_at' => 'datetime',
-        'has_completed_tour' => 'boolean',
-        'is_active' => 'boolean',
-        'is_independent' => 'boolean',
-        'base_salary' => 'decimal:2',
-        'commission_consultation' => 'decimal:2',
-        'commission_pharmacy' => 'decimal:2',
-        'commission_lab' => 'decimal:2',
-        'commission_radiology' => 'decimal:2',
+        'email_verified_at'        => 'datetime',
+        'has_completed_tour'       => 'boolean',
+        'is_active'                => 'boolean',
+        'is_independent'           => 'boolean',
+        'revenue_share_enabled'    => 'boolean',
+        'base_salary'              => 'decimal:2',
+        'revenue_share_percentage' => 'decimal:2',
+        'commission_consultation'  => 'decimal:2',
+        'commission_pharmacy'      => 'decimal:2',
+        'commission_lab'           => 'decimal:2',
+        'commission_radiology'     => 'decimal:2',
         'credentials_submitted_at' => 'datetime',
-        'credentials_verified_at' => 'datetime',
+        'credentials_verified_at'  => 'datetime',
     ];
 
     /**
@@ -82,6 +87,30 @@ class User extends Authenticatable
     public function credentials(): HasMany
     {
         return $this->hasMany(DoctorCredential::class, 'user_id');
+    }
+
+    public function shifts(): HasMany
+    {
+        return $this->hasMany(StaffShift::class);
+    }
+
+    public function isGp(): bool
+    {
+        return $this->employee_type === 'gp';
+    }
+
+    /**
+     * Resolve GP tier (1–3) from last month's patient count.
+     * Thresholds come from platform_settings (hr_config provider).
+     */
+    public function gpTier(int $lastMonthPatients): int
+    {
+        $t3 = (int) PlatformSetting::getValue('gp.tier3.patients_threshold', 60);
+        $t2 = (int) PlatformSetting::getValue('gp.tier2.patients_threshold', 30);
+
+        if ($lastMonthPatients >= $t3) return 3;
+        if ($lastMonthPatients >= $t2) return 2;
+        return 1;
     }
 
     /*

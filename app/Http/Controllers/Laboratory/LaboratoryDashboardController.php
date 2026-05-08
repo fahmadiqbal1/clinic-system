@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Invoice;
 use App\Models\InventoryItem;
 use App\Models\ProcurementRequest;
+use App\Services\KpiService;
 use Illuminate\View\View;
 
 class LaboratoryDashboardController extends Controller
 {
+    public function __construct(private readonly KpiService $kpi) {}
+
     public function index(): View
     {
         $pendingInvoices = Invoice::where('department', 'lab')
@@ -62,6 +65,10 @@ class LaboratoryDashboardController extends Controller
             ->limit(10)
             ->get();
 
+        $user        = auth()->user();
+        $monthStart  = now()->startOfMonth();
+        $shiftSummary = $this->kpi->shiftSummary($user, $monthStart, now());
+
         return view('laboratory.dashboard', compact(
             'pendingInvoices',
             'inProgressCount',
@@ -72,6 +79,16 @@ class LaboratoryDashboardController extends Controller
             'pendingProcurements',
             'workQueue',
             'recentCompleted'
-        ));
+        ) + [
+            'kpi' => [
+                'completed_today'  => $completedToday,
+                'pending_queue'    => $pendingInvoices + $inProgressCount,
+                'revenue_month'    => $this->kpi->revenueAttributed($user, $monthStart, now()),
+                'processed_month'  => $this->kpi->itemsProcessedCount($user, $monthStart, now()),
+                'nps'              => $user->revenue_share_enabled ? $this->kpi->staffNps($user, $monthStart, now()) : null,
+                'shifts_month'     => $shiftSummary['shifts'],
+                'hours_month'      => $shiftSummary['hours'],
+            ],
+        ]);
     }
 }

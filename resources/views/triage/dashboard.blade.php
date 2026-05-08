@@ -12,6 +12,53 @@
         <a href="{{ route('triage.patients.index') }}" class="btn btn-primary btn-sm"><i class="bi bi-people me-1"></i>All Patients</a>
     </div>
 
+    {{-- Shift Clock --}}
+    <x-shift-clock />
+
+    {{-- KPI Strip --}}
+    <div class="row g-2 mb-3 fade-in delay-1">
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-primary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['vitals_today'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Vitals Today</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-info);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['vitals_month'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">This Month</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-warning);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.3rem;">{{ $kpi['avg_wait_mins'] }}m</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Avg Wait</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-danger);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['priority_high_today'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">High Priority</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-secondary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.2rem;">{{ $kpi['shifts_month'] }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">{{ $kpi['hours_month'] }}h Shifts</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Stats --}}
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">
@@ -169,6 +216,13 @@
 
         {{-- Quick Actions Sidebar --}}
         <div class="col-lg-4">
+            @if(\App\Models\PlatformSetting::isEnabled('ui.livewire.triage_queue'))
+            {{-- Live patient queue — updates via Reverb WebSocket (falls back to 10s poll) --}}
+            <div class="mb-4 fade-in delay-3">
+                <livewire:triage.patient-queue />
+            </div>
+            @endif
+
             <div class="card mb-4 fade-in delay-4">
                 <div class="card-header"><i class="bi bi-lightning-charge me-2" style="color:var(--accent-warning);"></i>Quick Actions</div>
                 <div class="card-body">

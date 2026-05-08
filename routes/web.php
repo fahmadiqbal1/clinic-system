@@ -51,5 +51,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/user/complete-tour', [UserController::class, 'completeTour'])->name('user.complete-tour');
 });
 
+// ── Attendance (all staff roles) ──
+Route::middleware(['auth', 'verified', 'role:Doctor|Receptionist|Triage|Laboratory|Radiology|Pharmacy'])
+    ->group(function () {
+        Route::post('/attendance/clock-in',  [\App\Http\Controllers\AttendanceController::class, 'clockIn'])->name('attendance.clock-in');
+        Route::post('/attendance/clock-out', [\App\Http\Controllers\AttendanceController::class, 'clockOut'])->name('attendance.clock-out');
+        Route::get('/attendance/status',     [\App\Http\Controllers\AttendanceController::class, 'status'])->name('attendance.status');
+    });
+
 require __DIR__.'/auth.php';
 

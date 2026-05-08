@@ -7,10 +7,13 @@ use App\Models\Invoice;
 use App\Models\Patient;
 use App\Models\RevenueLedger;
 use App\Models\User;
+use App\Services\KpiService;
 use Illuminate\View\View;
 
 class ReceptionistDashboardController extends Controller
 {
+    public function __construct(private readonly KpiService $kpi) {}
+
     /**
      * Show the receptionist dashboard - can view doctor earnings but not commission %
      */
@@ -94,19 +97,31 @@ class ReceptionistDashboardController extends Controller
             ->whereDate('updated_at', now()->format('Y-m-d'))
             ->count();
 
+        $user        = auth()->user();
+        $monthStart  = now()->startOfMonth();
+        $shiftSummary = $this->kpi->shiftSummary($user, $monthStart, now());
+
         return view('receptionist.dashboard', [
-            'registeredCount' => $registeredCount,
-            'triageCount' => $triageCount,
-            'withDoctorCount' => $withDoctorCount,
-            'unpaidInvoicesCount' => $unpaidInvoicesCount,
-            'pendingPaymentCount' => $pendingPaymentCount,
-            'pendingUpfrontCount' => $pendingUpfrontCount,
-            'pendingDiscountCount' => $pendingDiscountCount,
-            'paidTodayCount' => $paidTodayCount,
-            'doctorEarnings' => $doctorEarnings,
-            'recentPatients' => $recentPatients,
-            'unpaidInvoices' => $unpaidInvoices,
+            'registeredCount'        => $registeredCount,
+            'triageCount'            => $triageCount,
+            'withDoctorCount'        => $withDoctorCount,
+            'unpaidInvoicesCount'    => $unpaidInvoicesCount,
+            'pendingPaymentCount'    => $pendingPaymentCount,
+            'pendingUpfrontCount'    => $pendingUpfrontCount,
+            'pendingDiscountCount'   => $pendingDiscountCount,
+            'paidTodayCount'         => $paidTodayCount,
+            'doctorEarnings'         => $doctorEarnings,
+            'recentPatients'         => $recentPatients,
+            'unpaidInvoices'         => $unpaidInvoices,
             'pendingUpfrontInvoices' => $pendingUpfrontInvoices,
+            'kpi' => [
+                'registered_today'        => Patient::whereDate('created_at', today())->count(),
+                'revenue_collected_today' => Invoice::where('status', Invoice::STATUS_PAID)->whereDate('paid_at', today())->sum('total_amount'),
+                'appointments_today'      => \App\Models\Appointment::whereDate('scheduled_at', today())->count(),
+                'pending_invoices'        => $pendingPaymentCount,
+                'shifts_month'            => $shiftSummary['shifts'],
+                'hours_month'             => $shiftSummary['hours'],
+            ],
         ]);
     }
 }

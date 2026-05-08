@@ -12,6 +12,64 @@
         <a href="{{ route('laboratory.invoices.index') }}" class="btn btn-primary btn-sm"><i class="bi bi-list-check me-1"></i>All Tests</a>
     </div>
 
+    {{-- Shift Clock --}}
+    <x-shift-clock />
+
+    {{-- KPI Strip --}}
+    <div class="row g-2 mb-3 fade-in delay-1">
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-success);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['completed_today'] ?? 0 }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Done Today</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-warning);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['pending_queue'] ?? 0 }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Pending Queue</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-info);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.1rem;">{{ number_format($kpi['revenue_month'] ?? 0, 0) }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Revenue PKR</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-primary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['processed_month'] ?? 0 }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Tests This Month</div>
+                </div>
+            </div>
+        </div>
+        @if(!empty($kpi['nps']))
+        <div class="col-6 col-md-2">
+            @php $npsColor = $kpi['nps'] >= 70 ? 'var(--accent-success)' : ($kpi['nps'] >= 40 ? 'var(--accent-warning)' : 'var(--accent-danger)'); @endphp
+            <div class="card hover-lift" style="border-left:3px solid {{ $npsColor }};">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.3rem;color:{{ $npsColor }};">{{ $kpi['nps'] }}%</div>
+                    <div class="stat-label" style="font-size:0.7rem;">NPS</div>
+                </div>
+            </div>
+        </div>
+        @endif
+        <div class="col-6 col-md-2">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-secondary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.2rem;">{{ $kpi['shifts_month'] ?? 0 }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">{{ $kpi['hours_month'] ?? 0 }}h Shifts</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Stats --}}
     <div class="row g-3 mb-4">
         <div class="col-4 col-lg-2">

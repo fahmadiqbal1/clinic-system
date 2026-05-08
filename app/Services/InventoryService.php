@@ -160,22 +160,29 @@ class InventoryService
     }
 
     /**
-     * Auto-create a pending procurement request when stock falls below minimum.
-     * Shares the 24-hour cache throttle with the LowStockAlert notification,
-     * so this fires at most once per item per day.
+     * Auto-create a procurement request when stock falls below minimum.
+     * When AI confidence is below CLINIC_HITL_CONFIDENCE_THRESHOLD the draft is
+     * created with status 'pending_review' so an owner must explicitly approve it
+     * before it enters the normal procurement workflow.
+     * Shares the 24-hour cache throttle with LowStockAlert — fires at most once per item per day.
      * A failure here must never interrupt the stock dispense transaction.
      */
-    private function autoCreateProcurementDraft(InventoryItem $item, int $currentStock): void
+    private function autoCreateProcurementDraft(InventoryItem $item, int $currentStock, ?float $aiConfidence = null): void
     {
         try {
             $reorderQty = max($item->minimum_stock_level - $currentStock, $item->minimum_stock_level);
+
+            $threshold      = (float) env('CLINIC_HITL_CONFIDENCE_THRESHOLD', 0.85);
+            $needsReview    = $aiConfidence !== null && $aiConfidence < $threshold;
+            $draftStatus    = $needsReview ? 'pending_review' : 'pending';
+            $confidenceNote = $aiConfidence !== null ? " [AI confidence: {$aiConfidence}]" : '';
 
             $procurement = ProcurementRequest::create([
                 'department'   => $item->department,
                 'type'         => ProcurementRequest::TYPE_INVENTORY,
                 'requested_by' => Auth::id(),
-                'status'       => 'pending',
-                'notes'        => "Auto-created: {$item->name} stock below minimum ({$currentStock}/{$item->minimum_stock_level})",
+                'status'       => $draftStatus,
+                'notes'        => "Auto-created: {$item->name} stock below minimum ({$currentStock}/{$item->minimum_stock_level}){$confidenceNote}",
             ]);
 
             ProcurementRequestItem::create([

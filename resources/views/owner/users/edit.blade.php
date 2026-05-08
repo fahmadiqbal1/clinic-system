@@ -123,6 +123,44 @@
                             </div>
                         </div>
 
+                        {{-- Employee Type & Revenue Share --}}
+                        <div class="row g-3 mt-0">
+                            <div class="col-md-6">
+                                <label for="employee_type" class="form-label">Employee Type</label>
+                                <select name="employee_type" id="employee_type" class="form-select @error('employee_type') is-invalid @enderror">
+                                    <option value="staff"      {{ old('employee_type', $user->employee_type ?? 'staff') === 'staff'      ? 'selected' : '' }}>Staff</option>
+                                    <option value="gp"         {{ old('employee_type', $user->employee_type ?? 'staff') === 'gp'         ? 'selected' : '' }}>GP (General Practitioner)</option>
+                                    <option value="specialist" {{ old('employee_type', $user->employee_type ?? 'staff') === 'specialist' ? 'selected' : '' }}>Specialist</option>
+                                </select>
+                                <div class="form-text">GPs are eligible for tier bonuses based on monthly patient count.</div>
+                                @error('employee_type')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                            </div>
+                        </div>
+
+                        {{-- Revenue Share (lab/radiology/pharmacy roles) --}}
+                        <div id="revenue-share-section" class="mt-3" style="display:none;">
+                            <div class="form-check">
+                                <input type="checkbox" name="revenue_share_enabled" id="revenue_share_enabled" value="1"
+                                    {{ old('revenue_share_enabled', $user->revenue_share_enabled ?? false) ? 'checked' : '' }}
+                                    class="form-check-input">
+                                <label class="form-check-label fw-semibold" for="revenue_share_enabled">
+                                    <i class="bi bi-graph-up me-1 text-success"></i>Enable Revenue Share
+                                </label>
+                            </div>
+                            <div class="form-text">Staff receive a percentage of revenue they generate.</div>
+                            <div id="revenue-share-pct-field" style="display:none;" class="mt-2">
+                                <label for="revenue_share_percentage" class="form-label">Revenue Share %</label>
+                                <div class="input-group input-group-sm" style="max-width:180px;">
+                                    <input type="number" step="0.01" min="0" max="100"
+                                        name="revenue_share_percentage" id="revenue_share_percentage"
+                                        value="{{ old('revenue_share_percentage', $user->revenue_share_percentage ?? 2.00) }}"
+                                        class="form-control @error('revenue_share_percentage') is-invalid @enderror">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                @error('revenue_share_percentage')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                            </div>
+                        </div>
+
                         {{-- Commission Percentages (visible when commission or hybrid) --}}
                         <div id="commission-fields" class="mt-3">
                             <label class="form-label fw-semibold"><i class="bi bi-percent me-1"></i>Commission Rates (% of profit)</label>
@@ -178,31 +216,46 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const compType = document.getElementById('compensation_type');
-    const salaryField = document.getElementById('salary-field');
+    const compType       = document.getElementById('compensation_type');
+    const salaryField    = document.getElementById('salary-field');
     const commissionFields = document.getElementById('commission-fields');
-    const roleSelect = document.getElementById('role_id');
+    const roleSelect     = document.getElementById('role_id');
     const independentDoctorField = document.getElementById('independent-doctor-field');
+    const specialtyField = document.getElementById('specialty-field');
+    const revenueShareSection = document.getElementById('revenue-share-section');
+    const revenueShareChk     = document.getElementById('revenue_share_enabled');
+    const revenueSharePct     = document.getElementById('revenue-share-pct-field');
+
+    const REVENUE_SHARE_ROLES = ['Laboratory', 'Radiology', 'Pharmacy'];
 
     function toggleCompensationFields() {
         const val = compType.value;
         salaryField.style.display = ['salaried','hybrid'].includes(val) ? 'block' : 'none';
         commissionFields.style.display = ['commission','hybrid'].includes(val) ? 'block' : 'none';
     }
-    const specialtyField = document.getElementById('specialty-field');
-    function toggleIndependentField() {
+
+    function toggleRoleFields() {
         const selectedText = roleSelect.options[roleSelect.selectedIndex]?.text || '';
         const isDoctor = selectedText === 'Doctor';
+        const hasRevenueShare = REVENUE_SHARE_ROLES.includes(selectedText);
         independentDoctorField.style.display = isDoctor ? 'block' : 'none';
         specialtyField.style.display = isDoctor ? 'block' : 'none';
-        if (!isDoctor) {
-            document.getElementById('is_independent').checked = false;
-        }
+        revenueShareSection.style.display = hasRevenueShare ? 'block' : 'none';
+        if (!isDoctor) document.getElementById('is_independent').checked = false;
+        if (!hasRevenueShare) { revenueShareChk.checked = false; revenueSharePct.style.display = 'none'; }
     }
+
+    function toggleRevenueSharePct() {
+        revenueSharePct.style.display = revenueShareChk.checked ? 'block' : 'none';
+    }
+
     compType.addEventListener('change', toggleCompensationFields);
-    roleSelect.addEventListener('change', toggleIndependentField);
+    roleSelect.addEventListener('change', toggleRoleFields);
+    revenueShareChk.addEventListener('change', toggleRevenueSharePct);
+
     toggleCompensationFields();
-    toggleIndependentField();
+    toggleRoleFields();
+    toggleRevenueSharePct();
 });
 </script>
 @endsection

@@ -12,6 +12,45 @@
         <a href="{{ route('receptionist.patients.create') }}" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Register Patient</a>
     </div>
 
+    {{-- Shift Clock --}}
+    <x-shift-clock />
+
+    {{-- KPI Strip --}}
+    <div class="row g-2 mb-3 fade-in delay-1">
+        <div class="col-6 col-md-3">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-primary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['registered_today'] ?? 0 }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Registered Today</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-success);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.1rem;">{{ number_format($kpi['revenue_collected_today'] ?? 0, 0) }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Collected PKR</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-info);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.4rem;">{{ $kpi['appointments_today'] ?? 0 }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">Appointments</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card hover-lift" style="border-left:3px solid var(--accent-secondary);">
+                <div class="card-body glass-stat text-center py-2">
+                    <div class="stat-value mb-0" style="font-size:1.2rem;">{{ $kpi['shifts_month'] ?? 0 }}</div>
+                    <div class="stat-label" style="font-size:0.7rem;">{{ $kpi['hours_month'] ?? 0 }}h Shifts</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Patient Flow Status Pipeline --}}
     <div class="glass-card p-3 mb-4 fade-in delay-1">
         <div class="status-pipeline flex-wrap">

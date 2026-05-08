@@ -137,23 +137,23 @@ class ConsultationController extends Controller
             return response()->json([]);
         }
 
-        // Walk: this doctor's prescriptions → visits with matching diagnosis → drugs → stock
+        // Walk: this doctor's prescriptions with matching diagnosis → prescription items → inventory stock
         $suggestions = DB::select(
             "SELECT
-                 sc.id,
-                 sc.name,
-                 sc.category,
-                 COALESCE(ii.quantity_in_stock, 0) AS stock,
-                 COUNT(pi.id)                       AS prescribed_count
+                 ii.id,
+                 ii.name,
+                 ii.category,
+                 COALESCE(
+                     (SELECT SUM(sm.quantity) FROM stock_movements sm WHERE sm.inventory_item_id = ii.id),
+                     0
+                 ) AS stock,
+                 COUNT(pi.id) AS prescribed_count
              FROM prescriptions pr
-             JOIN visits              v   ON v.id = pr.visit_id
-             JOIN prescription_items  pi  ON pi.prescription_id = pr.id
-             JOIN service_catalog     sc  ON sc.id = pi.service_catalog_id
-             LEFT JOIN inventory_items ii  ON ii.name = sc.name AND ii.is_active = 1
+             JOIN prescription_items pi ON pi.prescription_id = pr.id
+             JOIN inventory_items ii    ON ii.id = pi.inventory_item_id AND ii.is_active = 1
              WHERE pr.doctor_id = ?
-               AND v.diagnosis LIKE ?
-               AND sc.is_active = 1
-             GROUP BY sc.id, sc.name, sc.category, ii.quantity_in_stock
+               AND pr.diagnosis LIKE ?
+             GROUP BY ii.id, ii.name, ii.category
              ORDER BY prescribed_count DESC
              LIMIT 5",
             [$user->id, "%{$keyword}%"]

@@ -7,11 +7,14 @@ use App\Models\Appointment;
 use App\Models\Prescription;
 use App\Models\RevenueLedger;
 use App\Models\DoctorPayout;
+use App\Services\KpiService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
 class DoctorDashboardController extends Controller
 {
+    public function __construct(private readonly KpiService $kpi) {}
+
     /**
      * Show the doctor dashboard - role isolated to own data only
      */
@@ -100,21 +103,40 @@ class DoctorDashboardController extends Controller
             ->limit(12)
             ->get();
 
+        $monthStart      = now()->startOfMonth();
+        $patientsMonth   = $this->kpi->patientsSeenCount($user, $monthStart, now());
+        $revenueMonth    = $this->kpi->revenueAttributed($user, $monthStart, now());
+        $nps             = $this->kpi->staffNps($user, $monthStart, now());
+        $shiftSummary    = $this->kpi->shiftSummary($user, $monthStart, now());
+        $gpTier          = $user->isGp() ? $user->gpTier($patientsMonth) : null;
+
         return view('doctor.dashboard', [
-            'patientCount' => $patientCount,
-            'activePatients' => $activePatients,
-            'completedToday' => $completedToday,
-            'totalEarnings' => $totalEarnings,
-            'unpaidEarnings' => $unpaidEarnings,
-            'paidEarnings' => $paidEarnings,
-            'pendingPayouts' => $pendingPayouts,
+            'patientCount'       => $patientCount,
+            'activePatients'     => $activePatients,
+            'completedToday'     => $completedToday,
+            'totalEarnings'      => $totalEarnings,
+            'unpaidEarnings'     => $unpaidEarnings,
+            'paidEarnings'       => $paidEarnings,
+            'pendingPayouts'     => $pendingPayouts,
             'recentTransactions' => $recentTransactions,
-            'waitingPatients' => $waitingPatients,
-            'invoiceCount' => $invoiceCount,
-            'todayInvoices' => $todayInvoices,
-            'resultsReadyCount' => $resultsReadyCount,
+            'waitingPatients'    => $waitingPatients,
+            'invoiceCount'       => $invoiceCount,
+            'todayInvoices'      => $todayInvoices,
+            'resultsReadyCount'  => $resultsReadyCount,
             'recentPrescriptions' => $recentPrescriptions,
-            'todayAppointments' => $todayAppointments,
+            'todayAppointments'  => $todayAppointments,
+            // KPI data
+            'kpi' => [
+                'patients_today'      => $completedToday + $activePatients,
+                'patients_month'      => $patientsMonth,
+                'revenue_month'       => $revenueMonth,
+                'pending_queue'       => $activePatients,
+                'prescriptions_month' => Prescription::where('doctor_id', $user->id)->whereMonth('created_at', now()->month)->count(),
+                'nps'                 => $nps,
+                'gp_tier'             => $gpTier,
+                'shifts_month'        => $shiftSummary['shifts'],
+                'hours_month'         => $shiftSummary['hours'],
+            ],
         ]);
     }
 }

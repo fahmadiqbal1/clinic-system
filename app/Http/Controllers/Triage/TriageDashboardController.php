@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Triage;
 
 use App\Http\Controllers\Controller;
 use App\Models\Patient;
+use App\Services\KpiService;
 use Illuminate\View\View;
 
 class TriageDashboardController extends Controller
 {
+    public function __construct(private readonly KpiService $kpi) {}
+
     /**
      * Show the triage dashboard.
      */
@@ -42,13 +45,25 @@ class TriageDashboardController extends Controller
             })
             ->values();
 
+        $user        = auth()->user();
+        $monthStart  = now()->startOfMonth();
+        $shiftSummary = $this->kpi->shiftSummary($user, $monthStart, now());
+
         return view('triage.dashboard', [
-            'registeredCount' => $registeredCount,
-            'triageCount' => $triageCount,
+            'registeredCount'    => $registeredCount,
+            'triageCount'        => $triageCount,
             'readyForDoctorCount' => $readyForDoctorCount,
             'completedTodayCount' => $completedTodayCount,
-            'waitingQueue' => $waitingQueue,
-            'inTriagePatients' => $inTriagePatients,
+            'waitingQueue'       => $waitingQueue,
+            'inTriagePatients'   => $inTriagePatients,
+            'kpi' => [
+                'vitals_today'        => \App\Models\TriageVital::whereDate('created_at', today())->where('recorded_by', $user->id)->count(),
+                'vitals_month'        => \App\Models\TriageVital::whereMonth('created_at', now()->month)->where('recorded_by', $user->id)->count(),
+                'avg_wait_mins'       => $this->kpi->avgWaitMinutes($user, $monthStart, now()),
+                'priority_high_today' => \App\Models\TriageVital::whereDate('created_at', today())->whereIn('priority', ['high', 'urgent', 'critical', 'emergency'])->count(),
+                'shifts_month'        => $shiftSummary['shifts'],
+                'hours_month'         => $shiftSummary['hours'],
+            ],
         ]);
     }
 }

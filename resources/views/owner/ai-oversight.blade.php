@@ -129,19 +129,28 @@
 
     {{-- Recent AI invocations --}}
     <div class="glass-card p-4 mb-4 fade-in delay-4">
-        <h5 class="mb-3">
-            <i class="bi bi-clock-history me-2" style="color:var(--accent-secondary);"></i>
-            Recent AI Invocations
-        </h5>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">
+                <i class="bi bi-clock-history me-2" style="color:var(--accent-secondary);"></i>
+                Recent AI Invocations
+            </h5>
+            <div class="form-check form-switch mb-0" title="Show only low-confidence invocations">
+                <input class="form-check-input" type="checkbox" id="lowConfidenceFilter" onchange="filterLowConfidence(this.checked)">
+                <label class="form-check-label small" for="lowConfidenceFilter" style="color:var(--accent-warning);">
+                    <i class="bi bi-exclamation-triangle me-1"></i>Low confidence only
+                </label>
+            </div>
+        </div>
         @if($recentInvocations->isEmpty())
             <p class="text-muted mb-0">No AI invocations recorded yet.</p>
         @else
             <div class="table-responsive">
-                <table class="table table-hover table-sm align-middle mb-0">
+                <table class="table table-hover table-sm align-middle mb-0" id="invocationsTable">
                     <thead>
                         <tr>
                             <th>Endpoint</th>
                             <th>Model</th>
+                            <th>Confidence</th>
                             <th>Outcome</th>
                             <th>Latency</th>
                             <th>Time</th>
@@ -149,9 +158,30 @@
                     </thead>
                     <tbody>
                         @foreach($recentInvocations as $inv)
-                        <tr>
+                        @php
+                            $conf = data_get($inv->response_payload, 'confidence') ?? data_get($inv->response_payload, 'metadata.confidence');
+                            $confFloat = $conf !== null ? (float) $conf : null;
+                            $isLowConf = $confFloat !== null && $confFloat < 0.85;
+                            $confColor = match(true) {
+                                $confFloat === null      => 'var(--text-muted)',
+                                $confFloat >= 0.85       => 'var(--accent-success)',
+                                $confFloat >= 0.55       => 'var(--accent-warning)',
+                                default                  => 'var(--accent-danger)',
+                            };
+                        @endphp
+                        <tr data-low-conf="{{ $isLowConf ? '1' : '0' }}">
                             <td><code style="font-size:0.78rem;">{{ $inv->endpoint }}</code></td>
                             <td style="color:var(--text-muted); font-size:0.82rem;">{{ $inv->model_id ?? '—' }}</td>
+                            <td>
+                                @if($confFloat !== null)
+                                    <span class="fw-semibold" style="color:{{ $confColor }}; font-size:0.82rem;">
+                                        @if($isLowConf)<i class="bi bi-exclamation-triangle me-1"></i>@endif
+                                        {{ number_format($confFloat * 100, 0) }}%
+                                    </span>
+                                @else
+                                    <span style="color:var(--text-muted); font-size:0.82rem;">—</span>
+                                @endif
+                            </td>
                             <td>
                                 @if($inv->outcome === 'ok')
                                     <span class="badge-glass" style="background:rgba(var(--accent-success-rgb),0.15);color:var(--accent-success);font-size:0.75rem;">ok</span>
@@ -179,3 +209,13 @@
 
 </div>
 @endsection
+
+@push('scripts')
+<script>
+function filterLowConfidence(showLowOnly) {
+    document.querySelectorAll('#invocationsTable tbody tr').forEach(function(row) {
+        row.style.display = (showLowOnly && row.dataset.lowConf !== '1') ? 'none' : '';
+    });
+}
+</script>
+@endpush
