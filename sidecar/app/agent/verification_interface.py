@@ -29,10 +29,13 @@ MIN_RATIONALE_LENGTH = 150
 REQUIRED_SECTIONS = ["## ASSESSMENT", "## DIFFERENTIALS", "## RECOMMENDATIONS"]
 
 _PHI_PATTERNS = [
-    (r"\b\d{13}\b", "CNIC (13-digit number)"),
-    (r"\b0\d{10}\b", "Pakistani mobile number"),
-    (r"\b\+92\d{10}\b", "International Pakistani number"),
+    (r"\b\d{13}\b", "CNIC"),
+    (r"\b0\d{10}\b", "PHONE"),
+    (r"\b\+92\d{10}\b", "PHONE"),
 ]
+
+# Redaction labels matching _PHI_PATTERNS order
+_PHI_REDACT_LABELS = ["REDACTED_CNIC", "REDACTED_PHONE", "REDACTED_PHONE"]
 
 _CONFIDENCE_MAP = {"low": 0.30, "medium": 0.65, "high": 0.90}
 
@@ -65,6 +68,7 @@ class VerificationResult:
     phi_detected: bool = False
     section_score: float = 0.0
     hallucinations: list[str] = field(default_factory=list)
+    redacted_rationale: str | None = None  # set only when phi_detected=True
 
 
 class VerificationInterface:
@@ -107,6 +111,12 @@ class VerificationInterface:
             if re.search(pattern, text):
                 issues.append(f"Possible PHI detected: {label}")
         return issues
+
+    def _redact_phi(self, text: str) -> str:
+        """Replace PHI matches in text with [REDACTED_*] tokens before returning."""
+        for (pattern, _label), redact_label in zip(_PHI_PATTERNS, _PHI_REDACT_LABELS):
+            text = re.sub(pattern, f"[{redact_label}]", text)
+        return text
 
     def _section_completeness(self, rationale: str) -> tuple[float, list[str]]:
         """
@@ -180,11 +190,12 @@ class VerificationInterface:
         if missing:
             issues.append(f"Missing or thin sections: {missing}")
 
-        # Gate 3: PHI scan (hard gate — quarantines output)
+        # Gate 3: PHI scan (hard gate — redacts then quarantines output)
         phi_issues = self._scan_phi(rationale)
         if phi_issues:
+            redacted = self._redact_phi(rationale)
             logger.error(
-                "VerificationInterface: PHI detected in AI output — output quarantined. Issues: %s",
+                "VerificationInterface: PHI detected in AI output — redacted and quarantined. Issues: %s",
                 phi_issues,
             )
             return VerificationResult(
@@ -194,6 +205,7 @@ class VerificationInterface:
                 issues=phi_issues,
                 phi_detected=True,
                 section_score=section_score,
+                redacted_rationale=redacted,
             )
 
         # Gate 4: Confidence parsing

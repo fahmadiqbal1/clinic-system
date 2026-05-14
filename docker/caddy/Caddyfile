@@ -1,0 +1,55 @@
+{
+    email {$LETSENCRYPT_EMAIL}
+    # Uncomment for staging/testing to avoid Let's Encrypt rate limits:
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$DOMAIN} {
+    # PHP-FPM — pass all PHP requests to the app container
+    @php {
+        path *.php
+        path /
+    }
+
+    # Static assets — serve directly from the public volume (no PHP)
+    root * /var/www/html/public
+
+    # Security headers
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # Remove server identity
+        -Server
+        -X-Powered-By
+    }
+
+    # Cache static assets
+    @static {
+        file
+        path *.css *.js *.png *.jpg *.jpeg *.gif *.ico *.svg *.woff *.woff2 *.ttf *.eot
+    }
+    header @static Cache-Control "public, max-age=86400"
+
+    # Deny dotfiles
+    @dotfiles path /.*
+    respond @dotfiles 403
+
+    # Pass PHP to php-fpm
+    php_fastcgi app:9000 {
+        root /var/www/html/public
+        index index.php
+        read_timeout 120s
+    }
+
+    file_server
+    encode gzip
+
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}

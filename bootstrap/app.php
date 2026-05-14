@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
+        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
         then: function () {
             // Role-specific route files (all get web + auth middleware)
@@ -30,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'active'               => \App\Http\Middleware\EnsureUserIsActive::class,
             'require.credentials'  => \App\Http\Middleware\RequireDocumentVerification::class,
+            'auth.sidecar_jwt'     => \App\Http\Middleware\VerifySidecarJwt::class,
         ]);
 
         // Apply is_active check to all web routes after auth
@@ -38,6 +40,16 @@ return Application::configure(basePath: dirname(__DIR__))
     ->booting(function () {
         // Configure rate limiters for sensitive endpoints
         RateLimiter::for('ai-analysis', function (Request $request) {
+            return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Clinical second-opinion: expensive, capped tightly per user
+        RateLimiter::for('consultation', function (Request $request) {
+            return Limit::perMinute(3)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // Role-based AI chat queries (RAGFlow + persona routing)
+        RateLimiter::for('ai-chat', function (Request $request) {
             return Limit::perMinute(10)->by($request->user()?->id ?: $request->ip());
         });
 

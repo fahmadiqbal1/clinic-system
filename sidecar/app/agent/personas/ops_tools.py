@@ -271,6 +271,74 @@ def make_doctor_demand_tool(period_days: int) -> Tool:
     return _failopen("doctor_demand", "Identifies doctor and speciality demand trends from appointment data.", _q)
 
 
+def make_draft_procurement_tool() -> Tool:
+    """
+    Autonomously drafts procurement requests for critical/warning stock items
+    by posting to the Laravel internal endpoint. Each draft lands with
+    status=pending_approval so the owner can one-click confirm.
+
+    Requires CLINIC_SIDECAR_URL and CLINIC_SIDECAR_JWT env vars in sidecar.
+    Fails-open: if the endpoint is unreachable, returns a recommendation text
+    instead so the AI can still surface the suggestion.
+    """
+    import os
+    import httpx
+
+    async def _create_drafts() -> dict:
+        async with db.cursor() as cur:
+            await cur.execute(
+                "SELECT id, name, quantity_in_stock AS qty, "
+                "minimum_stock_level AS min_lvl, "
+                "GREATEST(minimum_stock_level * 3, minimum_stock_level + 50) AS suggested_qty "
+                "FROM inventory_items WHERE is_active = 1 "
+                "AND quantity_in_stock <= minimum_stock_level "
+                "ORDER BY quantity_in_stock ASC LIMIT 10"
+            )
+            rows = await cur.fetchall()
+
+        if not rows:
+            return {"tool": "draft_procurement", "answer": "No items below minimum stock — no drafts needed."}
+
+        laravel_url = os.environ.get("CLINIC_SIDECAR_URL", "http://app:9000")
+        jwt = os.environ.get("CLINIC_SIDECAR_JWT", "")
+        created, failed = [], []
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for row in rows:
+                item_id = row.get("id")
+                qty_needed = max(1, int((row.get("suggested_qty") or 1) - (row.get("qty") or 0)))
+                try:
+                    resp = await client.post(
+                        f"{laravel_url.rstrip('/')}/api/internal/procurement/draft",
+                        headers={"Authorization": f"Bearer {jwt}", "Content-Type": "application/json"},
+                        json={
+                            "inventory_item_id": item_id,
+                            "quantity":          qty_needed,
+                            "reason":            "Auto-drafted by Ops AI — stock at or below minimum level",
+                        },
+                    )
+                    if resp.status_code in (200, 201):
+                        created.append(row["name"])
+                    else:
+                        failed.append(row["name"])
+                except Exception:
+                    failed.append(row["name"])
+
+        parts = []
+        if created:
+            parts.append(f"Drafted {len(created)} procurement request(s) for owner approval: {', '.join(created[:5])}.")
+        if failed:
+            parts.append(f"{len(failed)} item(s) could not be drafted (endpoint unreachable): {', '.join(failed[:3])}.")
+
+        return {"tool": "draft_procurement", "answer": " ".join(parts), "drafted": created, "failed": failed}
+
+    return _failopen(
+        "draft_procurement",
+        "Creates pending-approval procurement request drafts for items at or below minimum stock.",
+        _create_drafts,
+    )
+
+
 def make_queue_health_tool() -> Tool:
     async def _q() -> dict:
         # Read counts directly from the jobs / failed_jobs tables via clinic_ro

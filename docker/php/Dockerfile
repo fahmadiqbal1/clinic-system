@@ -1,3 +1,13 @@
+# ── Node/Vite asset build ────────────────────────────────────
+FROM node:20-alpine AS node-builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY vite.config.js postcss.config.js ./
+COPY resources/ ./resources/
+RUN npm run build
+
+# ── PHP application ──────────────────────────────────────────
 FROM php:8.3-fpm-alpine AS base
 
 RUN apk add --no-cache \
@@ -11,6 +21,7 @@ RUN apk add --no-cache \
     icu-dev \
     oniguruma-dev \
     curl \
+    su-exec \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install -j$(nproc) \
         pdo_mysql \
@@ -38,13 +49,16 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction --no-script
 
 COPY . .
 
+COPY --from=node-builder /app/public/build ./public/build
+
 RUN composer run-script post-autoload-dump 2>/dev/null || true \
     && chown -R www-data:www-data /var/www/html/storage \
     && chown -R www-data:www-data /var/www/html/bootstrap/cache \
     && chmod -R 775 /var/www/html/storage \
-    && chmod -R 775 /var/www/html/bootstrap/cache
-
-USER www-data
+    && chmod -R 775 /var/www/html/bootstrap/cache \
+    && chmod +x /var/www/html/docker/php/entrypoint.sh \
+    && mkdir -p /var/log/php-fpm \
+    && chown www-data:www-data /var/log/php-fpm
 
 EXPOSE 9000
 
@@ -52,3 +66,9 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD php-fpm -t 2>&1 | grep -q "configuration file" && echo OK || exit 1
 
 CMD ["php-fpm"]
+
+# ── Production target (used by docker-compose.prod.yml) ──────
+FROM base AS production
+ENV APP_ENV=production \
+    APP_DEBUG=false \
+    LOG_LEVEL=warning

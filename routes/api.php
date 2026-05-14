@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\V1\InvoiceController;
 use App\Http\Controllers\Api\V1\AiAnalysisController;
 use App\Http\Controllers\Api\NocobaseAuditHookController;
 use App\Http\Controllers\Api\OmniDimensionController;
+use App\Http\Controllers\Api\InternalProcurementController;
+use App\Services\AiSidecarClient;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -27,6 +29,12 @@ use Illuminate\Support\Facades\Route;
 // Phase 4 — NocoBase webhook (HMAC-verified, no Sanctum — NocoBase has no Laravel session)
 Route::post('/nocobase/audit-hook', [NocobaseAuditHookController::class, 'handle'])
     ->name('nocobase.audit-hook');
+
+// Internal sidecar endpoints — JWT-verified only (not browser-accessible)
+Route::middleware(['auth.sidecar_jwt'])->prefix('internal')->group(function () {
+    Route::post('/procurement/draft', [InternalProcurementController::class, 'draft'])
+        ->name('internal.procurement.draft');
+});
 
 // Phase 10B — OmniDimension phone AI webhook (HMAC-verified, no Sanctum)
 Route::post('/omnidimension/webhook', [OmniDimensionController::class, 'webhook'])

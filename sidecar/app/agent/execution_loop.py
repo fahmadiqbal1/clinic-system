@@ -68,6 +68,7 @@ class ExecutionLoop:
         ollama_url: str,
         model: str,
         body: Any | None = None,
+        persona: str = "",
     ) -> LoopResult:
         tool_results: list[dict] = []
 
@@ -92,7 +93,7 @@ class ExecutionLoop:
         messages = context.inject_tool_results(tool_results)
 
         # ── Phase 2: First inference ───────────────────────────────────────
-        rationale = await self._call_ollama(messages, ollama_url, model)
+        rationale = await self._call_ollama(messages, ollama_url, model, persona=persona)
         iterations = 1
 
         # ── Phase 3: Optional retry on low confidence ──────────────────────
@@ -125,7 +126,7 @@ class ExecutionLoop:
                         },
                     ]
                     retry_rationale = await self._call_ollama(
-                        retry_messages, ollama_url, model
+                        retry_messages, ollama_url, model, persona=persona
                     )
                     iterations = 2
                     if retry_rationale:
@@ -149,10 +150,12 @@ class ExecutionLoop:
         )
 
     async def _call_ollama(
-        self, messages: list[dict], ollama_url: str, model: str
+        self, messages: list[dict], ollama_url: str, model: str, persona: str = ""
     ) -> str:
         from app.agent.model_provider import call_model
         try:
-            return await call_model(messages, ollama_url, model, timeout_s=OLLAMA_TIMEOUT_S)
+            return await call_model(
+                messages, ollama_url, model, timeout_s=OLLAMA_TIMEOUT_S, persona=persona
+            )
         except (httpx.RequestError, httpx.TimeoutException) as exc:
             raise RuntimeError(f"Model provider unreachable: {type(exc).__name__}: {exc}") from exc

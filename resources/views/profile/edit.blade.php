@@ -73,7 +73,7 @@
             {{-- Live connection status panel --}}
             <div id="medgemma-test-result" class="alert py-2 mb-3 d-none"></div>
 
-            <form method="post" action="{{ route('owner.platform-settings.update') }}">
+            <form method="post" action="{{ route('owner.platform-settings.model-config') }}">
                 @csrf
                 @method('PATCH')
 
@@ -508,7 +508,7 @@
             spinner.classList.remove('d-none');
             resultDiv.classList.add('d-none');
 
-            fetch('{{ route("owner.platform-settings.test") }}', {
+            fetch('{{ route("owner.platform-settings.test-provider") }}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -32,6 +32,7 @@ from app.agent.lifecycle_hooks import (
 from app.agent.state_store import StateStore
 from app.agent.tool_registry import ToolRegistry
 from app.agent.verification_interface import VerificationInterface
+from app.services.data_sanitiser import DataSanitiser
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,10 @@ class PersonaHarness:
             compressed = compress_prior(prior_state["last_summary"])
             parts.append(f"[Prior session summary]\n{compressed}\n---")
 
-        parts.append(self.build_user_content(body))
+        raw_user_content = self.build_user_content(body)
+        sanitiser = DataSanitiser()
+        sanitised_content = sanitiser.sanitise(raw_user_content)
+        parts.append(sanitised_content)
         user_content = "\n".join(parts)
 
         return AgentContext(
@@ -155,7 +159,7 @@ class PersonaHarness:
             loop_result = await self.execution_loop.run(
                 context=context, tools=tools, lifecycle=self.lifecycle,
                 session_id=session_id, ollama_url=self.ollama_url, model=self.model,
-                body=body,
+                body=body, persona=self.agent,
             )
 
             vr = self.verification.validate(loop_result.rationale, body)

@@ -9,6 +9,15 @@
 # RAGFlow admin UI binds to 127.0.0.1:8080 only (Owner accesses directly; not proxied).
 
 services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: clinic-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+
   sidecar:
     build:
       context: ./sidecar
@@ -155,6 +164,7 @@ services:
       - prometheus
 
 volumes:
+  ollama_data:
   ragflow_es_data:
   ragflow_minio_data:
   ragflow_mysql_data:

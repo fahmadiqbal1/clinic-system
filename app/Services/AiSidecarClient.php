@@ -115,6 +115,24 @@ class AiSidecarClient
     }
 
     /**
+     * Classify a document excerpt using the AI sidecar.
+     * Returns ['type' => string, 'confidence' => float, 'reason' => string].
+     * Type is one of: price_list, mou, lab_referral, invoice, contract, unknown.
+     * Fails open — returns ['type' => 'unknown', 'confidence' => 0.0] on error.
+     */
+    public function classifyDocument(string $text, string $filename = ''): array
+    {
+        try {
+            return $this->call('POST', '/v1/classify-document', [
+                'text'     => mb_substr($text, 0, 1000),
+                'filename' => $filename,
+            ], timeoutS: 30);
+        } catch (\Throwable) {
+            return ['type' => 'unknown', 'confidence' => 0.0, 'reason' => 'Classification unavailable.'];
+        }
+    }
+
+    /**
      * Smart Assistant — cross-role conversational AI with optional file upload.
      * Sends multipart/form-data so the sidecar can read the file bytes directly.
      *

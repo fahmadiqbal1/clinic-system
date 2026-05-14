@@ -38,5 +38,8 @@ Schedule::command('fbr:watchdog')->dailyAt('22:00');
 // Revenue leakage watchdog: detect unbilled consultations (AI analysis but no billing item) — 07:30
 Schedule::command('revenue:leakage-watchdog')->dailyAt('07:30');
 
+// Daily 07:00 Morning Brief: overnight anomalies, low stock, pending POs, revenue summary
+Schedule::command('ai:morning-brief')->dailyAt('07:00');
+
 // Queue worker fallback — stops after draining the queue (Supervisor handles persistent workers in production)
 Schedule::command('queue:work --stop-when-empty')->everyFiveMinutes()->withoutOverlapping();

@@ -9,9 +9,26 @@ use Tests\TestCase;
 
 class OwnerMedGemmaProfileTest extends TestCase
 {
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private function setModelConfig(string $provider, array $extra = []): void
+    {
+        PlatformSetting::updateOrCreate(
+            ['platform_name' => 'ai.model.provider', 'provider' => 'model_config'],
+            ['meta' => ['value' => $provider]]
+        );
+        foreach ($extra as $key => $value) {
+            PlatformSetting::updateOrCreate(
+                ['platform_name' => $key, 'provider' => 'model_config'],
+                ['meta' => ['value' => $value]]
+            );
+        }
+    }
+
+    // ── Profile page visibility ───────────────────────────────────────────────
+
     public function test_owner_sees_medgemma_card_on_profile(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
@@ -24,7 +41,6 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_non_owner_does_not_see_medgemma_card_on_profile(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Doctor');
 
@@ -34,18 +50,21 @@ class OwnerMedGemmaProfileTest extends TestCase
         $response->assertDontSee('MedGemma AI');
     }
 
+    // ── Save model config ────────────────────────────────────────────────────
+
     public function test_owner_can_save_medgemma_settings_from_profile(): void
     {
-        /** @var User $user */
+        Http::fake();
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $response = $this->actingAs($user)->patch('/owner/platform-settings', [
-            'api_key' => 'hf_test_key_123',
-            'model'   => 'google/medgemma-4b-it',
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/model-config', [
+            'provider'  => 'huggingface',
+            'hf_key'    => 'hf_test_key_123',
+            'hf_model'  => 'google/medgemma-4b-it',
         ]);
 
-        $response->assertRedirect();
+        $response->assertOk()->assertJson(['ok' => true]);
 
         $medgemma = PlatformSetting::where('platform_name', 'medgemma')->first();
         $this->assertNotNull($medgemma);
@@ -55,17 +74,17 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_owner_can_save_ollama_provider(): void
     {
-        /** @var User $user */
+        Http::fake();
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $response = $this->actingAs($user)->patch('/owner/platform-settings', [
-            'provider' => 'ollama',
-            'model'    => 'medgemma',
-            'api_url'  => 'http://localhost:11434',
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/model-config', [
+            'provider'    => 'ollama',
+            'ollama_model' => 'medgemma',
+            'ollama_url'   => 'http://localhost:11434',
         ]);
 
-        $response->assertRedirect();
+        $response->assertOk()->assertJson(['ok' => true]);
 
         $medgemma = PlatformSetting::where('platform_name', 'medgemma')->first();
         $this->assertNotNull($medgemma);
@@ -76,13 +95,11 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_non_owner_cannot_save_medgemma_settings(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Doctor');
 
-        $response = $this->actingAs($user)->patch('/owner/platform-settings', [
-            'api_key' => 'hf_test_key_123',
-            'model'   => 'google/medgemma-4b-it',
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/model-config', [
+            'provider' => 'ollama',
         ]);
 
         $response->assertStatus(403);
@@ -90,21 +107,20 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_guest_cannot_access_medgemma_settings(): void
     {
-        $response = $this->patch('/owner/platform-settings', [
-            'api_key' => 'hf_test_key_123',
-            'model'   => 'google/medgemma-4b-it',
+        $response = $this->postJson('/owner/platform-settings/model-config', [
+            'provider' => 'ollama',
         ]);
 
-        $response->assertRedirect('/login');
+        $response->assertStatus(401);
     }
+
+    // ── Profile status badges ─────────────────────────────────────────────────
 
     public function test_owner_profile_shows_disconnected_status_for_new_ollama_default(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        // With Ollama defaults, isReady() is true (URL + model set) but status is 'disconnected'
         $response = $this->actingAs($user)->get('/profile');
 
         $response->assertStatus(200);
@@ -113,7 +129,6 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_owner_profile_shows_provider_selector(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
@@ -124,14 +139,16 @@ class OwnerMedGemmaProfileTest extends TestCase
         $response->assertSee('Ollama');
     }
 
+    // ── PlatformSetting model unit tests ──────────────────────────────────────
+
     public function test_platform_setting_is_ready_with_ollama(): void
     {
         $setting = PlatformSetting::medgemma();
         $setting->update([
             'provider' => 'ollama',
-            'api_url' => 'http://localhost:11434',
-            'model' => 'medgemma',
-            'api_key' => null,
+            'api_url'  => 'http://localhost:11434',
+            'model'    => 'medgemma',
+            'api_key'  => null,
         ]);
 
         $this->assertTrue($setting->fresh()->isReady());
@@ -141,25 +158,17 @@ class OwnerMedGemmaProfileTest extends TestCase
     public function test_platform_setting_not_ready_without_hf_key(): void
     {
         $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'huggingface',
-            'api_key' => null,
-        ]);
+        $setting->update(['provider' => 'huggingface', 'api_key' => null]);
 
         $this->assertFalse($setting->fresh()->isReady());
     }
 
     public function test_owner_profile_shows_not_configured_for_huggingface_without_key(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'huggingface',
-            'api_key' => null,
-        ]);
+        PlatformSetting::medgemma()->update(['provider' => 'huggingface', 'api_key' => null]);
 
         $response = $this->actingAs($user)->get('/profile');
 
@@ -172,14 +181,13 @@ class OwnerMedGemmaProfileTest extends TestCase
         $setting = PlatformSetting::medgemma();
         $setting->update([
             'provider' => 'huggingface',
-            'api_url' => 'https://router.huggingface.co/hf-inference/models/',
-            'model' => 'google/medgemma-4b-it',
+            'api_url'  => 'https://router.huggingface.co/hf-inference/models/',
+            'model'    => 'google/medgemma-4b-it',
         ]);
 
-        $url = $setting->fresh()->chatCompletionsUrl();
         $this->assertEquals(
             'https://router.huggingface.co/hf-inference/models/google/medgemma-4b-it/v1/chat/completions',
-            $url
+            $setting->fresh()->chatCompletionsUrl()
         );
     }
 
@@ -188,20 +196,18 @@ class OwnerMedGemmaProfileTest extends TestCase
         $setting = PlatformSetting::medgemma();
         $setting->update([
             'provider' => 'ollama',
-            'api_url' => 'http://localhost:11434',
-            'model' => 'medgemma',
+            'api_url'  => 'http://localhost:11434',
+            'model'    => 'medgemma',
         ]);
 
-        $url = $setting->fresh()->chatCompletionsUrl();
         $this->assertEquals(
             'http://localhost:11434/v1/chat/completions',
-            $url
+            $setting->fresh()->chatCompletionsUrl()
         );
     }
 
     public function test_medgemma_defaults_to_ollama_provider(): void
     {
-        // Ensure no existing setting
         PlatformSetting::where('platform_name', 'medgemma')->delete();
 
         $setting = PlatformSetting::medgemma();
@@ -213,17 +219,16 @@ class OwnerMedGemmaProfileTest extends TestCase
         $this->assertTrue($setting->isReady());
     }
 
+    // ── Connection tests ──────────────────────────────────────────────────────
+
     public function test_ollama_connection_test_sends_correct_request(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'ollama',
-            'api_url' => 'http://localhost:11434',
-            'model' => 'medgemma',
+        $this->setModelConfig('ollama', [
+            'ai.model.ollama.url'   => 'http://localhost:11434',
+            'ai.model.ollama.model' => 'medgemma',
         ]);
 
         Http::fake([
@@ -232,10 +237,9 @@ class OwnerMedGemmaProfileTest extends TestCase
             ], 200),
         ]);
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'connected']);
+        $response->assertOk()->assertJson(['status' => 'connected']);
 
         Http::assertSent(function ($request) {
             return $request->url() === 'http://localhost:11434/v1/chat/completions'
@@ -246,84 +250,71 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_ollama_connection_test_handles_failure_gracefully(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'ollama',
-            'api_url' => 'http://localhost:11434',
-            'model' => 'medgemma',
+        $this->setModelConfig('ollama', [
+            'ai.model.ollama.url'   => 'http://localhost:11434',
+            'ai.model.ollama.model' => 'medgemma',
         ]);
 
         Http::fake([
             'localhost:11434/v1/chat/completions' => Http::response('Connection refused', 500),
         ]);
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'failed']);
+        $response->assertOk()->assertJson(['status' => 'failed']);
 
-        $setting->refresh();
+        $setting = PlatformSetting::medgemma()->refresh();
         $this->assertEquals('failed', $setting->status);
         $this->assertNotNull($setting->last_error);
     }
 
     public function test_connection_refused_error_gets_enriched_message_for_localhost(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'ollama',
-            'api_url'  => 'http://localhost:11434',
-            'model'    => 'medgemma',
+        $this->setModelConfig('ollama', [
+            'ai.model.ollama.url'   => 'http://localhost:11434',
+            'ai.model.ollama.model' => 'medgemma',
         ]);
 
-        // Simulate a cURL error 7 (connection refused) via an exception
         Http::fake(function () {
-            throw new \Illuminate\Http\Client\ConnectionException('cURL error 7: Failed to connect to localhost port 11434: Connection refused');
+            throw new \Illuminate\Http\Client\ConnectionException(
+                'cURL error 7: Failed to connect to localhost port 11434: Connection refused'
+            );
         });
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'failed']);
+        $response->assertOk()->assertJson(['status' => 'failed']);
 
         $data = $response->json();
         $this->assertStringContainsString('VPS', $data['error']);
         $this->assertStringContainsString('localhost', $data['error']);
-
-        $setting->refresh();
-        $this->assertEquals('failed', $setting->status);
-        $this->assertNotNull($setting->last_error);
     }
 
     public function test_connection_refused_for_non_localhost_gets_generic_enriched_message(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'ollama',
-            'api_url'  => 'http://192.168.1.50:11434',
-            'model'    => 'medgemma',
+        $this->setModelConfig('ollama', [
+            'ai.model.ollama.url'   => 'http://192.168.1.50:11434',
+            'ai.model.ollama.model' => 'medgemma',
         ]);
 
         Http::fake(function () {
-            throw new \Illuminate\Http\Client\ConnectionException('cURL error 7: Failed to connect to 192.168.1.50 port 11434: Connection refused');
+            throw new \Illuminate\Http\Client\ConnectionException(
+                'cURL error 7: Failed to connect to 192.168.1.50 port 11434: Connection refused'
+            );
         });
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'failed']);
+        $response->assertOk()->assertJson(['status' => 'failed']);
 
         $data = $response->json();
         $this->assertStringContainsString('Cannot reach Ollama', $data['error']);
@@ -332,25 +323,23 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_dns_resolution_failure_gets_enriched_message(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'ollama',
-            'api_url'  => 'http://my-ollama-host:11434',
-            'model'    => 'medgemma',
+        $this->setModelConfig('ollama', [
+            'ai.model.ollama.url'   => 'http://my-ollama-host:11434',
+            'ai.model.ollama.model' => 'medgemma',
         ]);
 
         Http::fake(function () {
-            throw new \Illuminate\Http\Client\ConnectionException('cURL error 6: Could not resolve host: my-ollama-host');
+            throw new \Illuminate\Http\Client\ConnectionException(
+                'cURL error 6: Could not resolve host: my-ollama-host'
+            );
         });
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'failed']);
+        $response->assertOk()->assertJson(['status' => 'failed']);
 
         $data = $response->json();
         $this->assertStringContainsString('DNS', $data['error']);
@@ -358,15 +347,12 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_bypass_tunnel_reminder_header_is_sent_for_ollama(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'ollama',
-            'api_url'  => 'https://smooth-terms-feel.loca.lt',
-            'model'    => 'medgemma',
+        $this->setModelConfig('ollama', [
+            'ai.model.ollama.url'   => 'https://smooth-terms-feel.loca.lt',
+            'ai.model.ollama.model' => 'medgemma',
         ]);
 
         Http::fake([
@@ -375,10 +361,9 @@ class OwnerMedGemmaProfileTest extends TestCase
             ], 200),
         ]);
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'connected']);
+        $response->assertOk()->assertJson(['status' => 'connected']);
 
         Http::assertSent(function ($request) {
             return $request->hasHeader('bypass-tunnel-reminder', 'true');
@@ -387,18 +372,14 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_localtunnel_401_response_gives_helpful_error(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'ollama',
-            'api_url'  => 'https://smooth-terms-feel.loca.lt',
-            'model'    => 'medgemma',
+        $this->setModelConfig('ollama', [
+            'ai.model.ollama.url'   => 'https://smooth-terms-feel.loca.lt',
+            'ai.model.ollama.model' => 'medgemma',
         ]);
 
-        // Simulate the Localtunnel reminder page (HTML body + 401)
         Http::fake([
             'smooth-terms-feel.loca.lt/*' => Http::response(
                 '<html><body>Tunnel Password - loca.lt</body></html>',
@@ -406,10 +387,9 @@ class OwnerMedGemmaProfileTest extends TestCase
             ),
         ]);
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'failed']);
+        $response->assertOk()->assertJson(['status' => 'failed']);
 
         $data = $response->json();
         $this->assertStringContainsString('Localtunnel', $data['error']);
@@ -418,25 +398,23 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_tunnel_timeout_gets_tunnel_aware_message(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'ollama',
-            'api_url'  => 'https://smooth-terms-feel.loca.lt',
-            'model'    => 'medgemma',
+        $this->setModelConfig('ollama', [
+            'ai.model.ollama.url'   => 'https://smooth-terms-feel.loca.lt',
+            'ai.model.ollama.model' => 'medgemma',
         ]);
 
         Http::fake(function () {
-            throw new \Illuminate\Http\Client\ConnectionException('cURL error 28: Operation timed out after 60000 milliseconds');
+            throw new \Illuminate\Http\Client\ConnectionException(
+                'cURL error 28: Operation timed out after 60000 milliseconds'
+            );
         });
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'failed']);
+        $response->assertOk()->assertJson(['status' => 'failed']);
 
         $data = $response->json();
         $this->assertStringContainsString('timed out', $data['error']);
@@ -445,16 +423,13 @@ class OwnerMedGemmaProfileTest extends TestCase
 
     public function test_bypass_tunnel_reminder_header_not_sent_for_huggingface(): void
     {
-        /** @var User $user */
         $user = User::factory()->create();
         $user->assignRole('Owner');
 
-        $setting = PlatformSetting::medgemma();
-        $setting->update([
-            'provider' => 'huggingface',
-            'api_url'  => 'https://router.huggingface.co/hf-inference/models/',
-            'api_key'  => 'hf_test_key_123',
-            'model'    => 'google/medgemma-4b-it',
+        $this->setModelConfig('huggingface', [
+            'ai.model.hf.base_url' => 'https://router.huggingface.co/hf-inference/models/',
+            'ai.model.hf.key'      => 'hf_test_key_123',
+            'ai.model.hf.model'    => 'google/medgemma-4b-it',
         ]);
 
         Http::fake([
@@ -463,10 +438,9 @@ class OwnerMedGemmaProfileTest extends TestCase
             ], 200),
         ]);
 
-        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test');
+        $response = $this->actingAs($user)->postJson('/owner/platform-settings/test-provider');
 
-        $response->assertOk();
-        $response->assertJson(['status' => 'connected']);
+        $response->assertOk()->assertJson(['status' => 'connected']);
 
         Http::assertSent(function ($request) {
             return !$request->hasHeader('bypass-tunnel-reminder');

@@ -927,6 +927,52 @@
                 })
                 .catch(function() {}); // Silent fail for polling
             }, 30000);
+
+            // ── Reverb: real-time AI critical alerts (Owner only) ──────────────
+            @auth
+            @if(Auth::user()->hasRole('Owner') && isset($__env) && class_exists('\\App\\Models\\PlatformSetting'))
+            (function () {
+                if (!window.Echo) return;
+                var ownerId = {{ Auth::id() }};
+                window.Echo.private('owner-alerts.' + ownerId)
+                    .listen('.AiCriticalAlert', function (e) {
+                        // 1. Increment bell badge instantly
+                        var badge = document.getElementById('bellBadge');
+                        var icon  = document.getElementById('bellIcon');
+                        if (badge) {
+                            var cur = parseInt(badge.textContent || '0', 10) || 0;
+                            badge.textContent = cur + 1;
+                            badge.style.display = '';
+                            if (icon) icon.className = 'bi bi-bell-fill';
+                        }
+                        // 2. Show a dismissible toast in the top-right corner
+                        var colors = { danger: '#dc3545', warning: '#ffc107', success: '#198754', info: '#0dcaf0' };
+                        var bg = colors[e.color] || colors.danger;
+                        var toastId = 'ai-alert-toast-' + Date.now();
+                        var toastHtml = '<div id="' + toastId + '" class="toast align-items-center text-white border-0 show mb-2" role="alert" style="background:' + bg + ';max-width:380px;">' +
+                            '<div class="d-flex"><div class="toast-body">' +
+                            '<i class="bi ' + (e.icon || 'bi-exclamation-triangle') + ' me-2"></i>' +
+                            '<strong>' + (e.title || 'AI Alert') + '</strong><br>' +
+                            '<small>' + (e.message || '') + '</small>' +
+                            '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div></div>';
+                        var container = document.getElementById('toast-container');
+                        if (!container) {
+                            container = document.createElement('div');
+                            container.id = 'toast-container';
+                            container.className = 'toast-container position-fixed top-0 end-0 p-3';
+                            container.style.zIndex = '1090';
+                            document.body.appendChild(container);
+                        }
+                        container.insertAdjacentHTML('beforeend', toastHtml);
+                        // Auto-dismiss after 8 seconds
+                        setTimeout(function () {
+                            var el = document.getElementById(toastId);
+                            if (el) el.remove();
+                        }, 8000);
+                    });
+            })();
+            @endif
+            @endauth
         })();
         </script>
 

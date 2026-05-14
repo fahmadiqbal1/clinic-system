@@ -145,8 +145,6 @@ Route::middleware('role:Owner')->group(function () {
 
     // Platform Settings (AI / API integrations)
     Route::get('/owner/platform-settings', [PlatformSettingsController::class, 'index'])->name('owner.platform-settings.index');
-    Route::patch('/owner/platform-settings', [PlatformSettingsController::class, 'update'])->name('owner.platform-settings.update');
-    Route::post('/owner/platform-settings/test', [PlatformSettingsController::class, 'testConnection'])->name('owner.platform-settings.test');
     Route::post('/owner/platform-settings/flag', [PlatformSettingsController::class, 'toggleFlag'])->name('owner.platform-settings.flag');
     Route::post('/owner/platform-settings/model-config', [PlatformSettingsController::class, 'saveModelConfig'])->name('owner.platform-settings.model-config');
     Route::post('/owner/platform-settings/test-provider', [PlatformSettingsController::class, 'testProvider'])->name('owner.platform-settings.test-provider');
@@ -195,19 +193,20 @@ Route::middleware('role:Owner')->group(function () {
     Route::get('/owner/performance-matrix', [\App\Http\Controllers\Owner\PayoutAnalyticsController::class, 'performanceMatrix'])->name('owner.performance-matrix');
 
     // Phase 8 — Administrative / Operations / Compliance AI personas (flag-gated)
-    // Rate-limited to 20 AI requests per minute per authenticated user.
+    // Rate-limited via named limiter 'ai-analysis' (10/min per user, registered in bootstrap/app.php)
     Route::get('/owner/admin-ai',           [AdminAiController::class, 'index'])->name('owner.admin-ai.index');
-    Route::post('/owner/admin-ai/analyse',  [AdminAiController::class, 'analyse'])->middleware('throttle:20,1')->name('owner.admin-ai.analyse');
+    Route::post('/owner/admin-ai/analyse',  [AdminAiController::class, 'analyse'])->middleware('throttle:ai-analysis')->name('owner.admin-ai.analyse');
 
     Route::get('/owner/ops-ai',             [OpsAiController::class, 'index'])->name('owner.ops-ai.index');
-    Route::post('/owner/ops-ai/analyse',    [OpsAiController::class, 'analyse'])->middleware('throttle:20,1')->name('owner.ops-ai.analyse');
+    Route::post('/owner/ops-ai/analyse',    [OpsAiController::class, 'analyse'])->middleware('throttle:ai-analysis')->name('owner.ops-ai.analyse');
 
     Route::get('/owner/compliance-ai',      [ComplianceAiController::class, 'index'])->name('owner.compliance-ai.index');
-    Route::post('/owner/compliance-ai/run', [ComplianceAiController::class, 'run'])->middleware('throttle:10,1')->name('owner.compliance-ai.run');
+    Route::post('/owner/compliance-ai/run', [ComplianceAiController::class, 'run'])->middleware('throttle:ai-analysis')->name('owner.compliance-ai.run');
 });
 
 // AI Assistant AJAX — accessible to any authenticated user; flag-checked per role inside controller
+// Rate-limited via named limiter 'ai-chat' (10/min per user)
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::post('/ai-assistant/query', [AiAssistantController::class, 'query'])->name('ai.assistant.query');
+    Route::post('/ai-assistant/query', [AiAssistantController::class, 'query'])->middleware('throttle:ai-chat')->name('ai.assistant.query');
     Route::post('/ai-assistant/flag',  [AiAssistantController::class, 'flag'])->name('ai.assistant.flag');
 });

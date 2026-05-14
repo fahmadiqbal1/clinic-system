@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\VendorPriceItem;
 use App\Models\VendorPriceList;
 use App\Notifications\GenericOwnerAlert;
+use App\Services\AiSidecarClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -24,7 +25,7 @@ class ProcessPriceListJob implements ShouldQueue
 
     public function __construct(public readonly VendorPriceList $priceList) {}
 
-    public function handle(): void
+    public function handle(AiSidecarClient $sidecar): void
     {
         $priceList = $this->priceList;
         $vendor    = $priceList->vendor;
@@ -36,8 +37,53 @@ class ProcessPriceListJob implements ShouldQueue
         }
 
         $fileContents = Storage::disk('local')->get($priceList->file_path);
-        $sidecarUrl   = config('clinic.sidecar_url');
-        $data         = null;
+
+        // ── Step 1: Classify the document ────────────────────────────────────
+        // Extract a plain-text preview (first 1000 chars of CSV; PDF text extraction
+        // happens inside the sidecar classification endpoint itself via the filename hint).
+        $textPreview  = $priceList->file_type === 'csv'
+            ? mb_substr($fileContents, 0, 1000)
+            : '';
+
+        $classification = $sidecar->classifyDocument($textPreview, $priceList->original_filename ?? '');
+        $docType        = $classification['type'] ?? 'unknown';
+        $classConfidence = (float) ($classification['confidence'] ?? 0.0);
+
+        Log::channel('single')->info('ProcessPriceListJob: document classified', [
+            'price_list_id' => $priceList->id,
+            'type'          => $docType,
+            'confidence'    => $classConfidence,
+            'reason'        => $classification['reason'] ?? '',
+        ]);
+
+        // Route: MOU/contract → CreateVendorFromMouJob, then stop.
+        if (in_array($docType, ['mou', 'contract'], true) && $classConfidence >= 0.6) {
+            CreateVendorFromMouJob::dispatch($priceList, $classification['reason'] ?? '');
+            return;
+        }
+
+        // Unknown with low confidence → flag for manual review.
+        if ($docType === 'unknown' && $classConfidence < 0.5) {
+            $priceList->update([
+                'status'       => 'flagged',
+                'flag_reasons' => ['classification_unknown', 'manual_review_required'],
+            ]);
+            $owners = User::role('Owner')->get();
+            foreach ($owners as $owner) {
+                $owner->notify(new GenericOwnerAlert(
+                    message: "Uploaded file from {$vendor->name} could not be classified. Manual review needed.",
+                    icon:    'bi-question-circle',
+                    color:   'warning',
+                    url:     "/owner/vendors/price-list/{$priceList->id}/review",
+                    title:   'Document Classification Failed',
+                ));
+            }
+            return;
+        }
+
+        // Price list (or high-confidence unknown) → proceed with extraction below.
+        $sidecarUrl = config('clinic.sidecar_url');
+        $data       = null;
 
         // Try AI sidecar for PDF/image files (with JWT auth)
         if ($sidecarUrl && $priceList->file_type !== 'csv') {

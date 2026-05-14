@@ -72,7 +72,7 @@ class RagflowOutageTest extends TestCase
             ]);
 
         $response->assertStatus(503)
-                 ->assertJson(['error' => 'Knowledge assistant temporarily unavailable.']);
+                 ->assertJson(['error' => 'AI assistant temporarily unavailable.']);
 
         \Illuminate\Support\Facades\Cache::forget('ai_sidecar:cb_open');
     }

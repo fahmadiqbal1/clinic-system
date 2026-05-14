@@ -31,6 +31,7 @@ from app.routes import ops as ops_route
 from app.routes import compliance as compliance_route
 from app.routes import price_extract as price_extract_route
 from app.routes import assistant as assistant_route
+from app.routes import classify as classify_route
 from app.routes.metrics import REQUEST_COUNT, REQUEST_DURATION
 
 
@@ -116,4 +117,5 @@ app.include_router(compliance_route.router, prefix="/v1")
 app.include_router(analyse_route.router, prefix="/v1")
 app.include_router(price_extract_route.router, prefix="/v1")
 app.include_router(assistant_route.router, prefix="/v1")
+app.include_router(classify_route.router, prefix="/v1")
 app.include_router(metrics.router)  # GET /metrics — no auth, Prometheus scrapes this

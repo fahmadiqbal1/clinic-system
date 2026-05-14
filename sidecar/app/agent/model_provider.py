@@ -37,19 +37,25 @@ async def call_model(
     ollama_url: str = "",       # passed from harness — overridable via OLLAMA_URL
     ollama_model: str = "",     # passed from harness — overridable via OLLAMA_MODEL
     timeout_s: float = 600.0,
+    persona: str = "",          # e.g. "clinical", "admin", "ops", "compliance"
 ) -> str:
-    provider = _e("AI_MODEL_PROVIDER", "ollama")
-    logger.info("model_provider: provider=%s", provider)
+    # Per-persona provider override (AI_MODEL_PROVIDER_CLINICAL, _ADMIN, etc.)
+    persona_key = f"AI_MODEL_PROVIDER_{persona.upper()}" if persona else ""
+    provider = (
+        _e(persona_key) if persona_key and _e(persona_key)
+        else _e("AI_MODEL_PROVIDER", "ollama")
+    )
+    logger.info("model_provider: persona=%s provider=%s", persona or "default", provider)
 
     if provider == "openai":
-        return await _call_openai(messages)
+        return await _call_openai(messages, persona=persona)
     if provider == "anthropic":
-        return await _call_anthropic(messages)
+        return await _call_anthropic(messages, persona=persona)
     if provider == "huggingface":
-        return await _call_huggingface(messages)
+        return await _call_huggingface(messages, persona=persona)
     if provider == "groq":
-        return await _call_groq(messages)
-    # default: ollama — env vars override whatever harness passed in
+        return await _call_groq(messages, persona=persona)
+    # default: ollama
     url   = _e("OLLAMA_URL",   ollama_url)
     model = _e("OLLAMA_MODEL", ollama_model)
     return await _call_ollama(messages, url, model, timeout_s)
@@ -76,9 +82,18 @@ async def _call_ollama(messages: list[dict], url: str, model: str, timeout_s: fl
 
 # ── OpenAI (or any OpenAI-compatible endpoint) ────────────────────────────────
 
-async def _call_openai(messages: list[dict]) -> str:
-    api_key = _e("OPENAI_API_KEY")
-    model   = _e("OPENAI_MODEL")
+def _persona_env(base_key: str, persona: str, fallback: str = "") -> str:
+    """Return persona-specific env var if set, else global, else fallback."""
+    if persona:
+        val = _e(f"{base_key}_{persona.upper()}")
+        if val:
+            return val
+    return _e(base_key, fallback)
+
+
+async def _call_openai(messages: list[dict], persona: str = "") -> str:
+    api_key = _persona_env("OPENAI_API_KEY", persona) or _e("OPENAI_API_KEY")
+    model   = _persona_env("OPENAI_MODEL", persona) or _e("OPENAI_MODEL")
     base    = _e("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 
     if not api_key:
@@ -99,9 +114,9 @@ async def _call_openai(messages: list[dict]) -> str:
 
 # ── Anthropic ─────────────────────────────────────────────────────────────────
 
-async def _call_anthropic(messages: list[dict]) -> str:
-    api_key = _e("ANTHROPIC_API_KEY")
-    model   = _e("ANTHROPIC_MODEL")
+async def _call_anthropic(messages: list[dict], persona: str = "") -> str:
+    api_key = _persona_env("ANTHROPIC_API_KEY", persona) or _e("ANTHROPIC_API_KEY")
+    model   = _persona_env("ANTHROPIC_MODEL", persona) or _e("ANTHROPIC_MODEL")
 
     if not api_key:
         raise RuntimeError("Anthropic selected but ANTHROPIC_API_KEY is not set")
@@ -139,9 +154,9 @@ async def _call_anthropic(messages: list[dict]) -> str:
 
 # ── Hugging Face Inference API (OpenAI-compatible /v1/ endpoint) ───────────────
 
-async def _call_huggingface(messages: list[dict]) -> str:
-    api_key = _e("HF_API_KEY")
-    model   = _e("HF_MODEL")
+async def _call_huggingface(messages: list[dict], persona: str = "") -> str:
+    api_key = _persona_env("HF_API_KEY", persona) or _e("HF_API_KEY")
+    model   = _persona_env("HF_MODEL", persona) or _e("HF_MODEL")
 
     if not api_key:
         raise RuntimeError("Hugging Face selected but HF_API_KEY is not set")
@@ -169,14 +184,15 @@ async def _call_huggingface(messages: list[dict]) -> str:
 
 # ── Groq (OpenAI-compatible, free tier) ───────────────────────────────────────
 
-async def _call_groq(messages: list[dict]) -> str:
-    api_key = _e("GROQ_API_KEY")
-    model   = _e("GROQ_MODEL")
+async def _call_groq(messages: list[dict], persona: str = "") -> str:
+    # Persona-specific key takes priority (allows separate Groq projects per persona)
+    api_key = _persona_env("GROQ_API_KEY", persona) or _e("GROQ_API_KEY")
+    model   = _persona_env("GROQ_MODEL", persona) or _e("GROQ_MODEL")
 
     if not api_key:
         raise RuntimeError("Groq selected but GROQ_API_KEY is not set")
     if not model:
-        raise RuntimeError("Groq selected but GROQ_MODEL is not set — enter a model name (e.g. llama-3.1-8b-instant) in Platform Settings")
+        raise RuntimeError("Groq selected but GROQ_MODEL is not set — enter a model name (e.g. llama-3.3-70b-versatile) in Platform Settings")
 
     async with httpx.AsyncClient(timeout=ONLINE_TIMEOUT_S) as client:
         resp = await client.post(

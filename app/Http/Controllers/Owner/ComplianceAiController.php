@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\Owner;
 
+use App\Events\AiCriticalAlert;
 use App\Http\Controllers\Controller;
 use App\Models\AiActionRequest;
 use App\Models\PlatformSetting;
+use App\Models\User;
 use App\Services\AiSidecarClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -67,6 +69,20 @@ class ComplianceAiController extends Controller
                 ],
                 'status' => 'pending',
             ]);
+
+            // Broadcast real-time alert to all Owner sessions via Reverb.
+            $statusLabel = ($result['status'] ?? null) === 'NON_COMPLIANT' ? 'NON-COMPLIANT' : 'Escalation Pending';
+            $owners = User::role('Owner')->get();
+            foreach ($owners as $owner) {
+                broadcast(new AiCriticalAlert(
+                    ownerId: $owner->id,
+                    title:   "Compliance Alert — {$statusLabel}",
+                    message: mb_substr($result['rationale'] ?? 'Review required.', 0, 200),
+                    icon:    'bi-shield-exclamation',
+                    color:   'danger',
+                    url:     '/owner/compliance-ai',
+                ))->toOthers();
+            }
         }
 
         return response()->json($result);

@@ -1,0 +1,259 @@
+# ============================================================
+# Aviva HealthCare — Production Docker Compose
+#
+# Hardening checklist:
+#   ✔ HTTPS via Caddy with automatic Let's Encrypt TLS
+#   ✔ Redis authenticated (REDIS_PASSWORD required)
+#   ✔ MySQL: app user (clinic_app) with limited grants, root not exposed
+#   ✔ Daily mysqldump backup to named volume
+#   ✔ Log rotation via logrotate sidecar
+#   ✔ All services on isolated backend network; only Caddy on frontend
+#   ✔ PHP-FPM runs workers as www-data (root only for entrypoint)
+#
+# Required env vars in .env.prod:
+#   DOMAIN=yourdomain.com
+#   LETSENCRYPT_EMAIL=admin@yourdomain.com
+#   MYSQL_ROOT_PASSWORD=<strong-secret>
+#   MYSQL_APP_PASSWORD=<strong-secret>
+#   REDIS_PASSWORD=<strong-secret>
+#   APP_KEY=<laravel-key>
+#   ... (all standard Laravel .env vars)
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+# ============================================================
+
+services:
+
+  # ── PHP-FPM Application ──────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production
+    restart: always
+    env_file: .env.prod
+    entrypoint: ["/var/www/html/docker/php/entrypoint.sh"]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_DATABASE: clinic_system
+      DB_USERNAME: clinic_app
+      DB_PASSWORD: ${MYSQL_APP_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - app_public:/var/www/html/public
+      - app_storage:/var/www/html/storage
+      - app_logs:/var/www/html/storage/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "php-fpm", "-t"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ── Caddy (HTTPS reverse proxy) ──────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 QUIC
+    environment:
+      DOMAIN: ${DOMAIN}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-webmaster@example.com}
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - app_public:/var/www/html/public:ro
+      - app_storage:/var/www/html/storage:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ── MySQL 8.0 ────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: clinic_system
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: clinic_app
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD}
+    volumes:
+      - mysql_prod_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/01-grants.sql:ro
+      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/clinic.cnf:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ── Redis 7 (authenticated) ──────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_prod_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ── MySQL Backup (daily mysqldump) ───────────────────────
+  backup:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_backups:/backups
+    networks:
+      - backend
+    entrypoint: >
+      /bin/sh -c '
+        while true; do
+          FILENAME="/backups/clinic_system_$$(date +%Y%m%d_%H%M%S).sql.gz";
+          mysqldump -h mysql -u root -p"$$MYSQL_ROOT_PASSWORD" --single-transaction --quick clinic_system | gzip > "$$FILENAME";
+          echo "Backup written: $$FILENAME";
+          find /backups -name "*.sql.gz" -mtime +30 -delete;
+          sleep 86400;
+        done
+      '
+    depends_on:
+      mysql:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "2m"
+        max-file: "2"
+
+  # ── Queue Worker ─────────────────────────────────────────
+  queue:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production
+    restart: always
+    env_file: .env.prod
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_DATABASE: clinic_system
+      DB_USERNAME: clinic_app
+      DB_PASSWORD: ${MYSQL_APP_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - app_storage:/var/www/html/storage
+      - app_logs:/var/www/html/storage/logs
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "php artisan queue:work --sleep=3 --tries=3 --max-time=3600"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ── Scheduler ────────────────────────────────────────────
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: production
+    restart: always
+    env_file: .env.prod
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      DB_HOST: mysql
+      DB_DATABASE: clinic_system
+      DB_USERNAME: clinic_app
+      DB_PASSWORD: ${MYSQL_APP_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - app_storage:/var/www/html/storage
+      - app_logs:/var/www/html/storage/logs
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+networks:
+  frontend:
+  backend:
+    internal: true   # Only Caddy breaches the perimeter
+
+volumes:
+  app_public:
+  app_storage:
+  app_logs:
+  mysql_prod_data:
+  mysql_backups:
+  redis_prod_data:
+  caddy_data:
+  caddy_config:

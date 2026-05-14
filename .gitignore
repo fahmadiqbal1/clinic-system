@@ -1,6 +1,8 @@
 *.log
 .DS_Store
 .env
+.env.docker
+.env.prod
 .claude/
 .env.backup
 .env.production

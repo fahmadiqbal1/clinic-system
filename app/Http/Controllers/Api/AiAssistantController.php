@@ -9,12 +9,35 @@ use App\Services\AiSidecarClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class AiAssistantController extends Controller
 {
+    // Keywords that signal a persona-routed query rather than a document search
+    private const FINANCIAL_KEYWORDS = [
+        'revenue', 'income', 'profit', 'discount', 'billing', 'invoice',
+        'payment', 'expense', 'salary', 'payout', 'commission', 'strategy',
+        'improve', 'increase', 'grow', 'analyse', 'analyze', 'performance',
+        'anomaly', 'fraud', 'overcharge', 'refund', 'cancellation',
+    ];
+
+    private const CLINICAL_KEYWORDS = [
+        'diagnosis', 'diagnose', 'symptom', 'treatment', 'medication',
+        'prescription', 'patient', 'vitals', 'blood pressure', 'temperature',
+        'second opinion', 'differential', 'missing', 'condition', 'disease',
+        'drug', 'dose', 'therapy', 'test', 'lab result', 'radiology',
+    ];
+
+    private const STOCK_KEYWORDS = [
+        'stock', 'inventory', 'medicine', 'drug', 'supply', 'reorder',
+        'procurement', 'purchase', 'order', 'shortage', 'out of stock',
+        'expiry', 'batch', 'vendor', 'supplier', 'quantity',
+    ];
+
     public function query(Request $request, AiSidecarClient $client): JsonResponse
     {
-        $role = strtolower(Auth::user()?->getRoleNames()->first() ?? 'unknown');
+        $user = Auth::user();
+        $role = strtolower($user?->getRoleNames()->first() ?? 'unknown');
 
         if (!PlatformSetting::isEnabled("ai.chat.enabled.{$role}")) {
             return response()->json(['error' => 'AI assistant not enabled for your role.'], 403);
@@ -25,17 +48,43 @@ class AiAssistantController extends Controller
             'collection' => ['sometimes', 'string', 'in:general,service_catalog,inventory'],
         ]);
 
-        $collection = $validated['collection'] ?? $this->defaultCollection($role);
+        $query = $validated['query'];
+
+        // Audit every chat query
+        Log::channel('single')->info('ai_chat_query', [
+            'user_id' => $user?->id,
+            'role'    => $role,
+            'query'   => $query,
+        ]);
+
+        // Determine routing: persona call or RAGFlow knowledge search
+        $route = $this->resolveRoute($role, $query);
 
         try {
-            $result = $client->ragQuery($validated['query'], $collection);
+            if ($route === 'admin') {
+                return $this->routeToAdminPersona($client, $query, $user);
+            }
+
+            if ($route === 'clinical') {
+                return $this->routeToClinicalPersona($client, $query, $user);
+            }
+
+            if ($route === 'ops') {
+                return $this->routeToOpsPersona($client, $query, $user);
+            }
+
+            // Default: RAGFlow knowledge search
+            $collection = $validated['collection'] ?? $this->defaultCollection($role);
+            $result = $client->ragQuery($query, $collection);
+            $result['route'] = 'knowledge';
             return response()->json($result);
+
         } catch (\RuntimeException $e) {
-            // Circuit open or sidecar down — degrade gracefully
             return response()->json([
                 'answer'    => null,
                 'citations' => [],
-                'error'     => 'Knowledge assistant temporarily unavailable.',
+                'route'     => $route,
+                'error'     => 'AI assistant temporarily unavailable.',
             ], 503);
         }
     }
@@ -52,12 +101,12 @@ class AiAssistantController extends Controller
             'case_token'          => null,
             'requested_by_source' => 'ai_assistant',
             'target_type'         => 'KnowledgeQuery',
-            'target_id'           => 0,  // No entity target for knowledge queries; 0 is the sentinel
+            'target_id'           => 0,
             'proposed_action'     => 'owner_review',
             'proposed_payload'    => [
-                'query'     => $validated['query'],
-                'answer'    => $validated['answer'],
-                'citations' => $validated['citations'] ?? [],
+                'query'              => $validated['query'],
+                'answer'             => $validated['answer'],
+                'citations'          => $validated['citations'] ?? [],
                 'flagged_by_user_id' => Auth::id(),
             ],
             'status' => 'pending',
@@ -66,13 +115,97 @@ class AiAssistantController extends Controller
         return response()->json(['flagged' => true]);
     }
 
+    // ── Routing logic ─────────────────────────────────────────────────────────
+
+    private function resolveRoute(string $role, string $query): string
+    {
+        $lower = strtolower($query);
+
+        if ($role === 'owner') {
+            if ($this->matchesKeywords($lower, self::FINANCIAL_KEYWORDS)) {
+                return 'admin';
+            }
+            if ($this->matchesKeywords($lower, self::STOCK_KEYWORDS)) {
+                return 'ops';
+            }
+        }
+
+        if (in_array($role, ['doctor']) && $this->matchesKeywords($lower, self::CLINICAL_KEYWORDS)) {
+            return 'clinical';
+        }
+
+        if (in_array($role, ['pharmacy', 'laboratory', 'radiology'])
+            && $this->matchesKeywords($lower, self::STOCK_KEYWORDS)) {
+            return 'ops';
+        }
+
+        return 'knowledge';
+    }
+
+    private function matchesKeywords(string $text, array $keywords): bool
+    {
+        foreach ($keywords as $kw) {
+            if (str_contains($text, $kw)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ── Persona proxies ───────────────────────────────────────────────────────
+
+    private function routeToAdminPersona(AiSidecarClient $client, string $query, $user): JsonResponse
+    {
+        if (!PlatformSetting::isEnabled('ai.admin.enabled')) {
+            return $this->personaDisabledFallback('admin intelligence');
+        }
+        $result = $client->adminAnalyse([
+            'query_type'    => 'revenue_anomaly',
+            'free_text'     => $query,
+            'session_token' => (string) $user?->id,
+        ]);
+        return response()->json(array_merge($result, ['route' => 'admin']));
+    }
+
+    private function routeToClinicalPersona(AiSidecarClient $client, string $query, $user): JsonResponse
+    {
+        if (!PlatformSetting::isEnabled('ai.sidecar.enabled')) {
+            return $this->personaDisabledFallback('clinical AI');
+        }
+        // Clinical chat uses RAGFlow catalog + user question framed as a consultation note
+        $result = $client->ragQuery($query, 'service_catalog');
+        return response()->json(array_merge($result, ['route' => 'clinical']));
+    }
+
+    private function routeToOpsPersona(AiSidecarClient $client, string $query, $user): JsonResponse
+    {
+        if (!PlatformSetting::isEnabled('ai.ops.enabled')) {
+            return $this->personaDisabledFallback('operations AI');
+        }
+        $result = $client->opsAnalyse([
+            'query_type'    => 'inventory_velocity',
+            'free_text'     => $query,
+            'session_token' => (string) $user?->id,
+        ]);
+        return response()->json(array_merge($result, ['route' => 'ops']));
+    }
+
+    private function personaDisabledFallback(string $persona): JsonResponse
+    {
+        return response()->json([
+            'answer'    => "The {$persona} feature is not enabled. Please ask the owner to enable it in AI Settings.",
+            'citations' => [],
+            'route'     => 'fallback',
+        ]);
+    }
+
     private function defaultCollection(string $role): string
     {
         return match ($role) {
-            'doctor'    => 'service_catalog',
-            'laboratory', 'radiology' => 'service_catalog',
-            'pharmacy'  => 'inventory',
-            default     => 'general',
+            'doctor'                     => 'service_catalog',
+            'laboratory', 'radiology'    => 'service_catalog',
+            'pharmacy'                   => 'inventory',
+            default                      => 'general',
         };
     }
 }
